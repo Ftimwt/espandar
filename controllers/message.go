@@ -7,7 +7,7 @@ import (
 )
 
 func CreateMessage(c *gin.Context) {
-	userID := c.MustGet("userID").(unit)
+	userID := c.MustGet("userID").(uint)
 	var message models.Message
 	if err := c.ShouldBindJSON(&message); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})

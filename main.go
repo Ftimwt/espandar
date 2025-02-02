@@ -2,6 +2,7 @@ package main
 
 import (
 	"Spandar/controllers"
+	"Spandar/models"
 	"Spandar/routes"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"

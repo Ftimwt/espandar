@@ -7,16 +7,22 @@ import (
 )
 
 func SetupRoutes(r *gin.Engine) {
-	r.POST("/auth/login", controllers.Login)
-	r.POST("/auth/signup", controllers.Register)
-	r.GET("/profile", middlewares.AuthMiddleware(), controllers.GetProfile)
-	r.PUT("/profile/update", middlewares.AuthMiddleware(), controllers.UpdateProfile)
+	authRoute := r.Group("/auth")
+	authRoute.GET("login", controllers.Login)
+	authRoute.POST("signup", controllers.Register)
+	authRoute.DELETE("/signout", middlewares.AuthMiddleware(), controllers.SignOut)
+
+	profileRoute := r.Group("/profile").Use(middlewares.AuthMiddleware())
+	profileRoute.GET("/", controllers.GetProfile)
+	profileRoute.PUT("/update", controllers.UpdateProfile)
+
 	r.GET("/users", middlewares.AuthMiddleware(), controllers.GetUsers)
-	r.DELETE("/auth/signout", middlewares.AuthMiddleware(), controllers.SignOut)
-	r.POST("/messages/:user_id", middlewares.AuthMiddleware(), controllers.CreateMessage)
-	r.GET("/messages/:user_id", middlewares.AuthMiddleware(), controllers.GetMessage)
-	r.PUT("/messages/:user_id/:message_id", middlewares.AuthMiddleware(), controllers.UpdateMessage)
-	r.DELETE("/messages/:user_id/:message_id", middlewares.AuthMiddleware(), controllers.DeleteMessage)
+
+	messagesRoute := r.Group("/messages").Use(middlewares.AuthMiddleware())
+	messagesRoute.POST("/:user_id", controllers.CreateMessage)
+	messagesRoute.GET("/:user_id", controllers.GetMessages)
+	messagesRoute.PUT("/:user_id/:message_id", controllers.UpdateMessage)
+	messagesRoute.DELETE("/:user_id/:message_id", controllers.DeleteMessage)
 
 	r.GET("/ws", controllers.WebsocketHandler)
 }

@@ -19,7 +19,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SignMethodMAC); !ok {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, http.ErrNotSupported
 			}
 			return jwtSecret, nil
@@ -38,7 +38,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		userID := unit(claims["user_id"].(float64))
+		userID := uint(claims["user_id"].(float64))
 		c.Set("userID", userID)
 		c.Next()
 	}

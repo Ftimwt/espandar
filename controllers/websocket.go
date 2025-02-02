@@ -16,7 +16,7 @@ var upgrader = websocket.Upgrader{
 
 var clients = make(map[*websocket.Conn]bool)
 var broadcast = make(chan Message)
-var mu sync.Metux
+var mu sync.Mutex
 
 type Message struct {
 	UserID  uint   `json:"user_id"`
@@ -59,6 +59,6 @@ func HandleMessages() {
 				delete(clients, client)
 			}
 		}
-		mu.Unlock
+		mu.Unlock()
 	}
 }

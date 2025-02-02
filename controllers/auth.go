@@ -12,6 +12,11 @@ import (
 )
 
 var db *gorm.DB
+
+func SetDB(database *gorm.DB) {
+	db = database
+}
+
 var jwtSecret = []byte("secretkey")
 
 type Claims struct {
@@ -38,7 +43,16 @@ func Register(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating user"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "user registered successfully"})
+
+	token, err := GenerateToken(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error generating token"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"message": "user registered successfully",
+		"token":   token,
+	})
 }
 
 func Login(c *gin.Context) {
@@ -67,7 +81,7 @@ func Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 
-func GenerateToken(userID unit) (string, error) {
+func GenerateToken(userID uint) (string, error) {
 	claims := Claims{
 		UserID: userID,
 		StandardClaims: jwt.StandardClaims{
