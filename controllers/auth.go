@@ -44,7 +44,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	token, err := GenerateToken(user.ID)
+	token, err := generateToken(user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error generating token"})
 		return
@@ -72,7 +72,7 @@ func Login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
-	token, err := GenerateToken(storedUser.ID)
+	token, err := generateToken(storedUser.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error generating token"})
 		return
@@ -81,14 +81,14 @@ func Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 
-func GenerateToken(userID uint) (string, error) {
+func generateToken(userID uint) (string, error) {
 	claims := Claims{
 		UserID: userID,
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
 		},
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(jwtSecret)
 }
 

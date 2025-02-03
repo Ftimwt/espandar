@@ -13,7 +13,7 @@ func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := c.Request.Header.Get("Authorization")
 		if tokenString == "" {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "authorization header is required"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "no authorization header provided"})
 			c.Abort()
 			return
 		}
@@ -22,7 +22,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, http.ErrNotSupported
 			}
-			return jwtSecret, nil
+			return []byte("secretkey"), nil
 		})
 
 		if err != nil || !token.Valid {
@@ -33,7 +33,7 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok || !token.Valid {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
 			c.Abort()
 			return
 		}

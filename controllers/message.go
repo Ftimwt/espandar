@@ -4,6 +4,7 @@ import (
 	"Spandar/models"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"strconv"
 )
 
 func CreateMessage(c *gin.Context) {
@@ -21,10 +22,63 @@ func CreateMessage(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "message create"})
 }
 
+func SendMessage(c *gin.Context) {
+	userID := c.MustGet("userID").(uint)
+	var message models.Message
+
+	if err := c.ShouldBindJSON(&message); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+		return
+	}
+	message.UserID = userID
+	message.Type = "text"
+
+	if err := db.Create(&message).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error sending message"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "message send successfully"})
+}
+
+func SendMediaMessage(c *gin.Context) {
+	userID := c.MustGet("userID").(uint)
+	groupIDstr := c.Param("group_id")
+
+	groupID64, err := strconv.ParseUint(groupIDstr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid group ID"})
+		return
+	}
+	groupID := uint(groupID64)
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no fole is received"})
+		return
+	}
+
+	if err := c.SaveUploadedFile(file, "./uploads"+file.Filename); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save file"})
+		return
+	}
+
+	message := models.Message{
+		UserID:  userID,
+		GroupID: groupID,
+		Content: file.Filename,
+		Type:    "media",
+	}
+	if err := db.Create(&message).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error sending message"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "message send successfully"})
+}
+
 func GetMessages(c *gin.Context) {
-	userID := c.Param("user_id")
+	groupID := c.Param("group_id")
 	var messages []models.Message
-	if err := db.Where("user_id=?", userID).Find(&messages).Error; err != nil {
+
+	if err := db.Where("group_id=?", groupID).Find(&messages).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 		return
 	}
