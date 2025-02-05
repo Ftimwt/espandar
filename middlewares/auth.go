@@ -1,10 +1,11 @@
 package middlewares
 
 import (
+	"Spandar/models"
 	"net/http"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 var jwtSecret = []byte("secretkey")
@@ -18,6 +19,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		tokenString = tokenString[len("bearer"):]
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, http.ErrNotSupported
@@ -38,8 +40,10 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		userID := uint(claims["user_id"].(float64))
-		c.Set("userID", userID)
+		user := &models.User{
+			Id: uint(claims["user_id"].(float64)),
+		}
+		c.Set("user", user)
 		c.Next()
 	}
 }

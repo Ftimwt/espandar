@@ -3,13 +3,15 @@ module Spandar
 go 1.23.4
 
 require (
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/gin-gonic/gin v1.10.0
-	github.com/gorilla/websocket v1.5.3
+	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/googollee/go-socket.io v1.7.0
 	golang.org/x/crypto v0.32.0
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.25.12
 )
+
+require github.com/gorilla/websocket v1.4.2 // indirect
 
 require (
 	github.com/bytedance/sonic v1.12.8 // indirect
@@ -21,6 +23,8 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.24.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
+	github.com/gofrs/uuid v4.0.0+incompatible // indirect
+	github.com/gomodule/redigo v1.8.4 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
