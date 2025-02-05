@@ -1,17 +1,22 @@
 package websocket
 
 import (
-	socketio "github.com/googollee/go-socket.io"
+	"log"
 	"net/http"
+
+	socketio "github.com/googollee/go-socket.io"
 )
 
 var Server *socketio.Server
+var userStatus = make(map[string]string)
 
 func InitSocketServer() {
 	Server := socketio.NewServer(nil)
 
 	Server.OnConnect("/", func(s socketio.Conn) error {
 		s.SetContext("")
+		userStatus[s.ID()] = "online"
+		log.Printf("user %s conneced\n", s.ID())
 		return nil
 	})
 
@@ -24,7 +29,15 @@ func InitSocketServer() {
 	})
 
 	Server.OnDisconnect("/", func(s socketio.Conn, msg string) {
+		log.Printf("user %s disconnected: %s\n", s.ID(), msg)
+
+		updateUserStatus(s.ID(), "ofline")
 	})
+}
+
+func updateUserStatus(userID string, status string) {
+	userStatus[userID] = status
+	log.Printf("user %s status updated to %s\n", userID, status)
 }
 
 func SocketHandler(w http.ResponseWriter, r *http.Request) {

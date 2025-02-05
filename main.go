@@ -4,6 +4,7 @@ import (
 	"Spandar/controllers"
 	"Spandar/models"
 	"Spandar/routes"
+	"Spandar/websocket"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -24,7 +25,8 @@ func main() {
 	controllers.SetDB(db)
 	routes.SetupRoutes(r)
 
-	go controllers.HandleMessages()
+	websocket.InitSocketServer()
 
 	r.Run(":8080")
+
 }

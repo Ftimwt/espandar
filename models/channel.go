@@ -8,4 +8,5 @@ type Channel struct {
 	Name        string `json:"name"`
 	CreatorID   uint   `json:"creator_id"`
 	Description string `json:"description"`
+	Members     []User `gorm:"manytomany:channel_members;"`
 }

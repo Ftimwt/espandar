@@ -41,7 +41,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 
 		user := &models.User{
-			Id: uint(claims["user_id"].(float64)),
+			ID: uint(claims["user_id"].(float64)),
 		}
 		c.Set("user", user)
 		c.Next()

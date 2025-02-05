@@ -4,6 +4,7 @@ import (
 	"Spandar/models"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"strconv"
 )
 
 func CreateGroup(c *gin.Context) {
@@ -20,4 +21,80 @@ func CreateGroup(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "group create successfully", "group": group})
+}
+
+func AddMemberToGroup(c *gin.Context) {
+	groupID := c.Param("group_id")
+	var user models.User
+	if err := c.ShouldBindJSON(&user); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+		return
+	}
+
+	var group models.Group
+	if err := db.First(&group, &groupID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
+		return
+	}
+
+	if err := db.Model(&group).Association("Members").Append(&user); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error adding member"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "member added successfully", "group": group})
+}
+
+func RemoveMemberFromGroup(c *gin.Context) {
+	groupID := c.Param("group_id")
+	userIDStr := c.Param("user_id")
+
+	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+	}
+
+	var group models.Group
+	if err := db.First(&group, &groupID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
+		return
+	}
+
+	var user models.User
+	user.ID = uint(userID)
+	if err := db.Model(&group).Association("Members").Delete(&user); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error removing member"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "member removed successfully", "group": group})
+}
+
+func GetGroups(c *gin.Context) {
+	var groups []models.Group
+	if err := db.Find(&groups).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error retrieving groups"})
+		return
+	}
+	c.JSON(http.StatusOK, groups)
+}
+
+func GetGroup(c *gin.Context) {
+	groupID := c.Param("id")
+	var group models.Group
+	if err := db.First(&group, groupID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "group not found"})
+		return
+	}
+	c.JSON(http.StatusOK, group)
+}
+
+func DeleteGroup(c *gin.Context) {
+	groupID := c.Param("group_id")
+	if err := db.Delete(&models.Group{}, groupID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error deleting group"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "group deleted successfully"})
 }
