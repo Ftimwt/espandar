@@ -1,12 +1,11 @@
 package controllers
 
 import (
+	"Spandar/jwt"
 	"Spandar/models"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -15,13 +14,6 @@ var db *gorm.DB
 
 func SetDB(database *gorm.DB) {
 	db = database
-}
-
-var jwtSecret = []byte("secretkey")
-
-type Claims struct {
-	UserID uint `json:"user_id"`
-	jwt.RegisteredClaims
 }
 
 func Register(c *gin.Context) {
@@ -44,7 +36,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	token, err := GenerateToken(user.ID)
+	token, err := jwt.Generate(&user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error generating token"})
 		return
@@ -72,29 +64,13 @@ func Login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
-	token, err := GenerateToken(storedUser.ID)
+	token, err := jwt.Generate(&storedUser)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error generating token"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"token": token})
-}
-
-func GenerateTokenWithExpire(userID uint, expirationTime time.Time) (string, error) {
-	claims := Claims{
-		UserID: userID,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(expirationTime),
-		},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtSecret)
-}
-
-func GenerateToken(userID uint) (string, error) {
-	expiration := time.Now().Add(time.Hour * 1)
-	return GenerateTokenWithExpire(userID, expiration)
 }
 
 func GetProfile(c *gin.Context) {

@@ -2,28 +2,22 @@ package main
 
 import (
 	"Spandar/controllers"
-	"Spandar/models"
+	"Spandar/database"
 	"Spandar/routes"
 	"Spandar/websocket"
+
 	"github.com/gin-gonic/gin"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 var db *gorm.DB
 
 func main() {
-	var err error
-	db, err = gorm.Open(sqlite.Open("Spandar.db"), &gorm.Config{})
-	if err != nil {
-		panic("failed to connect database")
-	}
-
-	db.AutoMigrate(&models.User{}, &models.Message{})
+	db := database.Database()
 
 	r := gin.Default()
-	controllers.SetDB(db)
 	routes.SetupRoutes(r)
+	controllers.SetDB(db)
 
 	websocket.InitSocketServer()
 
