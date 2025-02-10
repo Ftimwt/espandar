@@ -1,9 +1,9 @@
 package routes
 
 import (
-	"Spandar/controllers"
-	"Spandar/middlewares"
-	"Spandar/websocket"
+	"espandar/controllers"
+	"espandar/middlewares"
+	"espandar/websocket"
 
 	"github.com/gin-gonic/gin"
 )
@@ -30,9 +30,8 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/socket.io/", gin.WrapF(websocket.SocketHandler))
 
 	messagesRoute := r.Group("/messages").Use(middlewares.AuthMiddleware())
-	messagesRoute.POST("/user_id/media", controllers.SendMessage)
-	messagesRoute.POST("/:user_id", controllers.CreateMessage)
-	messagesRoute.GET("/:user_id", controllers.GetMessages)
+	messagesRoute.POST("/:receiver_type/:receiver_id", controllers.SendMessage)
+	messagesRoute.GET("/", controllers.GetMessages)
 	messagesRoute.GET("/groups/:group_id", controllers.GetMessages)
 	messagesRoute.PUT("/:user_id/:message_id", controllers.UpdateMessage)
 	messagesRoute.DELETE("/:user_id/:message_id", controllers.DeleteMessage)

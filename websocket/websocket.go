@@ -1,10 +1,10 @@
 package websocket
 
 import (
-	"Spandar/database"
-	"Spandar/jwt"
-	"Spandar/models"
 	"errors"
+	"espandar/database"
+	"espandar/jwt"
+	"espandar/models"
 	"fmt"
 	"log"
 	"net/http"
@@ -49,9 +49,9 @@ func InitSocketServer() {
 		return nil
 	})
 
-	// Server.OnEvent("/", "send_message", func(s socketio.Conn, msg string) {
-	// 	Server.BroadcastToRoom("", "chat", msg)
-	// })
+	Server.OnEvent("/", "send_message", func(s socketio.Conn, msg string) {
+		Server.BroadcastToRoom("", "chat", msg)
+	})
 
 	// Server.OnEvent("/", "send_private_message", func(s socketio.Conn, receiverID string, msg string) {
 	// 	s.Emit(receiverID, "private_message", msg)

@@ -1,4 +1,4 @@
-module Spandar
+module espandar
 
 go 1.23.4
 

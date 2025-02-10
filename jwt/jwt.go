@@ -1,8 +1,8 @@
 package jwt
 
 import (
-	"Spandar/models"
 	"errors"
+	"espandar/models"
 	"fmt"
 	"time"
 
@@ -60,10 +60,10 @@ func ValidateJWT(tokenString string) (uint, error) {
 		return 0, errors.New("forbidden")
 	}
 
-	claim, ok := token.Claims.(Claims)
+	claim, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
 		return 0, errors.New("forbidden")
 	}
 
-	return claim.UserID, nil
+	return uint(claim["user_id"].(float64)), nil
 }

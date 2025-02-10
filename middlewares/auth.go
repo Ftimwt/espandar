@@ -1,14 +1,12 @@
 package middlewares
 
 import (
-	"Spandar/jwt"
-	"Spandar/models"
+	"espandar/jwt"
+	"espandar/models"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
-
-var jwtSecret = []byte("secretkey")
 
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -19,7 +17,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		tokenString = tokenString[len("bearer"):]
+		tokenString = tokenString[len("bearer "):]
 
 		userID, err := jwt.ValidateJWT(tokenString)
 

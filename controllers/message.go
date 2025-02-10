@@ -1,82 +1,71 @@
 package controllers
 
 import (
-	"Spandar/models"
-	"github.com/gin-gonic/gin"
+	"espandar/dto"
+	"espandar/models"
 	"net/http"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
 )
 
-func CreateMessage(c *gin.Context) {
-	userID := c.MustGet("userID").(uint)
-	var message models.Message
-	if err := c.ShouldBindJSON(&message); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
-		return
-	}
-	message.UserID = userID
-	if err := db.Create(&message).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not create"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "message create"})
-}
-
 func SendMessage(c *gin.Context) {
-	userID := c.MustGet("userID").(uint)
-	var message models.Message
+	var formData dto.Message
 
-	if err := c.ShouldBindJSON(&message); err != nil {
+	if err := c.ShouldBindJSON(&formData); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
-	message.UserID = userID
-	message.Type = "text"
+
+	message := models.Message{}
+	message.Content = formData.Text
+	message.SenderID = c.MustGet("user").(*models.User).ID
+
+	receiverType := c.Param("receiver_type")
+	receiverID, _ := strconv.Atoi(c.Param("receiver_id"))
+	voice, err := c.FormFile("voice")
+	form, _ := c.MultipartForm()
+	attachment := form.File["attachment"]
+	pircutres := form.File["picture"]
+
+	for _, file := range attachment {
+		file.Open()
+	}
+
+	switch receiverType {
+	case "user":
+		message.UserID = uint(receiverID)
+	case "group":
+		message.UserID = uint(receiverID)
+	case "channel":
+		message.UserID = uint(receiverID)
+	default:
+		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exists"})
+		return
+	}
 
 	if err := db.Create(&message).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error sending message"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not send"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "message send successfully"})
-}
-
-func SendMediaMessage(c *gin.Context) {
-	userID := c.MustGet("userID").(uint)
-	groupIDstr := c.Param("group_id")
-
-	groupID64, err := strconv.ParseUint(groupIDstr, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid group ID"})
-		return
-	}
-	groupID := uint(groupID64)
-	file, err := c.FormFile("file")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "no fole is received"})
-		return
-	}
-
-	if err := c.SaveUploadedFile(file, "./uploads"+file.Filename); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save file"})
-		return
-	}
-
-	message := models.Message{
-		UserID:  userID,
-		GroupID: groupID,
-		Content: file.Filename,
-		Type:    "media",
-	}
-	if err := db.Create(&message).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error sending message"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "message send successfully"})
 }
 
 func GetMessages(c *gin.Context) {
-	groupID := c.Param("group_id")
-	var messages []models.Message
+	var formData dto.Message
+
+	receiverType := c.Param("receiver_type")
+	receiverID, _ := strconv.Atoi(c.Param("receiver_id"))
+
+	switch receiverType {
+	case "user":
+		message.UserID = uint(receiverID)
+		break
+	default:
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "receiver type does not exists",
+		})
+		break
+	}
 
 	if err := db.Where("group_id=?", groupID).Find(&messages).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})

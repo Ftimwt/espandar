@@ -1,8 +1,8 @@
 package controllers
 
 import (
-	"Spandar/jwt"
-	"Spandar/models"
+	"espandar/jwt"
+	"espandar/models"
 	"net/http"
 
 	"github.com/gin-gonic/gin"

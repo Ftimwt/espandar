@@ -1,10 +1,10 @@
 package main
 
 import (
-	"Spandar/controllers"
-	"Spandar/database"
-	"Spandar/routes"
-	"Spandar/websocket"
+	"espandar/controllers"
+	"espandar/database"
+	"espandar/routes"
+	"espandar/websocket"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"

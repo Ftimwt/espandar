@@ -1,10 +1,11 @@
 package controllers
 
 import (
-	"Spandar/models"
-	"github.com/gin-gonic/gin"
+	"espandar/models"
 	"net/http"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
 )
 
 func CreateChannel(c *gin.Context) {
@@ -73,7 +74,7 @@ func RemoveMemberFromChannel(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "member removed successfully", "channel": channel})
 }
 
-func GetChannels(c *gin.Context){
+func GetChannels(c *gin.Context) {
 	var channels []models.Channel
 	if err := db.Find(&channels).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error retrieving channels"})
@@ -82,7 +83,7 @@ func GetChannels(c *gin.Context){
 	c.JSON(http.StatusOK, channels)
 }
 
-func GetChannel(c *gin.Context){
+func GetChannel(c *gin.Context) {
 	channelID := c.Param("id")
 	var channel models.Channel
 	if err := db.First(&channel, channelID).Error; err != nil {

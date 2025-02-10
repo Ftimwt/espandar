@@ -1,10 +1,11 @@
 package controllers
 
 import (
-	"Spandar/models"
-	"github.com/gin-gonic/gin"
+	"espandar/models"
 	"net/http"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
 )
 
 func CreateGroup(c *gin.Context) {

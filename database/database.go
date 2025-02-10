@@ -1,7 +1,7 @@
 package database
 
 import (
-	"Spandar/models"
+	"espandar/models"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -12,7 +12,7 @@ var db *gorm.DB
 func Database() *gorm.DB {
 	if db == nil {
 		var err error
-		db, err = gorm.Open(sqlite.Open("espandar.db"))
+		db, err = gorm.Open(sqlite.Open("eespandar.db"))
 		if err != nil {
 			panic(err)
 		}
