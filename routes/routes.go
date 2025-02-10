@@ -24,7 +24,6 @@ func SetupRoutes(r *gin.Engine) {
 	r.GET("/users", middlewares.AuthMiddleware(), controllers.GetUsers)
 
 	r.POST("/groups", middlewares.AuthMiddleware(), controllers.CreateGroup)
-	r.POST("/groups/:group_id/media", controllers.SendMediaMessage)
 
 	r.GET("/socket.io/", gin.WrapF(websocket.SocketHandler))
 	r.POST("/socket.io/", gin.WrapF(websocket.SocketHandler))
