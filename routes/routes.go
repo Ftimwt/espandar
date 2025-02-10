@@ -30,8 +30,7 @@ func SetupRoutes(r *gin.Engine) {
 
 	messagesRoute := r.Group("/messages").Use(middlewares.AuthMiddleware())
 	messagesRoute.POST("/:receiver_type/:receiver_id", controllers.SendMessage)
-	messagesRoute.GET("/", controllers.GetMessages)
-	messagesRoute.GET("/groups/:group_id", controllers.GetMessages)
+	messagesRoute.GET("/:receiver_type/:receiver_id", controllers.GetMessages)
 	messagesRoute.PUT("/:user_id/:message_id", controllers.UpdateMessage)
 	messagesRoute.DELETE("/:user_id/:message_id", controllers.DeleteMessage)
 

@@ -43,15 +43,16 @@ func SendMessage(c *gin.Context) {
 		return
 	}
 
-	if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
+	formContent, err := c.MultipartForm()
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unable to parse form"})
 		return
 	}
 
-	files := c.MultipartForm.File["files"]
+	files := formContent.File["files"]
 	if len(files) > 0 {
-		for _, fileHeader = range files {
-			filePath := "./uploads/" + fileHeader.FileName
+		for _, fileHeader := range files {
+			filePath := "./uploads/" + fileHeader.Filename
 
 			if err := c.SaveUploadedFile(fileHeader, filePath); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "file dosent save"})
@@ -60,7 +61,7 @@ func SendMessage(c *gin.Context) {
 
 			newFile := models.File{
 				FilePath: filePath,
-				Type:     determineFileType(fileHeader.FileName),
+				Type:     FileType(fileHeader.Filename),
 			}
 
 			if err := db.Create(&newFile).Error; err != nil {
@@ -96,24 +97,34 @@ func FileType(fileName string) models.FileType {
 }
 
 func GetMessages(c *gin.Context) {
-	var formData dto.Message
 
 	receiverType := c.Param("receiver_type")
-	receiverID, _ := strconv.Atoi(c.Param("receiver_id"))
+	receiverID, err := strconv.Atoi(c.Param("receiver_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver id"})
+		return
+	}
+
+	var messages []models.Message
 
 	switch receiverType {
 	case "user":
-		message.UserID = uint(receiverID)
-		break
+		if err := db.Where("receiver_id = ? OR user_id = ?", receiverID, receiverID).Find(&messages).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
+			return
+		}
+	case "group":
+		if err := db.Where("group_id = ? OR user_id = ?", receiverID, receiverID).Find(&messages).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
+			return
+		}
+	case "channel":
+		if err := db.Where("channel_id = ? OR user_id = ?", receiverID, receiverID).Find(&messages).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
+			return
+		}
 	default:
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "receiver type does not exists",
-		})
-		break
-	}
-
-	if err := db.Where("group_id=?", groupID).Find(&messages).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exists"})
 		return
 	}
 	c.JSON(http.StatusOK, messages)
@@ -122,24 +133,27 @@ func GetMessages(c *gin.Context) {
 func UpdateMessage(c *gin.Context) {
 	userID := c.Param("user_id")
 	messageID := c.Param("message_id")
-	var message models.Message
-	if err := c.ShouldBindJSON(&message); err != nil {
+
+	var updatedMessage models.Message
+
+	if err := c.ShouldBindJSON(&updatedMessage); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
-	if err := db.Model(&message).Where("id=? AND user_id=?", messageID, userID).Updates(message).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "massage not update"})
+
+	if err := db.Model(&updatedMessage).Where("id=? AND user_id=?", messageID, userID).Updates(models.Message{Content: updatedMessage.Content}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "massage not updated"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "message update"})
+	c.JSON(http.StatusOK, gin.H{"message": "message updated"})
 }
 
 func DeleteMessage(c *gin.Context) {
 	userID := c.Param("user_id")
 	messageID := c.Param("message_id")
 	if err := db.Where("id=? AND user_id=?", messageID, userID).Delete(&models.Message{}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "massage not delete"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "massage not deleted"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "message delete"})
+	c.JSON(http.StatusOK, gin.H{"message": "message deleted"})
 }
