@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"espandar/dto"
-	"espandar/jwt"
 	"espandar/models"
 	"net/http"
 	"strconv"
@@ -113,11 +112,7 @@ func GetMessages(c *gin.Context) {
 		return
 	}
 
-	userID, err := jwt.ValidateJWT(tokenString)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-		return
-	}
+	userID := c.MustGet("user").(*models.User).ID
 
 	receiverType := c.Param("receiver_type")
 	receiverID, err := strconv.Atoi(c.Param("receiver_id"))
@@ -135,12 +130,12 @@ func GetMessages(c *gin.Context) {
 			return
 		}
 	case "group":
-		if err := db.Where("group_id = ? OR user_id = ?", receiverID, receiverID).Find(&messages).Error; err != nil {
+		if err := db.Where("group_id = ?", receiverID).Find(&messages).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 			return
 		}
 	case "channel":
-		if err := db.Where("channel_id = ? OR user_id = ?", receiverID, receiverID).Find(&messages).Error; err != nil {
+		if err := db.Where("channel_id = ?", receiverID).Find(&messages).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 			return
 		}

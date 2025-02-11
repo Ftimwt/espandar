@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func AuthMiddleware() gin.HandlerFunc {
@@ -28,7 +29,9 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 
 		user := &models.User{
-			ID: userID,
+			Model: gorm.Model{
+				ID: userID,
+			},
 		}
 		c.Set("user", user)
 		c.Next()
