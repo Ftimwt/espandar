@@ -4,7 +4,6 @@ import (
 	"espandar/controllers"
 	"espandar/middlewares"
 	"espandar/websocket"
-
 	"github.com/gin-gonic/gin"
 )
 

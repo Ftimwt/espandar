@@ -53,10 +53,11 @@ func RemoveMemberFromGroup(c *gin.Context) {
 	userID, err := strconv.ParseUint(userIDStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
 	}
 
 	var group models.Group
-	if err := db.First(&group, &groupID).Error; err != nil {
+	if err := db.First(&group, groupID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
 		return
 	}
@@ -92,7 +93,14 @@ func GetGroup(c *gin.Context) {
 
 func DeleteGroup(c *gin.Context) {
 	groupID := c.Param("group_id")
-	if err := db.Delete(&models.Group{}, groupID).Error; err != nil {
+
+	var group models.Group
+	if err := db.First(&group, groupID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
+		return
+	}
+
+	if err := db.Delete(&group).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error deleting group"})
 		return
 	}

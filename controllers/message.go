@@ -2,17 +2,19 @@ package controllers
 
 import (
 	"espandar/dto"
+	"espandar/jwt"
 	"espandar/models"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
 func SendMessage(c *gin.Context) {
 	var formData dto.Message
 
-	if err := c.ShouldBindJSON(&formData); err != nil {
+	if err := c.ShouldBind(&formData); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
@@ -55,8 +57,6 @@ func SendMessage(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not send"})
 		return
 	}
-
-	
 
 	files := formContent.File["files"]
 	if len(files) > 0 {
@@ -107,6 +107,18 @@ func FileType(fileName string) models.FileType {
 
 func GetMessages(c *gin.Context) {
 
+	tokenString := c.GetHeader("Authorization")
+	if tokenString == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authorization header is missing"})
+		return
+	}
+
+	userID, err := jwt.ValidateJWT(tokenString)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		return
+	}
+
 	receiverType := c.Param("receiver_type")
 	receiverID, err := strconv.Atoi(c.Param("receiver_id"))
 	if err != nil {
@@ -118,7 +130,7 @@ func GetMessages(c *gin.Context) {
 
 	switch receiverType {
 	case "user":
-		if err := db.Where("receiver_id = ? OR user_id = ?", receiverID, receiverID).Find(&messages).Error; err != nil {
+		if err := db.Where("(user_id = ? AND sender_id = ?) OR (user_id = ? AND sender_id = ?)", userID, receiverID, receiverID, userID).Find(&messages).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 			return
 		}
