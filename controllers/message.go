@@ -17,22 +17,35 @@ func SendMessage(c *gin.Context) {
 		return
 	}
 
-	message := models.Message{
-		Content:  formData.Content,
-		SenderID: c.MustGet("user").(*models.User).ID,
-		Type:     formData.MessageType,
+	receiverType := c.Param("receiver_type")
+	receiverID := c.Param("receiver_id")
+
+	formContent, err := c.MultipartForm()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unable to parse form"})
+		return
 	}
 
-	receiverType := formData.ReceiverType
-	receiverID := formData.ReceiverID
+	content := formContent.Value["content"][0]
+
+	receiverIDUint, err := strconv.Atoi(receiverID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver id"})
+		return
+	}
+
+	message := models.Message{
+		Content:  content,
+		SenderID: c.MustGet("user").(*models.User).ID,
+	}
 
 	switch receiverType {
 	case "user":
-		message.UserID = uint(receiverID)
+		message.UserID = uint(receiverIDUint)
 	case "group":
-		message.UserID = uint(receiverID)
+		message.UserID = uint(receiverIDUint)
 	case "channel":
-		message.UserID = uint(receiverID)
+		message.UserID = uint(receiverIDUint)
 	default:
 		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exists"})
 		return
@@ -43,11 +56,7 @@ func SendMessage(c *gin.Context) {
 		return
 	}
 
-	formContent, err := c.MultipartForm()
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "unable to parse form"})
-		return
-	}
+	
 
 	files := formContent.File["files"]
 	if len(files) > 0 {
