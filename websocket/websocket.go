@@ -53,10 +53,6 @@ func InitSocketServer() {
 		Server.BroadcastToRoom("", "chat", msg)
 	})
 
-	// Server.OnEvent("/", "send_private_message", func(s socketio.Conn, receiverID string, msg string) {
-	// 	s.Emit(receiverID, "private_message", msg)
-	// })
-
 	Server.OnDisconnect("/", func(s socketio.Conn, msg string) {
 		log.Printf("user %s disconnected: %s\n", s.ID(), msg)
 
