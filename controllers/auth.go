@@ -16,7 +16,7 @@ func SetDB(database *gorm.DB) {
 	db = database
 }
 
-func Register(c *gin.Context) {
+func SignUp(c *gin.Context) {
 	var user models.User
 	if err := c.ShouldBindJSON(&user); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})

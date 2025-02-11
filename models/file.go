@@ -12,6 +12,7 @@ const (
 
 type File struct {
 	gorm.Model
-	FilePath string `gorm:"unique"`
-	Type     FileType
+	FilePath  string `gorm:"unique"`
+	Type      FileType
+	MessageID uint
 }

@@ -14,7 +14,7 @@ func SetupRoutes(r *gin.Engine) {
 
 	authRoute := r.Group("/auth")
 	authRoute.POST("login", controllers.Login)
-	authRoute.POST("signup", controllers.Register)
+	authRoute.POST("signup", controllers.SignUp)
 	authRoute.DELETE("/signout", middlewares.AuthMiddleware(), controllers.SignOut)
 
 	profileRoute := r.Group("/profile").Use(middlewares.AuthMiddleware())
