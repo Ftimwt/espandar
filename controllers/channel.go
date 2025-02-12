@@ -2,22 +2,34 @@ package controllers
 
 import (
 	"espandar/models"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
-
-	"github.com/gin-gonic/gin"
 )
 
 func CreateChannel(c *gin.Context) {
-	userID := c.MustGet("userID").(uint)
-	var channel models.Channel
 
-	if err := c.ShouldBindJSON(&channel); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+	tokenString := c.GetHeader("Authorization")
+	if tokenString == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authorization header is missing"})
 		return
 	}
 
-	channel.CreatorID = userID
+	userID := c.MustGet("user").(*models.User).ID
+
+	var user models.User
+	if err := db.First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user does not exist"})
+		return
+	}
+
+	var channel models.Channel
+	if err := c.ShouldBind(&channel); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request payload"})
+		return
+	}
+
+	channel.CreatorID = uint(userID)
 
 	if err := db.Create(&channel).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating channel"})
