@@ -1,6 +1,10 @@
 package controllers
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/base64"
 	"espandar/dto"
 	"espandar/models"
 	"net/http"
@@ -9,6 +13,28 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+var encryptionkey = []byte("32_encryptionkey")
+
+func encrypt(plainText string) (string, error) {
+	block, err := aes.NewCipher(encryptionkey)
+	if err != nil {
+		return "", err
+	}
+
+	plainTextBytes := []byte(plainText)
+	cipherText := make([]byte, aes.BlockSize+len(plainTextBytes))
+	iv := cipherText[:aes.BlockSize]
+
+	if _, err := rand.Read(iv); err != nil {
+		return "", err
+	}
+
+	mode := cipher.NewCBCEncrypter(block, iv)
+	mode.CryptBlocks(cipherText[aes.BlockSize:], plainTextBytes)
+
+	return base64.StdEncoding.EncodeToString(cipherText), nil
+}
 
 func SendMessage(c *gin.Context) {
 	var formData dto.Message
@@ -29,6 +55,12 @@ func SendMessage(c *gin.Context) {
 
 	content := formContent.Value["content"][0]
 
+	encryptedContent, err := encrypt(content)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error encrypting message"})
+		return
+	}
+
 	receiverIDUint, err := strconv.Atoi(receiverID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver id"})
@@ -36,7 +68,7 @@ func SendMessage(c *gin.Context) {
 	}
 
 	message := models.Message{
-		Content:  content,
+		Content:  encryptedContent,
 		SenderID: c.MustGet("user").(*models.User).ID,
 	}
 
@@ -44,9 +76,9 @@ func SendMessage(c *gin.Context) {
 	case "user":
 		message.UserID = uint(receiverIDUint)
 	case "group":
-		message.UserID = uint(receiverIDUint)
+		message.GroupID = uint(receiverIDUint)
 	case "channel":
-		message.UserID = uint(receiverIDUint)
+		message.ChannelID = uint(receiverIDUint)
 	default:
 		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exists"})
 		return
