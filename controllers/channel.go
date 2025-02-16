@@ -41,19 +41,25 @@ func CreateChannel(c *gin.Context) {
 
 func AddMemberToChannel(c *gin.Context) {
 	channelID := c.Param("channel_id")
-	var user models.User
-	if err := c.ShouldBindJSON(&user); err != nil {
+	var users []models.User
+	if err := c.ShouldBindJSON(&users); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
-		return
 	}
 
+	userID := c.MustGet("user").(*models.User).ID
+
 	var channel models.Channel
-	if err := db.First(&channel, &channelID).Error; err != nil {
+	if err := db.First(&channel, channelID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "channel not found"})
 		return
 	}
 
-	if err := db.Model(&channel).Association("Members").Append(&user); err != nil {
+	if userID != channel.CreatorID {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "you do not have access to add member"})
+		return
+	}
+	
+	if err := db.Model(&channel).Association("Members").Append(&users); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error adding member"})
 		return
 	}
@@ -76,6 +82,11 @@ func RemoveMemberFromChannel(c *gin.Context) {
 		return
 	}
 
+	if userID != uint64(channel.CreatorID) {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "you do not have access to remove member"})
+		return
+	}
+
 	var user models.User
 	user.ID = uint(userID)
 	if err := db.Model(&channel).Association("Members").Delete(&user); err != nil {
@@ -87,12 +98,39 @@ func RemoveMemberFromChannel(c *gin.Context) {
 }
 
 func GetChannels(c *gin.Context) {
+
+	pageStr := c.Query("page")
+	perPageStr := c.Query("per_page")
+
+	if pageStr == "" || perPageStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": ""})
+		return
+	}
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": ""})
+		return
+	}
+
+	perPage, err := strconv.Atoi(perPageStr)
+	if err != nil || perPage <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": ""})
+		return
+	}
+
+	offset := (page - 1) * perPage
+
 	var channels []models.Channel
-	if err := db.Find(&channels).Error; err != nil {
+	if err := db.Offset(offset).Limit(perPage).Find(&channels).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error retrieving channels"})
 		return
 	}
-	c.JSON(http.StatusOK, channels)
+
+	var totalChannels int64
+	db.Model(&models.Channel{}).Count(&totalChannels)
+
+	c.JSON(http.StatusOK, gin.H{"page": page, "per_page": perPage, "total": totalChannels, "channels": channels})
 }
 
 func GetChannel(c *gin.Context) {

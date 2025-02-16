@@ -26,19 +26,26 @@ func CreateGroup(c *gin.Context) {
 
 func AddMemberToGroup(c *gin.Context) {
 	groupID := c.Param("group_id")
-	var user models.User
-	if err := c.ShouldBindJSON(&user); err != nil {
+	var users []models.User
+	if err := c.ShouldBindJSON(&users); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
 
+	userID := c.MustGet("user").(*models.User).ID
+
 	var group models.Group
-	if err := db.First(&group, &groupID).Error; err != nil {
+	if err := db.First(&group, groupID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
 		return
 	}
 
-	if err := db.Model(&group).Association("Members").Append(&user); err != nil {
+	if userID != group.CreatorID {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "you do not have access to add member"})
+		return
+	}
+
+	if err := db.Model(&group).Association("Members").Append(&users); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error adding member"})
 		return
 	}
@@ -61,6 +68,10 @@ func RemoveMemberFromGroup(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
 		return
 	}
+	if userID != uint64(group.CreatorID) {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "you do not have access to remove member"})
+		return
+	} 
 
 	var user models.User
 	user.ID = uint(userID)
@@ -84,7 +95,7 @@ func GetGroups(c *gin.Context) {
 func GetGroup(c *gin.Context) {
 	groupID := c.Param("id")
 	var group models.Group
-	if err := db.First(&group, groupID).Error; err != nil {
+	if err := db.Preload("Members").First(&group, groupID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "group not found"})
 		return
 	}
