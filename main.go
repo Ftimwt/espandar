@@ -16,7 +16,7 @@ func main() {
 	db := database.Database()
 
 	r := gin.Default()
-	routes.SetupRoutes(r)
+	routes.SetupRoutes(r, db)
 	controllers.SetDB(db)
 
 	websocket.InitSocketServer()

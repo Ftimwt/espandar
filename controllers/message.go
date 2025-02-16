@@ -68,8 +68,10 @@ func SendMessage(c *gin.Context) {
 	}
 
 	message := models.Message{
-		Content:  encryptedContent,
-		SenderID: c.MustGet("user").(*models.User).ID,
+		Content:    encryptedContent,
+		SenderID:   c.MustGet("user").(*models.User).ID,
+		IsReceived: false,
+		Seen:       false,
 	}
 
 	switch receiverType {
@@ -138,12 +140,6 @@ func FileType(fileName string) models.FileType {
 
 func GetMessages(c *gin.Context) {
 
-	tokenString := c.GetHeader("Authorization")
-	if tokenString == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "authorization header is missing"})
-		return
-	}
-
 	userID := c.MustGet("user").(*models.User).ID
 
 	receiverType := c.Param("receiver_type")
@@ -153,27 +149,54 @@ func GetMessages(c *gin.Context) {
 		return
 	}
 
+	lastMessageIDStr := c.Query("last_messageid")
+	var lastMessageID int
+	if lastMessageIDStr != "" {
+		lastMessageID, err = strconv.Atoi(lastMessageIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid message id"})
+			return
+		}
+	}
+
 	var messages []models.Message
 
 	switch receiverType {
 	case "user":
-		if err := db.Where("(user_id = ? AND sender_id = ?) OR (user_id = ? AND sender_id = ?)", userID, receiverID, receiverID, userID).Find(&messages).Error; err != nil {
+		if err := db.Where("(user_id = ? AND sender_id = ?) OR (user_id = ? AND sender_id = ?) AND id > ?", userID, receiverID, receiverID, userID, lastMessageID).Find(&messages).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 			return
 		}
 	case "group":
-		if err := db.Where("group_id = ?", receiverID).Find(&messages).Error; err != nil {
+		if err := db.Where("group_id = ? AND id > ?", receiverID, lastMessageID).Find(&messages).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 			return
 		}
 	case "channel":
-		if err := db.Where("channel_id = ?", receiverID).Find(&messages).Error; err != nil {
+		if err := db.Where("channel_id = ? AND id > ?", receiverID, lastMessageID).Find(&messages).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 			return
 		}
 	default:
 		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exists"})
 		return
+	}
+
+	for i := range messages {
+		if messages[i].UserID == userID {
+			messages[i].IsReceived = true
+			messages[i].Seen = true
+		} else {
+			messages[i].IsReceived = false
+			messages[i].Seen = false
+		}
+	}
+
+	for _, message := range messages {
+		if err := db.Model(&message).Updates(models.Message{IsReceived: message.IsReceived, Seen: message.Seen}).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error updating message status"})
+			return
+		}
 	}
 	c.JSON(http.StatusOK, messages)
 }
@@ -189,7 +212,7 @@ func UpdateMessage(c *gin.Context) {
 		return
 	}
 
-	if err := db.Model(&updatedMessage).Where("id=? AND user_id=?", messageID, userID).Updates(models.Message{Content: updatedMessage.Content}).Error; err != nil {
+	if err := db.Model(&updatedMessage).Where("id=? AND user_id=?", messageID, userID).Updates(models.Message{Content: updatedMessage.Content, Seen: updatedMessage.Seen, IsReceived: updatedMessage.IsReceived}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "massage not updated"})
 		return
 	}
