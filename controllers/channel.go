@@ -1,10 +1,12 @@
 package controllers
 
 import (
+	"espandar/dto"
 	"espandar/models"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
 )
 
 func CreateChannel(c *gin.Context) {
@@ -23,13 +25,16 @@ func CreateChannel(c *gin.Context) {
 		return
 	}
 
-	var channel models.Channel
-	if err := c.ShouldBind(&channel); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request payload"})
+	var dto dto.Channel
+	if err := c.ShouldBind(&dto); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request payload", "details": err.Error()})
 		return
 	}
 
-	channel.CreatorID = uint(userID)
+	channel := models.Channel{
+		Name:        dto.Name,
+		Description: dto.Description,
+		CreatorID:   uint(userID)}
 
 	if err := db.Create(&channel).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating channel"})
@@ -41,25 +46,27 @@ func CreateChannel(c *gin.Context) {
 
 func AddMemberToChannel(c *gin.Context) {
 	channelID := c.Param("channel_id")
-	var users []models.User
-	if err := c.ShouldBindJSON(&users); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+	userIDStr := c.Param("user_id")
+
+	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
 	}
 
-	userID := c.MustGet("user").(*models.User).ID
-
 	var channel models.Channel
-	if err := db.First(&channel, channelID).Error; err != nil {
+	if err := db.First(&channel, &channelID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "channel not found"})
 		return
 	}
 
-	if userID != channel.CreatorID {
+	if userID != uint64(channel.CreatorID) {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "you do not have access to add member"})
 		return
 	}
-	
-	if err := db.Model(&channel).Association("Members").Append(&users); err != nil {
+
+	var user models.User
+	user.ID = uint(userID)
+	if err := db.Model(&channel).Association("Members").Append(&user); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error adding member"})
 		return
 	}
@@ -100,22 +107,22 @@ func RemoveMemberFromChannel(c *gin.Context) {
 func GetChannels(c *gin.Context) {
 
 	pageStr := c.Query("page")
-	perPageStr := c.Query("per_page")
+	perPageStr := c.Query("perpage")
 
 	if pageStr == "" || perPageStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": ""})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "page and perpage query parameters are required"})
 		return
 	}
 
 	page, err := strconv.Atoi(pageStr)
 	if err != nil || page <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": ""})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page number"})
 		return
 	}
 
 	perPage, err := strconv.Atoi(perPageStr)
 	if err != nil || perPage <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": ""})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid perpage number"})
 		return
 	}
 
@@ -136,7 +143,7 @@ func GetChannels(c *gin.Context) {
 func GetChannel(c *gin.Context) {
 	channelID := c.Param("id")
 	var channel models.Channel
-	if err := db.First(&channel, channelID).Error; err != nil {
+	if err := db.Preload("Members").First(&channel, channelID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "channel not found"})
 		return
 	}
@@ -145,6 +152,19 @@ func GetChannel(c *gin.Context) {
 
 func DeleteChannel(c *gin.Context) {
 	channelID := c.Param("channel_id")
+	userID := c.MustGet("user").(*models.User).ID
+
+	var channel models.Channel
+	if err := db.Where("id = ?", channelID).First(&channel).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "channel not found"})
+		return
+	}
+
+	if userID != channel.CreatorID {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "you do not have access to delete channel"})
+		return
+	}
+
 	if err := db.Delete(&models.Channel{}, channelID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error deleting channel"})
 		return

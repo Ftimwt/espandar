@@ -26,13 +26,13 @@ func CreateGroup(c *gin.Context) {
 
 func AddMemberToGroup(c *gin.Context) {
 	groupID := c.Param("group_id")
-	var users []models.User
-	if err := c.ShouldBindJSON(&users); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+	userIDStr := c.Param("user_id")
+
+	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
 		return
 	}
-
-	userID := c.MustGet("user").(*models.User).ID
 
 	var group models.Group
 	if err := db.First(&group, groupID).Error; err != nil {
@@ -40,12 +40,14 @@ func AddMemberToGroup(c *gin.Context) {
 		return
 	}
 
-	if userID != group.CreatorID {
+	if userID != uint64(group.CreatorID) {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "you do not have access to add member"})
 		return
 	}
 
-	if err := db.Model(&group).Association("Members").Append(&users); err != nil {
+	var user models.User
+	user.ID = uint(userID)
+	if err := db.Model(&group).Association("Members").Append(&user); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error adding member"})
 		return
 	}
@@ -71,7 +73,7 @@ func RemoveMemberFromGroup(c *gin.Context) {
 	if userID != uint64(group.CreatorID) {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "you do not have access to remove member"})
 		return
-	} 
+	}
 
 	var user models.User
 	user.ID = uint(userID)
@@ -84,12 +86,38 @@ func RemoveMemberFromGroup(c *gin.Context) {
 }
 
 func GetGroups(c *gin.Context) {
+	pageStr := c.Query("page")
+	perPageStr := c.Query("perpage")
+
+	if pageStr == "" || perPageStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "page and perpage query parameters are required"})
+		return
+	}
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page number"})
+		return
+	}
+
+	perPage, err := strconv.Atoi(perPageStr)
+	if err != nil || perPage <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid perpage number"})
+		return
+	}
+
+	offset := (page - 1) * perPage
+
 	var groups []models.Group
-	if err := db.Find(&groups).Error; err != nil {
+	if err := db.Offset(offset).Limit(perPage).Find(&groups).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error retrieving groups"})
 		return
 	}
-	c.JSON(http.StatusOK, groups)
+
+	var totalGroups int64
+	db.Model(&models.Group{}).Count(&totalGroups)
+
+	c.JSON(http.StatusOK, gin.H{"page": page, "per_page": perPage, "total": totalGroups, "groups": groups})
 }
 
 func GetGroup(c *gin.Context) {
