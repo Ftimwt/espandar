@@ -108,7 +108,7 @@ func SendMessage(c *gin.Context) {
 
 	content := formContent.Value["content"][0]
 
-	encryptedContent, err := encrypt(content)
+	encryptedContent, err := encrypt([]byte(content))
 	if err != nil {
 		log.Println("error encrypting message:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error encrypting message"})
