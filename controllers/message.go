@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"espandar/dto"
 	"espandar/models"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -71,6 +72,7 @@ func SendMessage(c *gin.Context) {
 	var formData dto.Message
 
 	if err := c.ShouldBind(&formData); err != nil {
+		log.Println("error binding from data:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
@@ -80,6 +82,7 @@ func SendMessage(c *gin.Context) {
 
 	formContent, err := c.MultipartForm()
 	if err != nil {
+		log.Println("error parsing form:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unable to parse form"})
 		return
 	}
@@ -88,12 +91,14 @@ func SendMessage(c *gin.Context) {
 
 	encryptedContent, err := encrypt(content)
 	if err != nil {
+		log.Println("error encrypting message:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error encrypting message"})
 		return
 	}
 
 	receiverIDUint, err := strconv.Atoi(receiverID)
 	if err != nil {
+		log.Println("invalid receiver id:", "error:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver id"})
 		return
 	}
@@ -113,11 +118,13 @@ func SendMessage(c *gin.Context) {
 	case "channel":
 		message.ChannelID = uint(receiverIDUint)
 	default:
+		log.Println("receiver type does not exists:", receiverType)
 		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exists"})
 		return
 	}
 
 	if err := db.Create(&message).Error; err != nil {
+		log.Println("error sending message:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not send"})
 		return
 	}
@@ -128,6 +135,7 @@ func SendMessage(c *gin.Context) {
 			filePath := "./uploads/" + fileHeader.Filename
 
 			if err := c.SaveUploadedFile(fileHeader, filePath); err != nil {
+				log.Println("error saving file:", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "file dosent save"})
 				return
 			}
@@ -138,6 +146,7 @@ func SendMessage(c *gin.Context) {
 			}
 
 			if err := db.Create(&newFile).Error; err != nil {
+				log.Println("unable to save file:", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to save file"})
 				return
 			}
@@ -147,10 +156,12 @@ func SendMessage(c *gin.Context) {
 	}
 
 	if err := db.Model(&message).Updates(models.Message{Files: message.Files}).Error; err != nil {
+		log.Println("error updating message information:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error updating message information"})
 		return
 	}
 
+	log.Println("message sent successfully:", message.ID)
 	c.JSON(http.StatusOK, gin.H{"message": "mesaage sent successfully", "message_id": message.ID})
 }
 
