@@ -14,7 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var encryptionkey = []byte("32_encryptionkey")
+var encryptionkey = []byte("32_encryptionkey123456789012")
 
 func encrypt(plainText string) (string, error) {
 	block, err := aes.NewCipher(encryptionkey)
@@ -34,6 +34,37 @@ func encrypt(plainText string) (string, error) {
 	mode.CryptBlocks(cipherText[aes.BlockSize:], plainTextBytes)
 
 	return base64.StdEncoding.EncodeToString(cipherText), nil
+}
+
+func decrypt(cipherText string) (string, error) {
+	block, err := aes.NewCipher(encryptionkey)
+	if err != nil {
+		return "", err
+	}
+
+	cipherTextBytes, err := base64.StdEncoding.DecodeString(cipherText)
+	if err != nil {
+		return "", err
+	}
+
+	if len(cipherTextBytes) < aes.BlockSize {
+		return "", err
+	}
+
+	iv := cipherTextBytes[:aes.BlockSize]
+	cipherTextBytes = cipherTextBytes[aes.BlockSize:]
+
+	mode := cipher.NewCBCDecrypter(block, iv)
+	mode.CryptBlocks(cipherTextBytes, cipherTextBytes)
+
+	plainText := unpad(cipherTextBytes)
+	return string(plainText), nil
+}
+
+func unpad(src []byte) []byte {
+	length := len(src)
+	unpadding := int(src[length-1])
+	return src[:length-unpadding]
 }
 
 func SendMessage(c *gin.Context) {
@@ -190,6 +221,13 @@ func GetMessages(c *gin.Context) {
 			messages[i].IsReceived = false
 			messages[i].Seen = false
 		}
+
+		decryptedContent, err := decrypt(messages[i].Content)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error decrypting message"})
+			return
+		}
+		messages[i].Content = decryptedContent
 	}
 
 	for _, message := range messages {
