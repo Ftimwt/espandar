@@ -1,12 +1,14 @@
 package controllers
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
 	"espandar/dto"
 	"espandar/models"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -15,15 +17,30 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var encryptionkey = []byte("32_encryptionkey123456789012")
+var encryptionkey = []byte("this_is_a_32_byte_long_key_1234!")
 
-func encrypt(plainText string) (string, error) {
+func pad(src []byte) []byte {
+	padding := aes.BlockSize - len(src)%aes.BlockSize
+	padtext := bytes.Repeat([]byte{byte(padding)}, padding)
+	return append(src, padtext...)
+}
+
+func unpad(src []byte) ([]byte, error) {
+	length := len(src)
+	unpadding := int(src[length-1])
+	if unpadding > length {
+		return nil, fmt.Errorf("invalid padding")
+	}
+	return src[:length-unpadding], nil
+}
+
+func encrypt(plainText []byte) (string, error) {
 	block, err := aes.NewCipher(encryptionkey)
 	if err != nil {
 		return "", err
 	}
 
-	plainTextBytes := []byte(plainText)
+	plainTextBytes := pad(plainText)
 	cipherText := make([]byte, aes.BlockSize+len(plainTextBytes))
 	iv := cipherText[:aes.BlockSize]
 
@@ -49,7 +66,7 @@ func decrypt(cipherText string) (string, error) {
 	}
 
 	if len(cipherTextBytes) < aes.BlockSize {
-		return "", err
+		return "", fmt.Errorf("ciphertext too short")
 	}
 
 	iv := cipherTextBytes[:aes.BlockSize]
@@ -58,14 +75,11 @@ func decrypt(cipherText string) (string, error) {
 	mode := cipher.NewCBCDecrypter(block, iv)
 	mode.CryptBlocks(cipherTextBytes, cipherTextBytes)
 
-	plainText := unpad(cipherTextBytes)
+	plainText, err := unpad(cipherTextBytes)
+	if err != nil {
+		return "", err
+	}
 	return string(plainText), nil
-}
-
-func unpad(src []byte) []byte {
-	length := len(src)
-	unpadding := int(src[length-1])
-	return src[:length-unpadding]
 }
 
 func SendMessage(c *gin.Context) {
@@ -84,6 +98,11 @@ func SendMessage(c *gin.Context) {
 	if err != nil {
 		log.Println("error parsing form:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unable to parse form"})
+		return
+	}
+
+	if len(formContent.Value["content"]) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "content is required"})
 		return
 	}
 
