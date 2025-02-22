@@ -50,8 +50,8 @@ func InitSocketServer() {
 		return nil
 	})
 
-	Server.OnEvent("/", "send_message", func(s socketio.Conn, msg string) {
-		Server.BroadcastToRoom("", "chat", msg)
+	Server.OnEvent("/", "send_message", func(s socketio.Conn, msg models.Message) {
+		Server.BroadcastToRoom("/", fmt.Sprintf("user_%d", msg.UserID), "new_message", msg)
 	})
 
 	Server.OnDisconnect("/", func(s socketio.Conn, msg string) {

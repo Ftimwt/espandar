@@ -37,7 +37,7 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		c.Set("user", user)
+		c.Set("user", &user)
 		c.Next()
 	}
 }

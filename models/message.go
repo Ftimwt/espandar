@@ -7,7 +7,7 @@ type Message struct {
 	SenderID   uint   `json:"user_id"`
 	Content    string `json:"content"`
 	Type       string `json:"type"`
-	UserID     uint
+	UserID     uint   `json:"receiver_id"`
 	GroupID    uint
 	ChannelID  uint
 	Seen       bool `json:"seen"`

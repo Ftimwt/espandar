@@ -4,6 +4,7 @@ import (
 	"espandar/dto"
 	"espandar/encryption"
 	"espandar/models"
+	"espandar/websocket"
 	"fmt"
 	"log"
 	"net/http"
@@ -35,14 +36,13 @@ func SendMessage(c *gin.Context) {
 		return
 	}
 
-	if len(formContent.Value["content"]) == 0 {
+	content := formContent.Value["content"]
+	if len(content) == 0 || content[0] == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "content is required"})
 		return
 	}
 
-	content := formContent.Value["content"][0]
-
-	encryptedContent, err := aesCipher.Encrypt(content)
+	encryptedContent, err := aesCipher.Encrypt(content[0])
 	if err != nil {
 		log.Println("error encrypting message:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error encrypting message"})
@@ -56,9 +56,12 @@ func SendMessage(c *gin.Context) {
 		return
 	}
 
+	user, _ := c.MustGet("user").(*models.User)
+
 	message := models.Message{
 		Content:    encryptedContent,
-		SenderID:   c.MustGet("user").(*models.User).ID,
+		SenderID:   user.ID,
+		UserID:     uint(receiverIDUint),
 		IsReceived: false,
 		Seen:       false,
 	}
@@ -81,6 +84,8 @@ func SendMessage(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not send"})
 		return
 	}
+
+	websocket.BroadcastToUser(uint(receiverIDUint), "new_message", message)
 
 	files := formContent.File["files"]
 	if len(files) > 0 {
@@ -206,7 +211,7 @@ func GetMessages(c *gin.Context) {
 }
 
 func UpdateMessage(c *gin.Context) {
-	userID := c.Param("user_id")
+	userID := c.MustGet("user").(*models.User).ID
 	messageID := c.Param("message_id")
 
 	var updatedMessage models.Message
@@ -224,7 +229,7 @@ func UpdateMessage(c *gin.Context) {
 }
 
 func DeleteMessage(c *gin.Context) {
-	userID := c.Param("user_id")
+	userID := c.MustGet("user").(*models.User).ID
 	messageID := c.Param("message_id")
 	if err := db.Where("id=? AND user_id=?", messageID, userID).Delete(&models.Message{}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "massage not deleted"})
