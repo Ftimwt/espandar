@@ -14,6 +14,7 @@ import (
 )
 
 var aesCipher = encryption.NewAESCipher()
+var userStatus = make(map[string]bool)
 
 func SendMessage(c *gin.Context) {
 	var formData dto.Message
