@@ -29,12 +29,13 @@ func InitSocketServer() {
 		if len(token) == 0 {
 			return errors.New("invalid token")
 		}
-		fmt.Print(token)
+
 		userID, err := jwt.ValidateJWT(token[0])
 		if err != nil {
 			log.Print("error socket token on connect: ", err)
 			return err
 		}
+
 		db := database.Database()
 		var user models.User
 		tx := db.Where("id=?", userID).Find(&user)
@@ -44,8 +45,8 @@ func InitSocketServer() {
 		}
 
 		s.Join(fmt.Sprintf("user_%d", userID))
-		// updateUserStatus(false)
-		// log.Printf("user %s conneced\n", s.ID())
+		updateUserStatus(fmt.Sprintf("user_%d", userID), true)
+		log.Printf("user %s conneced\n", s.ID())
 		return nil
 	})
 

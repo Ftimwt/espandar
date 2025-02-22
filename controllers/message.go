@@ -4,6 +4,7 @@ import (
 	"espandar/dto"
 	"espandar/encryption"
 	"espandar/models"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -175,10 +176,12 @@ func GetMessages(c *gin.Context) {
 		return
 	}
 
+	isOnline := userStatus[fmt.Sprintf("user_%d", receiverID)]
+
 	for i := range messages {
 		if messages[i].UserID == userID {
-			messages[i].IsReceived = true
-			messages[i].Seen = true
+			messages[i].IsReceived = isOnline
+			messages[i].Seen = messages[i].Seen || isOnline
 		} else {
 			messages[i].IsReceived = false
 			messages[i].Seen = false
