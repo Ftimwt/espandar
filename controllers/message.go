@@ -1,14 +1,9 @@
 package controllers
 
 import (
-	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
-	"encoding/base64"
 	"espandar/dto"
+	"espandar/encryption"
 	"espandar/models"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -17,70 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var encryptionkey = []byte("this_is_a_32_byte_long_key_1234!")
-
-func pad(src []byte) []byte {
-	padding := aes.BlockSize - len(src)%aes.BlockSize
-	padtext := bytes.Repeat([]byte{byte(padding)}, padding)
-	return append(src, padtext...)
-}
-
-func unpad(src []byte) ([]byte, error) {
-	length := len(src)
-	unpadding := int(src[length-1])
-	if unpadding > length {
-		return nil, fmt.Errorf("invalid padding")
-	}
-	return src[:length-unpadding], nil
-}
-
-func encrypt(plainText []byte) (string, error) {
-	block, err := aes.NewCipher(encryptionkey)
-	if err != nil {
-		return "", err
-	}
-
-	plainTextBytes := pad(plainText)
-	cipherText := make([]byte, aes.BlockSize+len(plainTextBytes))
-	iv := cipherText[:aes.BlockSize]
-
-	if _, err := rand.Read(iv); err != nil {
-		return "", err
-	}
-
-	mode := cipher.NewCBCEncrypter(block, iv)
-	mode.CryptBlocks(cipherText[aes.BlockSize:], plainTextBytes)
-
-	return base64.StdEncoding.EncodeToString(cipherText), nil
-}
-
-func decrypt(cipherText string) (string, error) {
-	block, err := aes.NewCipher(encryptionkey)
-	if err != nil {
-		return "", err
-	}
-
-	cipherTextBytes, err := base64.StdEncoding.DecodeString(cipherText)
-	if err != nil {
-		return "", err
-	}
-
-	if len(cipherTextBytes) < aes.BlockSize {
-		return "", fmt.Errorf("ciphertext too short")
-	}
-
-	iv := cipherTextBytes[:aes.BlockSize]
-	cipherTextBytes = cipherTextBytes[aes.BlockSize:]
-
-	mode := cipher.NewCBCDecrypter(block, iv)
-	mode.CryptBlocks(cipherTextBytes, cipherTextBytes)
-
-	plainText, err := unpad(cipherTextBytes)
-	if err != nil {
-		return "", err
-	}
-	return string(plainText), nil
-}
+var aesCipher = encryption.NewAESCipher()
 
 func SendMessage(c *gin.Context) {
 	var formData dto.Message
@@ -108,7 +40,7 @@ func SendMessage(c *gin.Context) {
 
 	content := formContent.Value["content"][0]
 
-	encryptedContent, err := encrypt([]byte(content))
+	encryptedContent, err := aesCipher.Encrypt(content)
 	if err != nil {
 		log.Println("error encrypting message:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error encrypting message"})
@@ -252,7 +184,7 @@ func GetMessages(c *gin.Context) {
 			messages[i].Seen = false
 		}
 
-		decryptedContent, err := decrypt(messages[i].Content)
+		decryptedContent, err := aesCipher.Decrypt(messages[i].Content)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error decrypting message"})
 			return
