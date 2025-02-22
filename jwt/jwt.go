@@ -4,9 +4,10 @@ import (
 	"errors"
 	"espandar/models"
 	"fmt"
-	"time"
-
+	"os"
+	"github.com/caarlos0/env/v6"
 	"github.com/golang-jwt/jwt/v5"
+	"time"
 )
 
 type Claims struct {
@@ -14,7 +15,20 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-var jwtSecret = []byte("secret")
+type Config struct {
+	JwtSecret string `env:"jwt_secret"`
+}
+
+var jwtSecret []byte
+
+func init() {
+	cfg := Config{}
+	if err := env.Parse(&cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load environment variables: %v\n", err)
+		os.Exit(1)
+	}
+	jwtSecret = []byte(cfg.JwtSecret)
+}
 
 func Generate(user *models.User) (string, error) {
 	// Define token claims
