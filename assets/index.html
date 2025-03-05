@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+        <link type="text/css" rel="stylesheet" src="/style.css" />
+        <style>
+            .label {
+                background: pink;
+                padding: 5px 10px;
+                border-radius: 5px;
+                width: fit-content;
+            }
+            .h-stack {
+                display: flex;
+                flex-direction: row;
+                gap: 10px;
+            }
+            .v-stack {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+        </style>
+        <title>Document</title>
+    </head>
+    <body>
+        <div class="v-stack">
+            <div class="h-stack">
+                <input type="text" id="token" />
+                <button onclick="handleClick()">Connect</button>
+            </div>
+            <span class="label" id="status">Disconnected</span>
+        </div>
+        <script>
+            const statusLabel = document.getElementById("status");
+            const tokenInput = document.getElementById("token");
+            var socket;
+            const handleClick = () => {
+                console.log(tokenInput.value);
+                socket = io("/", {
+                    extraHeaders: {
+                        Authorization: tokenInput.value,
+                    },
+                    query: {
+                        Authorization: tokenInput.value,
+                    },
+                });
+                console.log(socket);
+                socket.on("connect", () => {
+                    console.log("connect");
+                    statusLabel.innerText = "Connected";
+                    statusLabel.style.background = "green";
+                });
+                socket.on("disconnect", () => {
+                    console.log("disconnect");
+                    statusLabel.innerText = "Disconnected";
+                    statusLabel.style.background = "red";
+                });
+            };
+        </script>
+    </body>
+</html>

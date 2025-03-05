@@ -1,11 +1,10 @@
 package controllers
 
 import (
-	"Spandar/models"
+	"espandar/jwt"
+	"espandar/models"
 	"net/http"
-	"time"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -17,14 +16,7 @@ func SetDB(database *gorm.DB) {
 	db = database
 }
 
-var jwtSecret = []byte("secretkey")
-
-type Claims struct {
-	UserID uint `json:"user_id"`
-	jwt.StandardClaims
-}
-
-func Register(c *gin.Context) {
+func SignUp(c *gin.Context) {
 	var user models.User
 	if err := c.ShouldBindJSON(&user); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
@@ -44,7 +36,7 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	token, err := generateToken(user.ID)
+	token, err := jwt.Generate(&user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error generating token"})
 		return
@@ -72,24 +64,13 @@ func Login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
-	token, err := generateToken(storedUser.ID)
+	token, err := jwt.Generate(&storedUser)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error generating token"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"token": token})
-}
-
-func generateToken(userID uint) (string, error) {
-	claims := Claims{
-		UserID: userID,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(1 * time.Hour).Unix(),
-		},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtSecret)
 }
 
 func GetProfile(c *gin.Context) {

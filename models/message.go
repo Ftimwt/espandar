@@ -4,8 +4,17 @@ import "gorm.io/gorm"
 
 type Message struct {
 	gorm.Model
-	UserID  uint   `json:"user_id"`
-	GroupID uint   `json:"group_id,omitempty"`
-	Content string `json:"content"`
-	Type    string `json:"type"`
+	SenderID   uint   `json:"user_id"`
+	Content    string `json:"content"`
+	Type       string `json:"type"`
+	UserID     uint   `json:"receiver_id"`
+	GroupID    uint
+	ChannelID  uint
+	Seen       bool `json:"seen"`
+	IsReceived bool `json:"is_received"`
+
+	User    User
+	Group   Group
+	Channel Channel
+	Files   []File
 }

@@ -1,111 +1,239 @@
 package controllers
 
 import (
-	"Spandar/models"
-	"github.com/gin-gonic/gin"
+	"espandar/dto"
+	"espandar/encryption"
+	"espandar/models"
+	"espandar/websocket"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
+	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
-func CreateMessage(c *gin.Context) {
-	userID := c.MustGet("userID").(uint)
-	var message models.Message
-	if err := c.ShouldBindJSON(&message); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
-		return
-	}
-	message.UserID = userID
-	if err := db.Create(&message).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not create"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "message create"})
-}
+var aesCipher = encryption.NewAESCipher()
+var userStatus = make(map[string]bool)
 
 func SendMessage(c *gin.Context) {
-	userID := c.MustGet("userID").(uint)
-	var message models.Message
+	var formData dto.Message
 
-	if err := c.ShouldBindJSON(&message); err != nil {
+	if err := c.ShouldBind(&formData); err != nil {
+		log.Println("error binding from data:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
-	message.UserID = userID
-	message.Type = "text"
 
-	if err := db.Create(&message).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error sending message"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "message send successfully"})
-}
+	receiverType := c.Param("receiver_type")
+	receiverID := c.Param("receiver_id")
 
-func SendMediaMessage(c *gin.Context) {
-	userID := c.MustGet("userID").(uint)
-	groupIDstr := c.Param("group_id")
-
-	groupID64, err := strconv.ParseUint(groupIDstr, 10, 32)
+	formContent, err := c.MultipartForm()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid group ID"})
-		return
-	}
-	groupID := uint(groupID64)
-	file, err := c.FormFile("file")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "no fole is received"})
+		log.Println("error parsing form:", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unable to parse form"})
 		return
 	}
 
-	if err := c.SaveUploadedFile(file, "./uploads"+file.Filename); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save file"})
+	content := formContent.Value["content"]
+	if len(content) == 0 || content[0] == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "content is required"})
 		return
 	}
+
+	encryptedContent, err := aesCipher.Encrypt(content[0])
+	if err != nil {
+		log.Println("error encrypting message:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error encrypting message"})
+		return
+	}
+
+	receiverIDUint, err := strconv.Atoi(receiverID)
+	if err != nil {
+		log.Println("invalid receiver id:", "error:", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver id"})
+		return
+	}
+
+	user, _ := c.MustGet("user").(*models.User)
 
 	message := models.Message{
-		UserID:  userID,
-		GroupID: groupID,
-		Content: file.Filename,
-		Type:    "media",
+		Content:    encryptedContent,
+		SenderID:   user.ID,
+		UserID:     uint(receiverIDUint),
+		IsReceived: false,
+		Seen:       false,
 	}
-	if err := db.Create(&message).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error sending message"})
+
+	switch receiverType {
+	case "user":
+		message.UserID = uint(receiverIDUint)
+	case "group":
+		message.GroupID = uint(receiverIDUint)
+	case "channel":
+		message.ChannelID = uint(receiverIDUint)
+	default:
+		log.Println("receiver type does not exists:", receiverType)
+		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exists"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "message send successfully"})
+
+	if err := db.Create(&message).Error; err != nil {
+		log.Println("error sending message:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not send"})
+		return
+	}
+
+	websocket.BroadcastToUser(uint(receiverIDUint), "new_message", message)
+
+	files := formContent.File["files"]
+	if len(files) > 0 {
+		for _, fileHeader := range files {
+			filePath := "./uploads/" + fileHeader.Filename
+
+			if err := c.SaveUploadedFile(fileHeader, filePath); err != nil {
+				log.Println("error saving file:", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "file dosent save"})
+				return
+			}
+
+			newFile := models.File{
+				FilePath: filePath,
+				Type:     FileType(fileHeader.Filename),
+			}
+
+			if err := db.Create(&newFile).Error; err != nil {
+				log.Println("unable to save file:", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to save file"})
+				return
+			}
+
+			message.Files = append(message.Files, newFile)
+		}
+	}
+
+	if err := db.Model(&message).Updates(models.Message{Files: message.Files}).Error; err != nil {
+		log.Println("error updating message information:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error updating message information"})
+		return
+	}
+
+	log.Println("message sent successfully:", message.ID)
+	c.JSON(http.StatusOK, gin.H{"message": "mesaage sent successfully", "message_id": message.ID})
+}
+
+func FileType(fileName string) models.FileType {
+	if len(fileName) > 0 {
+		switch {
+		case strings.HasSuffix(fileName, ".mp3") || strings.HasSuffix(fileName, ".wav"):
+			return models.Voice
+		case strings.HasSuffix(fileName, ".jpg") || strings.HasSuffix(fileName, ".png") || strings.HasSuffix(fileName, ".jpeg"):
+			return models.Picture
+		default:
+			return models.Default
+
+		}
+	}
+	return models.Default
 }
 
 func GetMessages(c *gin.Context) {
-	groupID := c.Param("group_id")
+
+	userID := c.MustGet("user").(*models.User).ID
+
+	receiverType := c.Param("receiver_type")
+	receiverID, err := strconv.Atoi(c.Param("receiver_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver id"})
+		return
+	}
+
+	lastMessageIDStr := c.Query("last_messageid")
+	var lastMessageID int
+	if lastMessageIDStr != "" {
+		lastMessageID, err = strconv.Atoi(lastMessageIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid message id"})
+			return
+		}
+	}
+
 	var messages []models.Message
 
-	if err := db.Where("group_id=?", groupID).Find(&messages).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
+	switch receiverType {
+	case "user":
+		if err := db.Where("(user_id = ? AND sender_id = ?) OR (user_id = ? AND sender_id = ?) AND id > ?", userID, receiverID, receiverID, userID, lastMessageID).Find(&messages).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
+			return
+		}
+	case "group":
+		if err := db.Where("group_id = ? AND id > ?", receiverID, lastMessageID).Find(&messages).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
+			return
+		}
+	case "channel":
+		if err := db.Where("channel_id = ? AND id > ?", receiverID, lastMessageID).Find(&messages).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
+			return
+		}
+	default:
+		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exists"})
 		return
+	}
+
+	isOnline := userStatus[fmt.Sprintf("user_%d", receiverID)]
+
+	for i := range messages {
+		if messages[i].UserID == userID {
+			messages[i].IsReceived = isOnline
+			messages[i].Seen = messages[i].Seen || isOnline
+		} else {
+			messages[i].IsReceived = false
+			messages[i].Seen = false
+		}
+
+		decryptedContent, err := aesCipher.Decrypt(messages[i].Content)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error decrypting message"})
+			return
+		}
+		messages[i].Content = decryptedContent
+	}
+
+	for _, message := range messages {
+		if err := db.Model(&message).Updates(models.Message{IsReceived: message.IsReceived, Seen: message.Seen}).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error updating message status"})
+			return
+		}
 	}
 	c.JSON(http.StatusOK, messages)
 }
 
 func UpdateMessage(c *gin.Context) {
-	userID := c.Param("user_id")
+	userID := c.MustGet("user").(*models.User).ID
 	messageID := c.Param("message_id")
-	var message models.Message
-	if err := c.ShouldBindJSON(&message); err != nil {
+
+	var updatedMessage models.Message
+
+	if err := c.ShouldBindJSON(&updatedMessage); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
-	if err := db.Model(&message).Where("id=? AND user_id=?", messageID, userID).Updates(message).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "massage not update"})
+
+	if err := db.Model(&updatedMessage).Where("id=? AND user_id=?", messageID, userID).Updates(models.Message{Content: updatedMessage.Content, Seen: updatedMessage.Seen, IsReceived: updatedMessage.IsReceived}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "massage not updated"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "message update"})
+	c.JSON(http.StatusOK, gin.H{"message": "message updated"})
 }
 
 func DeleteMessage(c *gin.Context) {
-	userID := c.Param("user_id")
+	userID := c.MustGet("user").(*models.User).ID
 	messageID := c.Param("message_id")
 	if err := db.Where("id=? AND user_id=?", messageID, userID).Delete(&models.Message{}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "massage not delete"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "massage not deleted"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "message delete"})
+	c.JSON(http.StatusOK, gin.H{"message": "message deleted"})
 }
