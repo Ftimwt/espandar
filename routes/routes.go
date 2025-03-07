@@ -29,6 +29,8 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	r.GET("/socket.io/", gin.WrapF(websocket.SocketHandler))
 	r.POST("/socket.io/", gin.WrapF(websocket.SocketHandler))
 
+	r.GET("/voicecall", controllers.StartVoiceCall)
+
 	messagesRoute := r.Group("/messages").Use(middlewares.AuthMiddleware(db))
 	messagesRoute.POST("/:receiver_type/:receiver_id", controllers.SendMessage)
 	messagesRoute.GET("/:receiver_type/:receiver_id", controllers.GetMessages)

@@ -217,6 +217,7 @@ func UpdateMessage(c *gin.Context) {
 	var updatedMessage models.Message
 
 	if err := c.ShouldBindJSON(&updatedMessage); err != nil {
+		log.Println("invalid input:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}

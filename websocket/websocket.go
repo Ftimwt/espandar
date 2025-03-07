@@ -46,12 +46,27 @@ func InitSocketServer() {
 
 		s.Join(fmt.Sprintf("user_%d", userID))
 		updateUserStatus(fmt.Sprintf("user_%d", userID), true)
-		log.Printf("user %s conneced\n", s.ID())
+		log.Printf("user %s connected\n", s.ID())
 		return nil
 	})
 
 	Server.OnEvent("/", "send_message", func(s socketio.Conn, msg models.Message) {
 		Server.BroadcastToRoom("/", fmt.Sprintf("user_%d", msg.UserID), "new_message", msg)
+	})
+
+	Server.OnEvent("/", "offer", func(s socketio.Conn, offer models.OfferMessage) {
+		log.Printf("received offer from user %s: %+v\n", s.ID(), offer)
+		Server.BroadcastToRoom("/", fmt.Sprintf("user_%d", offer.ReceiverID), "offer", offer)
+	})
+
+	Server.OnEvent("/", "answer", func(s socketio.Conn, answer models.AnswerMessage) {
+		log.Printf("received answer from user %s: %+v\n", s.ID(), answer)
+		Server.BroadcastToRoom("/", fmt.Sprintf("user_%d", answer.ReceiverID), "answer", answer)
+	})
+
+	Server.OnEvent("/", "ice_candidate", func(s socketio.Conn, candidate models.ICECandidate) {
+		log.Printf("received ICE candidate from user %s: %+v\n", s.ID(), candidate)
+		Server.BroadcastToRoom("/", fmt.Sprintf("user_%d", candidate.ReceiverID), "ice_candidate", candidate)
 	})
 
 	Server.OnDisconnect("/", func(s socketio.Conn, msg string) {
