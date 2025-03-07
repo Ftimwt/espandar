@@ -18,7 +18,13 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		tokenString = tokenString[len("bearer "):]
+		if len(tokenString) < len("Bearer") || tokenString[:len("Bearer")] != "Bearer" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid authorization format"})
+			c.Abort()
+			return
+		}
+
+		tokenString = tokenString[len("Bearer "):]
 
 		userID, err := jwt.ValidateJWT(tokenString)
 		if err != nil {

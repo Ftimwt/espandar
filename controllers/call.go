@@ -1,136 +1,256 @@
 package controllers
 
 import (
+	"espandar/database"
+	"espandar/jwt"
 	"espandar/models"
-
-	"log"
-
-	"github.com/googollee/go-socket.io"
-	"github.com/pion/webrtc/v3"
+	"espandar/websocket"
+	"github.com/gin-gonic/gin"
+	"net/http"
 )
 
-var PeerConnections = make(map[string]*webrtc.PeerConnection)
-
-func HandleOffer(socket socketio.Conn, offer models.OfferMessage) {
-	log.Printf("handling offer from user %d: %+v\n", offer.ReceiverID, offer)
-
-	pc, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+func StartCall(c *gin.Context) {
+	token := c.GetHeader("Authorization")
+	callerID, err := jwt.ValidateJWT(token)
 	if err != nil {
-		log.Println("failed to create peer connection:", err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
-	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		if candidate != nil {
-			socket.Emit("ice_candidate", models.ICECandidate{
-				ReceiverID: offer.ReceiverID,
-				Candidate:  candidate.ToJSON().Candidate,
-			})
-		}
-	})
+	var requestBody struct {
+		ReceiverID uint   `json:"receiver_id" binding:"required"`
+		CallType   string `json:"call_type" binding:"required"`
+	}
 
-	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		log.Printf("track received: %s, kind:%s\n", track.ID(), track.Kind())
-
-		go func() {
-			if track.Kind() == webrtc.RTPCodecTypeVideo {
-				log.Println("video track received")
-
-				for {
-					packet := make([]byte, 1500)
-					n, err := track.Read(packet)
-					if err != nil {
-						log.Println("error reading video track:", err)
-						break
-					}
-
-					codec := track.Codec()
-					payloadType := codec.PayloadType
-					mimeType := codec.MimeType
-
-					log.Printf("received packet of size %d with payload type %d", n, payloadType, mimeType)
-
-					socket.Emit("video_packet", packet[:n])
-				}
-			} else if track.Kind() == webrtc.RTPCodecTypeAudio {
-				log.Panicln("audio track received")
-
-				for {
-					packet := make([]byte, 1500)
-					n, err := track.Read(packet)
-					if err != nil {
-						log.Println("error reading audio track:", err)
-						break
-					}
-
-					codec := track.Codec()
-					payloadType := codec.PayloadType
-					mimeType := codec.MimeType
-
-					log.Printf("received packet of size %d with payload type %d", n, payloadType, mimeType)
-
-					socket.Emit("audio_packet", packet[:n])
-				}
-			}
-		}()
-	})
-
-	err = pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: offer.Offer})
-	if err != nil {
-		log.Println("failed to set remote description:", err)
+	if err := c.ShouldBindJSON(&requestBody); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "receiver id and call type are required"})
 		return
 	}
 
-	answerOptions := webrtc.AnswerOptions{}
-	answer, err := pc.CreateAnswer(&answerOptions)
-	if err != nil {
-		log.Println("failed to create answer:", err)
+	call := models.Call{
+		CallerID:   callerID,
+		ReceiverID: requestBody.ReceiverID,
+		Status:     "initiated",
+		CallType:   requestBody.CallType,
+	}
+
+	db := database.Database()
+	if err := db.Create(&call).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create call"})
 		return
 	}
 
-	err = pc.SetLocalDescription(answer)
-	if err != nil {
-		log.Println("failed to set local description:", err)
-		return
+	callInfo := gin.H{
+		"caller_id":   call.CallerID,
+		"receiver_id": call.ReceiverID,
+		"call_type":   call.CallType,
+		"status":      call.Status,
 	}
+	websocket.BroadcastToUser(call.ReceiverID, "call_initiated", callInfo)
 
-	socket.Emit("answer", models.AnswerMessage{
-		ReceiverID: offer.ReceiverID,
-		Answer:     answer.SDP,
-	})
-
-	PeerConnections[socket.ID()] = pc
+	c.JSON(http.StatusOK, gin.H{"message": "call started", "call": callInfo})
 }
 
-func HandleAnswer(socket socketio.Conn, answer models.AnswerMessage) {
-	log.Printf("handling answer from user %d: %+v\n", answer.ReceiverID, answer)
-
-	pc := PeerConnections[socket.ID()]
-	if pc == nil {
-		log.Println("peerconnection not found for user:", socket.ID())
-		return
-	}
-
-	err := pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: answer.Answer})
+func AnswerCall(c *gin.Context) {
+	token := c.GetHeader("Authorization")
+	receiverID, err := jwt.ValidateJWT(token)
 	if err != nil {
-		log.Println("failed to set remote description:", err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+
+	var requestBody struct {
+		CallID uint   `json:"call_id" binding:"required"`
+		Answer string `json:"answer" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&requestBody); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "call id and answer are required"})
+		return
+	}
+
+	var call models.Call
+
+	db := database.Database()
+	if err := db.First(&call, requestBody.CallID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "call not found"})
+		return
+	}
+
+	call.Status = "ongoing"
+	call.Answer = requestBody.Answer
+
+	if err := db.Save(&call).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not update call"})
+		return
+	}
+
+	answerInfo := gin.H{
+		"receiver_id": receiverID,
+		"answer":      call.Answer,
+	}
+	websocket.BroadcastToUser(call.CallerID, "call_answered", answerInfo)
+
+	c.JSON(http.StatusOK, gin.H{"message": "call answered", "call": call})
 }
 
-func HandleICECandidate(socket socketio.Conn, candidate models.ICECandidate) {
-	log.Printf("handling ICE candidate from user %d: %+v\n", candidate.ReceiverID, candidate)
-
-	pc := PeerConnections[socket.ID()]
-	if pc == nil {
-		log.Println("peerconnection not found for user:", socket.ID())
+func EndCall(c *gin.Context) {
+	token := c.GetHeader("Authorization")
+	userID, err := jwt.ValidateJWT(token)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
-	err := pc.AddICECandidate(webrtc.ICECandidateInit{
-		Candidate: candidate.Candidate,
-	})
-	if err != nil {
-		log.Println("failed to add ICE candidate:", err)
+	var requestBody struct {
+		CallID uint `json:"call_id" binding:"required"`
 	}
+
+	if err := c.ShouldBindJSON(&requestBody); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "call id is required"})
+		return
+	}
+
+	var call models.Call
+
+	db := database.Database()
+	if err := db.First(&call, requestBody.CallID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "call not found"})
+		return
+	}
+
+	call.Status = "ended"
+
+	if err := db.Save(&call).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not end call"})
+		return
+	}
+
+	endInfo := gin.H{
+		"call_id":  call.ID,
+		"status":   call.Status,
+		"ended_by": userID,
+	}
+	websocket.BroadcastToUser(call.CallerID, "call_ended", endInfo)
+	websocket.BroadcastToUser(call.ReceiverID, "call_ended", endInfo)
+
+	c.JSON(http.StatusOK, gin.H{"message": "call ended", "call": endInfo})
+}
+
+func SendOffer(c *gin.Context) {
+	token := c.GetHeader("Authorization")
+	callerID, err := jwt.ValidateJWT(token)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var requestBody struct {
+		ReceiverID uint   `json:"receiver_id" binding:"required"`
+		Offer      string `json:"offer" binding:"required"`
+		CallType   string `json:"call_type" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&requestBody); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "receiver id , offer and call type are required"})
+		return
+	}
+
+	offerMessage := models.OfferMessage{
+		ReceiverID: requestBody.ReceiverID,
+		Offer:      requestBody.Offer,
+		CallType:   requestBody.CallType,
+	}
+	db := database.Database()
+	if err := db.Create(&offerMessage).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save offer"})
+		return
+	}
+
+	offerInfo := gin.H{
+		"caller_id": callerID,
+		"offer":     offerMessage.Offer,
+		"call_type": offerMessage.CallType,
+	}
+	websocket.BroadcastToUser(requestBody.ReceiverID, "offer_received", offerInfo)
+
+	c.JSON(http.StatusOK, gin.H{"message": "offer sent", "offer": offerInfo})
+}
+
+func SendAnswer(c *gin.Context) {
+	token := c.GetHeader("Authorization")
+	receiverID, err := jwt.ValidateJWT(token)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var requestBody struct {
+		OfferID string `json:"offer_id" binding:"required"`
+		Answer  string `json:"answer" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&requestBody); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "offer id and answer are required"})
+		return
+	}
+
+	answerMessage := models.AnswerMessage{
+		ReceiverID: receiverID,
+		Answer:     requestBody.Answer,
+	}
+	db := database.Database()
+	if err := db.Create(&answerMessage).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save answer"})
+		return
+	}
+
+	var callerID uint
+
+	answerInfo := gin.H{
+		"receiver_id": receiverID,
+		"answer":      answerMessage.Answer,
+		"offer_id":    requestBody.OfferID,
+	}
+	websocket.BroadcastToUser(callerID, "answer_received", answerInfo)
+
+	c.JSON(http.StatusOK, gin.H{"message": "answer sent", "answer": answerInfo})
+}
+
+func SendICECandidate(c *gin.Context) {
+	token := c.GetHeader("Authorization")
+	userID, err := jwt.ValidateJWT(token)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var requestBody struct {
+		ReceiverID uint   `json:"receiver_id" binding:"required"`
+		Candidate  string `json:"candidate" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&requestBody); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "receiver id and candidate are required"})
+		return
+	}
+
+	iceCandidate := models.ICECandidate{
+		ReceiverID: requestBody.ReceiverID,
+		Candidate:  requestBody.Candidate,
+	}
+
+	db := database.Database()
+	if err := db.Create(&iceCandidate).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save ICE candidate"})
+		return
+	}
+
+	iceInfo := gin.H{
+		"user_id":   userID,
+		"candidate": iceCandidate.Candidate,
+	}
+	websocket.BroadcastToUser(requestBody.ReceiverID, "ice_received", iceInfo)
+
+	c.JSON(http.StatusOK, gin.H{"message": "ice candidate sent", "offer": iceInfo})
 }

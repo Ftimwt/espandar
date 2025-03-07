@@ -18,6 +18,6 @@ func Database() *gorm.DB {
 		}
 	}
 
-	db.AutoMigrate(&models.User{}, &models.Message{}, &models.Channel{}, &models.Group{}, &models.File{})
+	db.AutoMigrate(&models.User{}, &models.Message{}, &models.Channel{}, &models.Group{}, &models.File{}, &models.Call{})
 	return db
 }

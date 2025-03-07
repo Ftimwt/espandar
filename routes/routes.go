@@ -29,8 +29,6 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	r.GET("/socket.io/", gin.WrapF(websocket.SocketHandler))
 	r.POST("/socket.io/", gin.WrapF(websocket.SocketHandler))
 
-	r.GET("/voicecall", controllers.StartVoiceCall)
-
 	messagesRoute := r.Group("/messages").Use(middlewares.AuthMiddleware(db))
 	messagesRoute.POST("/:receiver_type/:receiver_id", controllers.SendMessage)
 	messagesRoute.GET("/:receiver_type/:receiver_id", controllers.GetMessages)
@@ -52,4 +50,15 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	groupsRoute.DELETE("/:id", controllers.DeleteGroup)
 	groupsRoute.DELETE("/:id/members/:user_id", controllers.RemoveMemberFromGroup)
 	groupsRoute.POST("/:group_id/members", controllers.AddMemberToGroup)
+
+	webrtcRoute := r.Group("/webrtc").Use(middlewares.AuthMiddleware(db))
+	{
+		webrtcRoute.POST("/start_call", controllers.StartCall)
+		webrtcRoute.POST("/answer_call", controllers.AnswerCall)
+		webrtcRoute.POST("/end_call", controllers.EndCall)
+		webrtcRoute.POST("/send_offer", controllers.SendOffer)
+		webrtcRoute.POST("/send_answer", controllers.SendAnswer)
+		webrtcRoute.POST("/send_ice_candidate", controllers.SendICECandidate)
+
+	}
 }

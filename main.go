@@ -13,12 +13,13 @@ import (
 var db *gorm.DB
 
 func main() {
-	db := database.Database()
+	db = database.Database()
 
 	r := gin.Default()
 	routes.SetupRoutes(r, db)
 	controllers.SetDB(db)
 
+	websocket.InitSocketServer()
 	websocket.InitSocketServer()
 
 	r.Run(":8080")
