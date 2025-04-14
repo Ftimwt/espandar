@@ -7,20 +7,26 @@ import (
 	"espandar/websocket"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
-
-var db *gorm.DB
 
 func main() {
 	db := database.Database()
 
 	r := gin.Default()
-	routes.SetupRoutes(r, db)
-	controllers.SetDB(db)
+
+	// ایجاد Broadcaster
+	broadcaster := &websocket.SocketBroadcaster{}
+
+	// ایجاد Controllerها
+	authController := controllers.NewAuthController(db)
+	messageController := controllers.NewMessageController(db, broadcaster)
+	channelController := controllers.NewChannelController(db)
+	groupController := controllers.NewGroupController(db)
+
+	// تنظیم روت‌ها
+	routes.SetupRoutes(r, authController, messageController, channelController, groupController)
 
 	websocket.InitSocketServer()
 
 	r.Run(":8080")
-
 }

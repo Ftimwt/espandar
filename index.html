@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Espandar WebRTC</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .video-container { display: flex; flex-wrap: wrap; }
+        video { width: 320px; height: 240px; margin: 5px; border: 1px solid #ccc; }
+        .controls { margin-bottom: 20px; }
+        label { margin-right: 10px; }
+        input { margin-right: 10px; padding: 5px; }
+        button { padding: 8px 16px; margin-right: 10px; }
+        #status { color: green; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Espandar WebRTC</h1>
+    <div class="controls">
+        <label for="token">JWT Token:</label>
+        <input type="text" id="token" placeholder="Enter JWT token">
+        <button onclick="connectSocket()">Connect</button>
+        <span id="status">Disconnected</span>
+        <br><br>
+        <label for="userID">User ID:</label>
+        <input type="number" id="userID" placeholder="Your ID">
+        <label for="username">Username:</label>
+        <input type="text" id="username" placeholder="Your username">
+        <br><br>
+        <label for="userID2">User ID 2 (Private Call):</label>
+        <input type="number" id="userID2" placeholder="Other user ID">
+        <button onclick="startPrivateCall()">Start Private Call</button>
+        <br><br>
+        <label for="groupID">Group ID:</label>
+        <input type="number" id="groupID" placeholder="Group ID">
+        <button onclick="startGroupCall()">Start Group Call</button>
+        <button onclick="joinGroupCall()">Join Group Call</button>
+        <br><br>
+        <button onclick="hangUp()">Hang Up</button>
+    </div>
+    <div class="video-container">
+        <h3>Local Video</h3>
+        <video id="localVideo" autoplay muted></video>
+        <h3>Remote Videos</h3>
+        <div id="remoteVideos"></div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="call.js"></script>
+</body>
+</html>
+
+

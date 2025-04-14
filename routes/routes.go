@@ -2,52 +2,61 @@ package routes
 
 import (
 	"espandar/controllers"
-	"espandar/middlewares"
+	"espandar/jwt"
 	"espandar/websocket"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
-func SetupRoutes(r *gin.Engine, db *gorm.DB) {
-	r.StaticFile("/", "./assets/index.html")
-	r.StaticFile("/style.css", "./assets/style.css")
+// SetupRoutes تنظیم مسیرهای برنامه
+func SetupRoutes(
+	r *gin.Engine,
+	authCtrl *controllers.AuthController,
+	messageCtrl *controllers.MessageController,
+	channelCtrl *controllers.ChannelController,
+	groupCtrl *controllers.GroupController,
+) {
+	r.Static("/static", "./static")
 
-	authRoute := r.Group("/auth")
-	authRoute.POST("login", controllers.Login)
-	authRoute.POST("signup", controllers.SignUp)
-	authRoute.DELETE("/signout", middlewares.AuthMiddleware(db), controllers.SignOut)
+	// مسیرهای بدون نیاز به احراز هویت
+	r.POST("/signup", authCtrl.SignUp)
+	r.POST("/login", authCtrl.Login)
 
-	profileRoute := r.Group("/profile").Use(middlewares.AuthMiddleware(db))
-	profileRoute.GET("/", controllers.GetProfile)
-	profileRoute.PUT("/update", controllers.UpdateProfile)
+	// گروه مسیرهای احراز هویت‌شده
+	protected := r.Group("/")
+	protected.Use(jwt.JWTAuthMiddleware())
+	{
+		// پروفایل کاربر
+		protected.GET("/profile", authCtrl.GetProfile)
+		protected.PUT("/profile", authCtrl.UpdateProfile)
+		protected.GET("/users", authCtrl.GetUsers)
+		protected.POST("/signout", authCtrl.SignOut)
 
-	r.GET("/users", middlewares.AuthMiddleware(db), controllers.GetUsers)
+		// پیام‌ها
+		protected.POST("/message/:receiver_type/:receiver_id", messageCtrl.SendMessage)
+		protected.GET("/messages/:receiver_type/:receiver_id", messageCtrl.GetMessages)
+		protected.PUT("/message/:message_id", messageCtrl.UpdateMessage)
+		protected.DELETE("/message/:message_id", messageCtrl.DeleteMessage)
 
-	r.POST("/groups", middlewares.AuthMiddleware(db), controllers.CreateGroup)
+		// کانال‌ها
+		protected.POST("/channel", channelCtrl.CreateChannel)
+		protected.POST("/channel/:channel_id/user/:user_id", channelCtrl.AddMemberToChannel)
+		protected.DELETE("/channel/:channel_id/user/:user_id", channelCtrl.RemoveMemberFromChannel)
+		protected.GET("/channels", channelCtrl.GetChannels)
+		protected.GET("/channel/:id", channelCtrl.GetChannel)
+		protected.DELETE("/channel/:channel_id", channelCtrl.DeleteChannel)
 
-	r.GET("/socket.io/", gin.WrapF(websocket.SocketHandler))
-	r.POST("/socket.io/", gin.WrapF(websocket.SocketHandler))
+		// گروه‌ها
+		protected.POST("/group", groupCtrl.CreateGroup)
+		protected.POST("/group/:group_id/user/:user_id", groupCtrl.AddMemberToGroup)
+		protected.DELETE("/group/:group_id/user/:user_id", groupCtrl.RemoveMemberFromGroup)
+		protected.GET("/groups", groupCtrl.GetGroups)
+		protected.GET("/group/:id", groupCtrl.GetGroup)
+		protected.DELETE("/group/:group_id", groupCtrl.DeleteGroup)
+	}
 
-	messagesRoute := r.Group("/messages").Use(middlewares.AuthMiddleware(db))
-	messagesRoute.POST("/:receiver_type/:receiver_id", controllers.SendMessage)
-	messagesRoute.GET("/:receiver_type/:receiver_id", controllers.GetMessages)
-	messagesRoute.PUT("/:user_id/:message_id", controllers.UpdateMessage)
-	messagesRoute.DELETE("/:user_id/:message_id", controllers.DeleteMessage)
-
-	channelsRoute := r.Group("/channels").Use(middlewares.AuthMiddleware(db))
-	channelsRoute.POST("/", controllers.CreateChannel)
-	channelsRoute.GET("/", controllers.GetChannels)
-	channelsRoute.GET("/:id", controllers.GetChannel)
-	channelsRoute.DELETE("/:id", controllers.DeleteChannel)
-	channelsRoute.DELETE("/:id/members/:user_id", controllers.RemoveMemberFromChannel)
-	channelsRoute.POST("/:channel_id/members", controllers.AddMemberToChannel)
-
-	groupsRoute := r.Group("/groups").Use(middlewares.AuthMiddleware(db))
-	groupsRoute.POST("/", controllers.CreateGroup)
-	groupsRoute.GET("/", controllers.GetGroups)
-	groupsRoute.GET("/:id", controllers.GetGroup)
-	groupsRoute.DELETE("/:id", controllers.DeleteGroup)
-	groupsRoute.DELETE("/:id/members/:user_id", controllers.RemoveMemberFromGroup)
-	groupsRoute.POST("/:group_id/members", controllers.AddMemberToGroup)
+	// مسیر WebSocket
+	r.GET("/socket.io/*any", gin.WrapH(http.HandlerFunc(websocket.SocketHandler)))
+	r.POST("/socket.io/*any", gin.WrapH(http.HandlerFunc(websocket.SocketHandler)))
 }

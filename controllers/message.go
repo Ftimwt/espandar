@@ -4,7 +4,6 @@ import (
 	"espandar/dto"
 	"espandar/encryption"
 	"espandar/models"
-	"espandar/websocket"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,16 +11,30 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 var aesCipher = encryption.NewAESCipher()
 var userStatus = make(map[string]bool)
 
-func SendMessage(c *gin.Context) {
+type Broadcaster interface {
+	BroadcastToUser(userID uint, event string, args ...interface{})
+}
+
+type MessageController struct {
+	db          *gorm.DB
+	broadcaster Broadcaster
+}
+
+func NewMessageController(db *gorm.DB, broadcaster Broadcaster) *MessageController {
+	return &MessageController{db: db, broadcaster: broadcaster}
+}
+
+func (mc *MessageController) SendMessage(c *gin.Context) {
 	var formData dto.Message
 
 	if err := c.ShouldBind(&formData); err != nil {
-		log.Println("error binding from data:", err)
+		log.Println("error binding form data:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
@@ -61,49 +74,88 @@ func SendMessage(c *gin.Context) {
 	message := models.Message{
 		Content:    encryptedContent,
 		SenderID:   user.ID,
-		UserID:     uint(receiverIDUint),
 		IsReceived: false,
 		Seen:       false,
 	}
 
+	var chat models.Chat
 	switch receiverType {
 	case "user":
 		message.UserID = uint(receiverIDUint)
+		if err := mc.db.Where("user_id_1 = ? AND user_id_2 = ?", user.ID, receiverIDUint).
+			Or("user_id_1 = ? AND user_id_2 = ?", receiverIDUint, user.ID).
+			First(&chat).Error; err != nil {
+			chat = models.Chat{
+				UserID1: user.ID,
+				UserID2: uint(receiverIDUint),
+			}
+			if err := mc.db.Create(&chat).Error; err != nil {
+				log.Println("error creating chat:", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating chat"})
+				return
+			}
+		}
+		message.ChatID = chat.ID
 	case "group":
 		message.GroupID = uint(receiverIDUint)
+		var member models.GroupMember
+		if err := mc.db.Where("group_id = ? AND user_id = ?", receiverIDUint, user.ID).First(&member).Error; err != nil {
+			log.Println("user not a group member:", err)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not a group member"})
+			return
+		}
 	case "channel":
 		message.ChannelID = uint(receiverIDUint)
+		var channel models.Channel
+		if err := mc.db.Where("id = ?", receiverIDUint).Preload("Members").First(&channel).Error; err != nil {
+			log.Println("channel not found:", err)
+			c.JSON(http.StatusNotFound, gin.H{"error": "channel not found"})
+			return
+		}
+		isMember := false
+		for _, member := range channel.Members {
+			if member.ID == user.ID {
+				isMember = true
+				break
+			}
+		}
+		if !isMember {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not a channel member"})
+			return
+		}
 	default:
-		log.Println("receiver type does not exists:", receiverType)
-		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exists"})
+		log.Println("receiver type does not exist:", receiverType)
+		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exist"})
 		return
 	}
 
-	if err := db.Create(&message).Error; err != nil {
+	if err := mc.db.Create(&message).Error; err != nil {
 		log.Println("error sending message:", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not send"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not sent"})
 		return
 	}
 
-	websocket.BroadcastToUser(uint(receiverIDUint), "new_message", message)
+	if receiverType == "user" {
+		mc.broadcaster.BroadcastToUser(uint(receiverIDUint), "new_message", message)
+	}
 
 	files := formContent.File["files"]
 	if len(files) > 0 {
 		for _, fileHeader := range files {
-			filePath := "./uploads/" + fileHeader.Filename
+			filePath := "./Uploads/" + fileHeader.Filename
 
 			if err := c.SaveUploadedFile(fileHeader, filePath); err != nil {
 				log.Println("error saving file:", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "file dosent save"})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "file doesn't save"})
 				return
 			}
 
 			newFile := models.File{
 				FilePath: filePath,
-				Type:     FileType(fileHeader.Filename),
+				Type:     mc.FileType(fileHeader.Filename),
 			}
 
-			if err := db.Create(&newFile).Error; err != nil {
+			if err := mc.db.Create(&newFile).Error; err != nil {
 				log.Println("unable to save file:", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to save file"})
 				return
@@ -113,17 +165,17 @@ func SendMessage(c *gin.Context) {
 		}
 	}
 
-	if err := db.Model(&message).Updates(models.Message{Files: message.Files}).Error; err != nil {
+	if err := mc.db.Model(&message).Updates(models.Message{Files: message.Files}).Error; err != nil {
 		log.Println("error updating message information:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error updating message information"})
 		return
 	}
 
 	log.Println("message sent successfully:", message.ID)
-	c.JSON(http.StatusOK, gin.H{"message": "mesaage sent successfully", "message_id": message.ID})
+	c.JSON(http.StatusOK, gin.H{"message": "message sent successfully", "message_id": message.ID})
 }
 
-func FileType(fileName string) models.FileType {
+func (mc *MessageController) FileType(fileName string) models.FileType {
 	if len(fileName) > 0 {
 		switch {
 		case strings.HasSuffix(fileName, ".mp3") || strings.HasSuffix(fileName, ".wav"):
@@ -132,14 +184,12 @@ func FileType(fileName string) models.FileType {
 			return models.Picture
 		default:
 			return models.Default
-
 		}
 	}
 	return models.Default
 }
 
-func GetMessages(c *gin.Context) {
-
+func (mc *MessageController) GetMessages(c *gin.Context) {
 	userID := c.MustGet("user").(*models.User).ID
 
 	receiverType := c.Param("receiver_type")
@@ -163,22 +213,22 @@ func GetMessages(c *gin.Context) {
 
 	switch receiverType {
 	case "user":
-		if err := db.Where("(user_id = ? AND sender_id = ?) OR (user_id = ? AND sender_id = ?) AND id > ?", userID, receiverID, receiverID, userID, lastMessageID).Find(&messages).Error; err != nil {
+		if err := mc.db.Where("(user_id = ? AND sender_id = ?) OR (user_id = ? AND sender_id = ?) AND id > ?", userID, receiverID, receiverID, userID, lastMessageID).Find(&messages).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 			return
 		}
 	case "group":
-		if err := db.Where("group_id = ? AND id > ?", receiverID, lastMessageID).Find(&messages).Error; err != nil {
+		if err := mc.db.Where("group_id = ? AND id > ?", receiverID, lastMessageID).Find(&messages).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 			return
 		}
 	case "channel":
-		if err := db.Where("channel_id = ? AND id > ?", receiverID, lastMessageID).Find(&messages).Error; err != nil {
+		if err := mc.db.Where("channel_id = ? AND id > ?", receiverID, lastMessageID).Find(&messages).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 			return
 		}
 	default:
-		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exists"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exist"})
 		return
 	}
 
@@ -202,7 +252,7 @@ func GetMessages(c *gin.Context) {
 	}
 
 	for _, message := range messages {
-		if err := db.Model(&message).Updates(models.Message{IsReceived: message.IsReceived, Seen: message.Seen}).Error; err != nil {
+		if err := mc.db.Model(&message).Updates(models.Message{IsReceived: message.IsReceived, Seen: message.Seen}).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error updating message status"})
 			return
 		}
@@ -210,7 +260,7 @@ func GetMessages(c *gin.Context) {
 	c.JSON(http.StatusOK, messages)
 }
 
-func UpdateMessage(c *gin.Context) {
+func (mc *MessageController) UpdateMessage(c *gin.Context) {
 	userID := c.MustGet("user").(*models.User).ID
 	messageID := c.Param("message_id")
 
@@ -221,18 +271,18 @@ func UpdateMessage(c *gin.Context) {
 		return
 	}
 
-	if err := db.Model(&updatedMessage).Where("id=? AND user_id=?", messageID, userID).Updates(models.Message{Content: updatedMessage.Content, Seen: updatedMessage.Seen, IsReceived: updatedMessage.IsReceived}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "massage not updated"})
+	if err := mc.db.Model(&updatedMessage).Where("id=? AND user_id=?", messageID, userID).Updates(models.Message{Content: updatedMessage.Content, Seen: updatedMessage.Seen, IsReceived: updatedMessage.IsReceived}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not updated"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "message updated"})
 }
 
-func DeleteMessage(c *gin.Context) {
+func (mc *MessageController) DeleteMessage(c *gin.Context) {
 	userID := c.MustGet("user").(*models.User).ID
 	messageID := c.Param("message_id")
-	if err := db.Where("id=? AND user_id=?", messageID, userID).Delete(&models.Message{}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "massage not deleted"})
+	if err := mc.db.Where("id=? AND user_id=?", messageID, userID).Delete(&models.Message{}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not deleted"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "message deleted"})
