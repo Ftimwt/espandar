@@ -34,9 +34,10 @@ func main() {
 	messageController := controllers.NewMessageController(db, broadcaster)
 	channelController := controllers.NewChannelController(db)
 	groupController := controllers.NewGroupController(db)
+	contactController := controllers.NewContactController(db)
 
 	// تنظیم روت‌ها
-	routes.SetupRoutes(r, authController, messageController, channelController, groupController)
+	routes.SetupRoutes(r, authController, messageController, channelController, groupController, contactController)
 
 	websocket.InitSocketServer()
 

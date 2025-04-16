@@ -16,6 +16,7 @@ func SetupRoutes(
 	messageCtrl *controllers.MessageController,
 	channelCtrl *controllers.ChannelController,
 	groupCtrl *controllers.GroupController,
+	contactController *controllers.ContactController,
 ) {
 	r.Static("/static", "./static")
 
@@ -27,6 +28,7 @@ func SetupRoutes(
 	protected := r.Group("/")
 	protected.Use(jwt.JWTAuthMiddleware())
 	{
+
 		// پروفایل کاربر
 		protected.GET("/profile", authCtrl.GetProfile)
 		protected.PUT("/profile", authCtrl.UpdateProfile)
