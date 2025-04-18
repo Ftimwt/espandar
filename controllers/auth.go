@@ -50,7 +50,11 @@ func (ac *AuthController) SignUp(c *gin.Context) {
 }
 
 func (ac *AuthController) Login(c *gin.Context) {
-	var user models.User
+	var user struct {
+		Username string `json:"username"`
+		Password string `json:"-"`
+	}
+
 	if err := c.ShouldBindJSON(&user); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
