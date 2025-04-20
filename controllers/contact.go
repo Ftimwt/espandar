@@ -1,4 +1,3 @@
-// controllers/contact.go
 package controllers
 
 import (
@@ -19,84 +18,73 @@ func NewContactController(db *gorm.DB) *ContactController {
 	return &ContactController{db: db}
 }
 
-// AddContact اضافه کردن کانتکت جدید
-func (c *ContactController) AddContact(ctx *gin.Context) {
-	var contact models.Contact
-
-	// استخراج شناسه کاربر از توکن JWT
+func (c *ContactController) getUserIDFromToken(ctx *gin.Context) (uint, error) {
 	tokenString := ctx.GetHeader("Authorization")
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		// بررسی نوع توکن
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-		return []byte("secret"), nil // به جای "secret" کلید واقعی خود را قرار دهید
+		return []byte("secret"), nil
 	})
 
-	if err != nil { // بررسی خطای تجزیه توکن
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
+	if err != nil {
+		return 0, fmt.Errorf("Unauthorized")
 	}
 
-	var userID uint
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		if userIDValue, ok := claims["user_id"]; ok {
-			switch v := userIDValue.(type) {
-			case float64:
-				userID = uint(v) // تبدیل به uint در صورتیکه نوع float64 باشد
-			case int:
-				userID = uint(v) // تبدیل به uint در صورتیکه نوع int باشد
-			default:
-				ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user_id type"})
-				return
-			}
-		} else {
-			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "user_id not found in claims"})
-			return
-		}
-	} else {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return uint(claims["user_id"].(float64)), nil
+	}
+	return 0, fmt.Errorf("Unauthorized")
+}
+
+// AddContact اضافه کردن کانتکت جدید
+func (c *ContactController) AddContact(ctx *gin.Context) {
+	// استخراج userID از توکن JWT
+	userID, err := c.getUserIDFromToken(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
+	// بررسی نقش کاربر
+	var user models.User
+	if err := c.db.First(&user, userID).Error; err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+		return
+	}
+
+	// فقط ادمین‌ها مجاز به اضافه کردن مخاطب هستند
+	if user.Role != "admin" {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "You are not authorized to add contacts"})
+		return
+	}
+
+	// بایند کردن داده‌های ورودی
+	var contact models.Contact
 	if err := ctx.ShouldBindJSON(&contact); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
 	}
 
-	contact.UserID = userID // تنظیم شناسه کاربر
+	// وابسته کردن کاربر به مخاطب
+	contact.UserID = userID
 
+	// ذخیره‌سازی مخاطب در پایگاه داده
 	if err := c.db.Create(&contact).Error; err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Could not create contact"})
 		return
 	}
 
+	// بازگشت پاسخ
 	ctx.JSON(http.StatusOK, contact)
 }
 
 // GetContacts دریافت لیست کانتکت‌ها
 func (c *ContactController) GetContacts(ctx *gin.Context) {
 	var contacts []models.Contact
-
-	// استخراج شناسه کاربر از توکن JWT
-	tokenString := ctx.GetHeader("Authorization")
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return []byte("secret"), nil // به جای "secret" کلید واقعی خود را قرار دهید
-	})
-
-	if err != nil { // بررسی خطای تجزیه توکن
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	var userID uint
-	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		userID = uint(claims["user_id"].(float64))
-	} else {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID, err := c.getUserIDFromToken(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 

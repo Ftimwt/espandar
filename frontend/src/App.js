@@ -1,34 +1,50 @@
-import React, { useState } from 'react';
-import Auth from './components/Auth/Auth'; // اطمینان حاصل کنید که مسیر درست است
-import Chat from './components/Chat/Chat'; // اطمینان حاصل کنید که مسیر درست است
-import Profile from './components/Profile/Profile'; // اطمینان حاصل کنید که مسیر درست است
-import './index.css';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import Auth from './components/Auth/Auth'; // فرض بر این است که کامپوننت Auth در این مسیر وجود دارد
+import Contacts from './components/Contacts/Contacts';
 
 const App = () => {
-  const [token, setToken] = useState(() => localStorage.getItem('token'));
- 
-  const handleLogin = (data) => {
-    localStorage.setItem('token', data.token); // ذخیره توکن در localStorage
-    setToken(data.token);
+  const [userToken, setUserToken] = useState(() => localStorage.getItem('userToken'));
+  const [adminToken, setAdminToken] = useState(() => localStorage.getItem('adminToken'));
+  const [loading, setLoading] = useState(true);
+
+  const handleUserLogin = (token) => {
+    localStorage.setItem('userToken', token);
+    setUserToken(token);
   };
- 
-  const handleLogout = () => {
-    localStorage.removeItem('token'); // حذف توکن از localStorage
-    setToken(null);
+
+  const handleAdminLogin = (token) => {
+    localStorage.setItem('adminToken', token);
+    setAdminToken(token);
   };
- 
+
+  // استفاده از useEffect برای تنظیم loading به false بعد از بارگذاری اولیه
+  useEffect(() => {
+    setLoading(false); // بعد از بارگذاری اولیه، وضعیت loading را به false تغییر می‌دهیم
+  }, []);
+
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
   return (
-    <div>
-      <h1>Welcome to Espandar</h1>
-      {!token ? (
-        <Auth onLogin={handleLogin} />
-      ) : (
-        <>
-          <Profile token={token} onLogout={handleLogout} />
-          <Chat token={token} />
-        </>
-      )}
-    </div>
+    <Router>
+      <div>
+        <h1>Welcome to Espandar</h1>
+        <Routes>
+          <Route path="/login" element={<Auth onUserLogin={handleUserLogin} onAdminLogin={handleAdminLogin} />} />
+          <Route path="/contacts" 
+            element={
+              adminToken ? <Contacts token={adminToken} isAdmin={true} /> : 
+              userToken ? <Contacts token={userToken} isAdmin={false} /> : 
+              <Navigate to="/login" />
+            } 
+          />
+          <Route path="*" element={<Navigate to="/login" />} /> {/* هدایت به صفحه لاگین برای تمامی مسیرهای دیگر */}
+        </Routes>
+      </div>
+    </Router>
   );
- };
+};
+
 export default App;

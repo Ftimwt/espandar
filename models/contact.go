@@ -1,4 +1,3 @@
-// models/contact.go
 package models
 
 import (
@@ -7,7 +6,7 @@ import (
 
 type Contact struct {
 	gorm.Model
-	UserID uint   `json:"user_id"` // شناسه کاربر
-	Name   string `json:"name"`    // نام کانتکت
-	Phone  string `json:"phone"`   // شماره کانتکت
+	UserID uint   `json:"user_id"`                                // شناسه کاربر
+	Name   string `json:"name" binding:"required"`                // نام کانتکت
+	Phone  string `json:"phone" binding:"required" gorm:"unique"` // شماره کانتکت
 }

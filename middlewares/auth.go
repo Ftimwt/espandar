@@ -13,12 +13,12 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := c.Request.Header.Get("Authorization")
 		if tokenString == "" {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "no authorization header provided"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "No authorization header provided"})
 			c.Abort()
 			return
 		}
 
-		tokenString = tokenString[len("bearer "):]
+		tokenString = tokenString[len("Bearer "):]
 
 		userID, err := jwt.ValidateJWT(tokenString)
 		if err != nil {
@@ -30,13 +30,14 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 		var user models.User
 		if err := db.First(&user, userID).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
 			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 			}
 			c.Abort()
 			return
 		}
+
 		c.Set("user", &user)
 		c.Next()
 	}
