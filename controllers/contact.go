@@ -81,13 +81,13 @@ func (c *ContactController) AddContact(ctx *gin.Context) {
 
 // GetContacts دریافت لیست کانتکت‌ها
 func (c *ContactController) GetContacts(ctx *gin.Context) {
-	var contacts []models.Contact
 	userID, err := c.getUserIDFromToken(ctx)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
+	var contacts []models.Contact
 	if err := c.db.Where("user_id = ?", userID).Find(&contacts).Error; err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Could not fetch contacts"})
 		return

@@ -8,9 +8,9 @@ const Contacts = ({ token, isAdmin }) => {
 
   const fetchContacts = useCallback(async () => {
     try {
-      const response = await axios.get('/api/contacts', {
+      const response = await axios.get('http://localhost:61399/contacts', {
         headers: { Authorization: `Bearer ${token}` },
-      });
+    });
       setContacts(response.data);
     } catch (error) {
       console.error('Error fetching contacts:', error);
@@ -22,17 +22,28 @@ const Contacts = ({ token, isAdmin }) => {
   }, [fetchContacts]);
 
   const handleAddContact = async () => {
-    try {
-      await axios.post('http://localhost:8080/api/contacts', newContact, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setNewContact({ name: '', phone: '' });
-      fetchContacts();
-      setShowAddContact(false);
-    } catch (error) {
-      console.error('Error adding contact:', error);
+    if (!newContact.name || !newContact.phone) {
+        console.error('Name and phone are required');
+        return;
     }
-  };
+
+    try {
+        await axios.post('admin/contacts', newContact, { 
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        setNewContact({ name: '', phone: '' });
+        fetchContacts();
+        setShowAddContact(false);
+    } catch (error) {
+        if (error.response) {
+            console.error('Error adding contact:', error.response.data);
+        } else if (error.request) {
+            console.error('Error adding contact: No response received:', error.request);
+        } else {
+            console.error('Error adding contact:', error.message);
+        }
+    }
+};
 
   return (
     <div>
@@ -44,7 +55,7 @@ const Contacts = ({ token, isAdmin }) => {
       </ul>
       {isAdmin && (
         <div>
-          <button onClick={() => setShowAddContact(true)}>اضافه کردن مخاطب</button>
+          <button onClick={() => setShowAddContact(true)}>+</button>
           {showAddContact && (
             <div>
               <h3>افزودن مخاطب</h3>

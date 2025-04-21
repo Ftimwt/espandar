@@ -35,7 +35,7 @@ func SetupRoutes(
 		protected.PUT("/profile", authCtrl.UpdateProfile)
 		protected.POST("/signout", authCtrl.SignOut)
 
-		// دریافت لیست کاربران (برای چت)
+		// دریافت لیست کاربران (برای ادمین و کاربران عادی)
 		protected.GET("/users", authCtrl.GetUsers) // دریافت لیست کاربران برای چت
 
 		// پیام‌ها
@@ -62,18 +62,17 @@ func SetupRoutes(
 
 		// کانتکت‌ها
 		protected.GET("/contacts", contactController.GetContacts) // دریافت لیست کانتکت‌ها
-		protected.POST("/contacts", contactController.AddContact) // افزودن کانتکت جدید
 	}
 
 	// مسیرهای مخصوص ادمین
 	adminProtected := r.Group("/admin")
 	adminProtected.Use(jwt.JWTAuthMiddleware()) // احراز هویت برای ادمین
 	{
-		adminProtected.GET("/users", authCtrl.GetAllUsers)      // دریافت لیست همه کاربران
-		adminProtected.GET("/user/:id", authCtrl.GetUserByID)   // دریافت اطلاعات خاص یک کاربر
-		adminProtected.PUT("/user/:id", authCtrl.UpdateUser)    // به‌روزرسانی اطلاعات یک کاربر
-		adminProtected.DELETE("/user/:id", authCtrl.DeleteUser) // حذف یک کاربر
-		adminProtected.POST("/users", authCtrl.AddUser)         // اضافه کردن کاربر جدید
+		adminProtected.GET("/user/:id", authCtrl.GetUserByID)          // دریافت اطلاعات خاص یک کاربر
+		adminProtected.PUT("/user/:id", authCtrl.UpdateUser)           // به‌روزرسانی اطلاعات یک کاربر
+		adminProtected.DELETE("/user/:id", authCtrl.DeleteUser)        // حذف یک کاربر
+		adminProtected.POST("/users", authCtrl.AddUser)                // اضافه کردن کاربر جدید
+		adminProtected.POST("/contacts", contactController.AddContact) // افزودن کانتکت جدید
 	}
 
 	// مسیر WebSocket

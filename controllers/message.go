@@ -33,6 +33,7 @@ func NewMessageController(db *gorm.DB, broadcaster Broadcaster) *MessageControll
 func (mc *MessageController) SendMessage(c *gin.Context) {
 	var formData dto.Message
 
+	// دریافت داده‌ها از فرم
 	if err := c.ShouldBind(&formData); err != nil {
 		log.Println("error binding form data:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
@@ -42,6 +43,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	receiverType := c.Param("receiver_type")
 	receiverID := c.Param("receiver_id")
 
+	// پردازش داده‌های چندرسانه‌ای
 	formContent, err := c.MultipartForm()
 	if err != nil {
 		log.Println("error parsing form:", err)
@@ -49,19 +51,31 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	}
 
+	// بررسی اینکه محتوا وجود دارد
 	content := formContent.Value["content"]
-	if len(content) == 0 || content[0] == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "content is required"})
+	var messageType string
+
+	if len(content) > 0 && content[0] != "" {
+		messageType = "text"
+	} else if len(formContent.File["files"]) > 0 {
+		messageType = "file"
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "content or file is required"})
 		return
 	}
 
-	encryptedContent, err := aesCipher.Encrypt(content[0])
-	if err != nil {
-		log.Println("error encrypting message:", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error encrypting message"})
-		return
+	// رمزنگاری محتوا
+	var encryptedContent string
+	if messageType == "text" {
+		encryptedContent, err = aesCipher.Encrypt(content[0])
+		if err != nil {
+			log.Println("error encrypting message:", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error encrypting message"})
+			return
+		}
 	}
 
+	// تبدیل شناسه گیرنده به عدد
 	receiverIDUint, err := strconv.Atoi(receiverID)
 	if err != nil {
 		log.Println("invalid receiver id:", "error:", err)
@@ -69,11 +83,15 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	}
 
+	// دریافت کاربر فعلی
 	user, _ := c.MustGet("user").(*models.User)
 
+	// ساخت پیام
 	message := models.Message{
 		Content:    encryptedContent,
 		SenderID:   user.ID,
+		Type:       messageType,
+		UserID:     uint(receiverIDUint),
 		IsReceived: false,
 		Seen:       false,
 	}
@@ -129,16 +147,19 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	}
 
+	// ذخیره‌سازی پیام در پایگاه داده
 	if err := mc.db.Create(&message).Error; err != nil {
 		log.Println("error sending message:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not sent"})
 		return
 	}
 
+	// پخش پیام به گیرنده
 	if receiverType == "user" {
 		mc.broadcaster.BroadcastToUser(uint(receiverIDUint), "new_message", message)
 	}
 
+	// پردازش فایل‌ها
 	files := formContent.File["files"]
 	if len(files) > 0 {
 		for _, fileHeader := range files {
@@ -165,6 +186,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		}
 	}
 
+	// به‌روزرسانی اطلاعات پیام
 	if err := mc.db.Model(&message).Updates(models.Message{Files: message.Files}).Error; err != nil {
 		log.Println("error updating message information:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error updating message information"})

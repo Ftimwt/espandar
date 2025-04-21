@@ -17,7 +17,7 @@ const AddContact = ({ onContactAdded }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post('/api/contacts', 
+      const response = await axios.post('/admin/contacts', 
         { name, phone }, 
         {
           headers: {

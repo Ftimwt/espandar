@@ -209,16 +209,6 @@ func (ac *AuthController) SignOut(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "user signed out"})
 }
 
-// GetAllUsers - دریافت لیست همه کاربران (فقط برای ادمین)
-func (ac *AuthController) GetAllUsers(c *gin.Context) {
-	var users []models.User
-	if err := ac.db.Find(&users).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching users"})
-		return
-	}
-	c.JSON(http.StatusOK, users)
-}
-
 // AddUser - اضافه کردن کاربر جدید (فقط برای ادمین)
 func (ac *AuthController) AddUser(c *gin.Context) {
 	var user models.User
@@ -244,7 +234,7 @@ func (ac *AuthController) AddUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "user added successfully"})
 }
 
-// GetUsers - دریافت لیست کاربران (برای چت)
+// GetUsers - دریافت لیست کاربران (برای ادمین و کاربران عادی)
 func (ac *AuthController) GetUsers(c *gin.Context) {
 	var users []models.User
 	if err := ac.db.Find(&users).Error; err != nil {
