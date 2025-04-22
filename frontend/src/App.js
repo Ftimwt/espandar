@@ -9,11 +9,13 @@ const App = () => {
   const [loading, setLoading] = useState(true);
 
   const handleUserLogin = (token) => {
+    console.log('storing usertoken:', token);
     localStorage.setItem('userToken', token);
     setUserToken(token);
   };
 
   const handleAdminLogin = (token) => {
+    console.log('storing admintoken:', token);
     localStorage.setItem('adminToken', token);
     setAdminToken(token);
   };

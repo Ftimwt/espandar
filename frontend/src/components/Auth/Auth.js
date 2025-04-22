@@ -21,11 +21,14 @@ const Auth = ({ onUserLogin, onAdminLogin }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const url = isSignUp ? 'http://localhost:8080/signup' : (isAdmin ? 'http://localhost:8080/admin/login' : 'http://localhost:8080/login');
+    // اصلاح مسیر برای ثبت‌نام ادمین
+    const url = isSignUp
+      ? (isAdmin ? 'http://localhost:8080/admin/signup' : 'http://localhost:8080/signup')
+      : (isAdmin ? 'http://localhost:8080/admin/login' : 'http://localhost:8080/login');
     
-    const body = isSignUp ? 
-    JSON.stringify({ username, password, email, firstName, lastName, role: isAdmin ? 'admin' : 'user' }) : 
-    JSON.stringify({ username, password });
+    const body = isSignUp
+      ? JSON.stringify({ username, password, email, firstName, lastName })
+      : JSON.stringify({ username, password });
 
     try {
       const response = await axios.post(url, body, {
@@ -34,15 +37,21 @@ const Auth = ({ onUserLogin, onAdminLogin }) => {
         },
       });
       const token = response.data.token;
+      console.log('Login/SignUp successful, token:', token); // لاگ‌گذاری
       if (isAdmin) {
         onAdminLogin(token);
       } else {
         onUserLogin(token);
       }
-      navigate('/contacts'); // هدایت به صفحه کانتکت‌ها بعد از ورود یا ثبت‌نام موفق
+      navigate('/contacts');
     } catch (error) {
-      setErrorMessage(isSignUp ? 'خطا در ثبت‌نام.' : (isAdmin ? 'نام کاربری یا رمز عبور ادمین اشتباه است.' : 'نام کاربری یا رمز عبور اشتباه است.'));
+      setErrorMessage(
+        isSignUp
+          ? 'خطا در ثبت‌نام.'
+          : (isAdmin ? 'نام کاربری یا رمز عبور ادمین اشتباه است.' : 'نام کاربری یا رمز عبور اشتباه است.')
+      );
       setOpenSnackbar(true);
+      console.error('Auth error:', error.response?.data);
     }
   };
 
@@ -108,8 +117,8 @@ const Auth = ({ onUserLogin, onAdminLogin }) => {
       </form>
       <Button 
         onClick={() => {
-          setIsSignUp((prev) => !prev); // تغییر وضعیت بین ورود و ثبت‌نام
-          setUsername(''); // ریست کردن فیلدهای ورودی
+          setIsSignUp((prev) => !prev);
+          setUsername('');
           setPassword('');
           setEmail('');
           setFirstName('');
@@ -122,8 +131,8 @@ const Auth = ({ onUserLogin, onAdminLogin }) => {
       </Button>
       <Button 
         onClick={() => {
-          setIsAdmin((prev) => !prev); // تغییر وضعیت بین کاربر عادی و ادمین
-          setUsername(''); // ریست کردن فیلدهای ورودی
+          setIsAdmin((prev) => !prev);
+          setUsername('');
           setPassword('');
           setEmail('');
           setFirstName('');

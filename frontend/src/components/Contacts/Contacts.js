@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
+import { getContacts } from '../../api';
 
 const Contacts = ({ token, isAdmin }) => {
   const [contacts, setContacts] = useState([]);
@@ -8,12 +9,20 @@ const Contacts = ({ token, isAdmin }) => {
 
   const fetchContacts = useCallback(async () => {
     try {
-      const response = await axios.get('http://localhost:61399/contacts', {
-        headers: { Authorization: `Bearer ${token}` },
-    });
-      setContacts(response.data);
+      if (!token) {
+        throw new Error('No token provided');
+      }
+      console.log('Fetching contacts with token:', token);
+      const response = await getContacts(token);
+      // لاگ‌گذاری پاسخ سرور برای بررسی
+      console.log('Contacts response:', response);
+      setContacts(response);
     } catch (error) {
-      console.error('Error fetching contacts:', error);
+      console.error('Error fetching contacts:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
     }
   }, [token]);
 
@@ -23,34 +32,36 @@ const Contacts = ({ token, isAdmin }) => {
 
   const handleAddContact = async () => {
     if (!newContact.name || !newContact.phone) {
-        console.error('Name and phone are required');
-        return;
+      console.error('Name and phone are required');
+      return;
     }
 
     try {
-        await axios.post('admin/contacts', newContact, { 
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        setNewContact({ name: '', phone: '' });
-        fetchContacts();
-        setShowAddContact(false);
+      console.log('Adding contact with token:', token);
+      const response = await axios.post('http://localhost:8080/admin/contacts', newContact, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log('Add contact response:', response.data); // لاگ‌گذاری
+      setNewContact({ name: '', phone: '' });
+      fetchContacts();
+      setShowAddContact(false);
     } catch (error) {
-        if (error.response) {
-            console.error('Error adding contact:', error.response.data);
-        } else if (error.request) {
-            console.error('Error adding contact: No response received:', error.request);
-        } else {
-            console.error('Error adding contact:', error.message);
-        }
+      console.error('Error adding contact:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
     }
-};
+  };
 
   return (
     <div>
       <h2>Contacts</h2>
       <ul>
-        {contacts.map((contact) => (
-          <li key={contact.id}>{contact.name} - {contact.phone}</li>
+        {contacts.map((contact, index) => (
+          <li key={contact.id || `contact-${index}`}>
+            {contact.name} - {contact.phone}
+          </li>
         ))}
       </ul>
       {isAdmin && (

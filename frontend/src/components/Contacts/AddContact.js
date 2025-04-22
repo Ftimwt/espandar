@@ -1,8 +1,6 @@
-// src/components/Contacts/AddContact.js
-
 import React, { useState } from 'react';
 import { Container, TextField, Button, Snackbar, Alert } from '@mui/material';
-import axios from 'axios';
+import { addContact } from '../../api'; 
 
 const AddContact = ({ onContactAdded }) => {
   const [name, setName] = useState('');
@@ -12,28 +10,21 @@ const AddContact = ({ onContactAdded }) => {
 
   const handleCloseSnackbar = () => {
     setOpenSnackbar(false);
-  };
+};
 
-  const handleSubmit = async (e) => {
+const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post('/admin/contacts', 
-        { name, phone }, 
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`, // ارسال توکن JWT
-          },
-        }
-      );
-
-      onContactAdded(response.data); // تماس با تابع برای به‌روزرسانی لیست مخاطب‌ها
-      setName('');
-      setPhone('');
+        const token = localStorage.getItem('adminToken');
+        const response = await addContact(token, { name, phone });
+        onContactAdded(response);
+        setName('');
+        setPhone('');
     } catch (error) {
-      setErrorMessage('خطا در افزودن مخاطب.');
-      setOpenSnackbar(true);
+        setErrorMessage(error.response?.data?.error || 'خطا در افزودن مخاطب.');
+        setOpenSnackbar(true);
     }
-  };
+};
 
   return (
     <Container>

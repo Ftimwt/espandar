@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -18,43 +17,26 @@ func NewContactController(db *gorm.DB) *ContactController {
 	return &ContactController{db: db}
 }
 
-func (c *ContactController) getUserIDFromToken(ctx *gin.Context) (uint, error) {
-	tokenString := ctx.GetHeader("Authorization")
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return []byte("secret"), nil
-	})
-
-	if err != nil {
-		return 0, fmt.Errorf("Unauthorized")
-	}
-
-	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		return uint(claims["user_id"].(float64)), nil
-	}
-	return 0, fmt.Errorf("Unauthorized")
-}
-
 // AddContact اضافه کردن کانتکت جدید
 func (c *ContactController) AddContact(ctx *gin.Context) {
-	// استخراج userID از توکن JWT
-	userID, err := c.getUserIDFromToken(ctx)
-	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
-
-	// بررسی نقش کاربر
-	var user models.User
-	if err := c.db.First(&user, userID).Error; err != nil {
+	fmt.Println("Received request to add contact") // لاگ‌گذاری
+	// استخراج کاربر از کنتکست
+	user, exists := ctx.Get("user")
+	if !exists {
+		fmt.Println("AddContact: User not found in context") // لاگ‌گذاری
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
 		return
 	}
 
+	userModel, ok := user.(*models.User)
+	if !ok {
+		fmt.Println("AddContact: Invalid user type in context") // لاگ‌گذاری
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user"})
+		return
+	}
+
 	// فقط ادمین‌ها مجاز به اضافه کردن مخاطب هستند
-	if user.Role != "admin" {
+	if userModel.Role != "admin" {
 		ctx.JSON(http.StatusForbidden, gin.H{"error": "You are not authorized to add contacts"})
 		return
 	}
@@ -67,7 +49,7 @@ func (c *ContactController) AddContact(ctx *gin.Context) {
 	}
 
 	// وابسته کردن کاربر به مخاطب
-	contact.UserID = userID
+	contact.UserID = userModel.ID
 
 	// ذخیره‌سازی مخاطب در پایگاه داده
 	if err := c.db.Create(&contact).Error; err != nil {
@@ -81,14 +63,23 @@ func (c *ContactController) AddContact(ctx *gin.Context) {
 
 // GetContacts دریافت لیست کانتکت‌ها
 func (c *ContactController) GetContacts(ctx *gin.Context) {
-	userID, err := c.getUserIDFromToken(ctx)
-	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+	// استخراج کاربر از کنتکست
+	user, exists := ctx.Get("user")
+	if !exists {
+		fmt.Println("GetContacts: User not found in context") // لاگ‌گذاری
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+		return
+	}
+
+	userModel, ok := user.(*models.User)
+	if !ok {
+		fmt.Println("GetContacts: Invalid user type in context") // لاگ‌گذاری
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user"})
 		return
 	}
 
 	var contacts []models.Contact
-	if err := c.db.Where("user_id = ?", userID).Find(&contacts).Error; err != nil {
+	if err := c.db.Where("user_id = ?", userModel.ID).Find(&contacts).Error; err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Could not fetch contacts"})
 		return
 	}

@@ -68,6 +68,7 @@ export const sendMessage = async (token, messageData) => {
 
 // توابع جدید برای مدیریت کانتکت‌ها
 export const getContacts = async (token) => {
+ console.log('getContacts: Sending request with token:', token);
  const response = await axios.get(`${API_URL}/contacts`, {
  headers: { Authorization: `Bearer ${token}` },
  });
@@ -75,8 +76,9 @@ export const getContacts = async (token) => {
 };
 
 export const addContact = async (token, contact) => {
- const response = await axios.post(`${API_URL}/contacts`, contact, {
- headers: { Authorization: `Bearer ${token}` },
- });
- return response.data;
+  console.log('addContact: Sending request with token:', token);
+  const response = await axios.post(`${API_URL}/admin/contacts`, contact, {
+      headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.data;
 };

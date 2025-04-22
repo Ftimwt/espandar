@@ -7,11 +7,13 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // SetupRoutes تنظیم مسیرهای برنامه
 func SetupRoutes(
 	r *gin.Engine,
+	db *gorm.DB, // اضافه کردن db
 	authCtrl *controllers.AuthController,
 	messageCtrl *controllers.MessageController,
 	channelCtrl *controllers.ChannelController,
@@ -28,7 +30,7 @@ func SetupRoutes(
 
 	// گروه مسیرهای احراز هویت‌شده
 	protected := r.Group("/")
-	protected.Use(jwt.JWTAuthMiddleware())
+	protected.Use(jwt.JWTAuthMiddleware(db)) // پاس دادن db
 	{
 		// پروفایل کاربر
 		protected.GET("/profile", authCtrl.GetProfile)
@@ -66,7 +68,7 @@ func SetupRoutes(
 
 	// مسیرهای مخصوص ادمین
 	adminProtected := r.Group("/admin")
-	adminProtected.Use(jwt.JWTAuthMiddleware()) // احراز هویت برای ادمین
+	adminProtected.Use(jwt.JWTAuthMiddleware(db)) // پاس دادن db
 	{
 		adminProtected.GET("/user/:id", authCtrl.GetUserByID)          // دریافت اطلاعات خاص یک کاربر
 		adminProtected.PUT("/user/:id", authCtrl.UpdateUser)           // به‌روزرسانی اطلاعات یک کاربر
