@@ -1,103 +1,167 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { TextField, Button, Snackbar, Alert, IconButton } from '@mui/material';
-import EmojiEmotionsIcon from '@mui/icons-material/EmojiEmotions';
-import Picker from 'emoji-picker-react';
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  List,
+  ListItem,
+  ListItemText,
+  Paper,
+  Alert,
+} from '@mui/material';
 
-const Chat = ({ receiverID, token }) => {
+const Chat = ({ token }) => {
+  const { id: receiverId } = useParams(); // دریافت receiverId از مسیر
   const [messages, setMessages] = useState([]);
-  const [messageContent, setMessageContent] = useState('');
-  const [selectedFiles, setSelectedFiles] = useState([]);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [openSnackbar, setOpenSnackbar] = useState(false);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [newMessage, setNewMessage] = useState('');
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
 
+  console.log('Chat: Rendering, receiverId:', receiverId, 'token:', token);
+
+  // دریافت پیام‌ها از سرور
   useEffect(() => {
     const fetchMessages = async () => {
       try {
-        const response = await axios.get(`http://localhost:8080/messages/user/${receiverID}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setMessages(response.data);
+        if (!token || !receiverId) {
+          throw new Error('Token or receiverId missing');
+        }
+        console.log('Chat: Fetching messages for user:', receiverId);
+        const response = await axios.get(
+          `http://localhost:8080/messages/user/${receiverId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        console.log('Chat: Messages response:', response.data);
+        setMessages(Array.isArray(response.data) ? response.data : []);
       } catch (error) {
-        console.error('Error fetching messages:', error);
+        console.error('Chat: Error fetching messages:', {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+        });
+        setError(
+          error.response?.data?.error || 'خطا در بارگذاری پیام‌ها: مشکل ناشناخته'
+        );
+        setMessages([]);
       }
     };
-
     fetchMessages();
-  }, [receiverID, token]);
+  }, [receiverId, token]);
 
+  // ارسال پیام جدید
   const handleSendMessage = async () => {
-    if (!messageContent && selectedFiles.length === 0) return;
-
-    const formData = new FormData();
-    if (messageContent) {
-      formData.append('content', messageContent);
+    if (!newMessage.trim()) {
+      setError('متن پیام نمی‌تواند خالی باشد');
+      console.log('Chat: Empty message');
+      return;
     }
-    for (const file of selectedFiles) {
-      formData.append('files', file);
-    }
-
     try {
-      const response = await axios.post(`http://localhost:8080/message/user/${receiverID}`, formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      setMessages([...messages, response.data]);
-      setMessageContent('');
-      setSelectedFiles([]);
+      console.log('Chat: Sending message:', newMessage);
+      const formData = new FormData();
+      formData.append('content', newMessage);
+      const response = await axios.post(
+        `http://localhost:8080/messages/user/${receiverId}`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+      console.log('Chat: Send message response:', response.data);
+      setMessages([...messages, { ...response.data, content: newMessage }]); // اضافه کردن پیام به لیست (بدون رمزنگاری در فرانت)
+      setNewMessage('');
+      setError('');
     } catch (error) {
-      setErrorMessage('خطا در ارسال پیام.');
-      setOpenSnackbar(true);
+      console.error('Chat: Error sending message:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      setError(
+        error.response?.data?.error || 'خطا در ارسال پیام: مشکل ناشناخته'
+      );
     }
   };
 
-  const onEmojiClick = (event, emojiObject) => {
-    setMessageContent(prev => prev + emojiObject.emoji);
-    setShowEmojiPicker(false);
-  };
-
-  const handleFileChange = (event) => {
-    setSelectedFiles([...event.target.files]);
-  };
-
-  const handleCloseSnackbar = () => {
-    setOpenSnackbar(false);
+  // بازگشت به صفحه مخاطبین
+  const handleBack = () => {
+    console.log('Chat: Navigating back to contacts');
+    navigate('/contacts');
   };
 
   return (
-    <div>
-      <h2>Chat with User {receiverID}</h2>
-      <div>
-        {messages.map((msg) => (
-          <div key={msg.id}>
-            <strong>{msg.sender_id}:</strong> {msg.content}
-            {/* نمایش فایل‌های پیوست شده اگر موجود باشند */}
-            {msg.files && msg.files.map(file => (
-              <a href={file.filePath} target="_blank" rel="noopener noreferrer" key={file.id}>{file.filePath}</a>
-            ))}
-          </div>
-        ))}
-      </div>
-      <TextField
-        label="Message"
-        value={messageContent}
-        onChange={(e) => setMessageContent(e.target.value)}
-        fullWidth
-      />
-      <input type="file" multiple onChange={handleFileChange} />
-      <IconButton onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
-        <EmojiEmotionsIcon />
-      </IconButton>
-      {showEmojiPicker && <Picker onEmojiClick={onEmojiClick} />}
-      <Button onClick={handleSendMessage}>Send</Button>
-      <Snackbar open={openSnackbar} autoHideDuration={6000} onClose={handleCloseSnackbar}>
-        <Alert onClose={handleCloseSnackbar} severity="error">{errorMessage}</Alert>
-      </Snackbar>
-    </div>
-  );
-};
-
-export default Chat;
+    <Box sx={{ p: 3, maxWidth: 600, mx: 'auto' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+        <Typography variant="h4">چت</Typography>
+        <Button variant="outlined" onClick={handleBack}>
+          بازگشت به مخاطبین
+        </Button>
+      </Box>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+      <Paper elevation={3} sx={{ p: 2, mb: 2, maxHeight: 400, overflowY: 'auto' }}>
+        {messages.length > 0 ? (
+          <List>
+            {messages.map((message) => (
+              <ListItem
+                key={message.id}
+                sx={{
+                  justifyContent:
+                    message.sender_id === parseInt(receiverId)
+                      ? 'flex-start'
+                      : 'flex-end',}}
+                      >
+                        <ListItemText
+                          primary={message.content}
+                          secondary={`ارسال‌شده در: ${new Date(
+                            message.created_at
+                          ).toLocaleString('fa-IR')} | ${message.seen ? 'دیده‌شده' : 'ندیده'}`}
+                          sx={{
+                            bgcolor:
+                              message.sender_id === parseInt(receiverId)
+                                ? '#e0e0e0'
+                                : '#1976d2',
+                            color:
+                              message.sender_id === parseInt(receiverId)
+                                ? 'black'
+                                : 'white',
+                            p: 1,
+                            borderRadius: 2,
+                            maxWidth: '70%',
+                          }}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                ) : (
+                  <Typography>هیچ پیامی وجود ندارد.</Typography>
+                )}
+              </Paper>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <TextField
+                  label="پیام جدید"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  fullWidth
+                  multiline
+                  rows={2}
+                />
+                <Button variant="contained" onClick={handleSendMessage}>
+                  ارسال
+                </Button>
+              </Box>
+            </Box>
+          );
+        };
+        
+        export default Chat;

@@ -33,7 +33,6 @@ func NewMessageController(db *gorm.DB, broadcaster Broadcaster) *MessageControll
 func (mc *MessageController) SendMessage(c *gin.Context) {
 	var formData dto.Message
 
-	// دریافت داده‌ها از فرم
 	if err := c.ShouldBind(&formData); err != nil {
 		log.Println("error binding form data:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
@@ -43,7 +42,6 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	receiverType := c.Param("receiver_type")
 	receiverID := c.Param("receiver_id")
 
-	// پردازش داده‌های چندرسانه‌ای
 	formContent, err := c.MultipartForm()
 	if err != nil {
 		log.Println("error parsing form:", err)
@@ -51,7 +49,6 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// بررسی اینکه محتوا وجود دارد
 	content := formContent.Value["content"]
 	var messageType string
 
@@ -64,7 +61,6 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// رمزنگاری محتوا
 	var encryptedContent string
 	if messageType == "text" {
 		encryptedContent, err = aesCipher.Encrypt(content[0])
@@ -75,7 +71,6 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		}
 	}
 
-	// تبدیل شناسه گیرنده به عدد
 	receiverIDUint, err := strconv.Atoi(receiverID)
 	if err != nil {
 		log.Println("invalid receiver id:", "error:", err)
@@ -83,15 +78,22 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// دریافت کاربر فعلی
 	user, _ := c.MustGet("user").(*models.User)
 
-	// ساخت پیام
+	// بررسی وجود گیرنده
+	var receiverUser models.User
+	if receiverType == "user" {
+		if err := mc.db.Where("id = ?", receiverIDUint).First(&receiverUser).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "receiver not found"})
+			return
+		}
+	}
+
 	message := models.Message{
 		Content:    encryptedContent,
 		SenderID:   user.ID,
 		Type:       messageType,
-		UserID:     uint(receiverIDUint),
+		UserID:     receiverUser.ID,
 		IsReceived: false,
 		Seen:       false,
 	}
@@ -99,13 +101,13 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	var chat models.Chat
 	switch receiverType {
 	case "user":
-		message.UserID = uint(receiverIDUint)
-		if err := mc.db.Where("user_id_1 = ? AND user_id_2 = ?", user.ID, receiverIDUint).
-			Or("user_id_1 = ? AND user_id_2 = ?", receiverIDUint, user.ID).
+		message.UserID = receiverUser.ID
+		if err := mc.db.Where("user_id_1 = ? AND user_id_2 = ?", user.ID, receiverUser.ID).
+			Or("user_id_1 = ? AND user_id_2 = ?", receiverUser.ID, user.ID).
 			First(&chat).Error; err != nil {
 			chat = models.Chat{
 				UserID1: user.ID,
-				UserID2: uint(receiverIDUint),
+				UserID2: receiverUser.ID,
 			}
 			if err := mc.db.Create(&chat).Error; err != nil {
 				log.Println("error creating chat:", err)
@@ -147,24 +149,20 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// ذخیره‌سازی پیام در پایگاه داده
 	if err := mc.db.Create(&message).Error; err != nil {
 		log.Println("error sending message:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not sent"})
 		return
 	}
 
-	// پخش پیام به گیرنده
 	if receiverType == "user" {
-		mc.broadcaster.BroadcastToUser(uint(receiverIDUint), "new_message", message)
+		mc.broadcaster.BroadcastToUser(receiverUser.ID, "new_message", message)
 	}
 
-	// پردازش فایل‌ها
 	files := formContent.File["files"]
 	if len(files) > 0 {
 		for _, fileHeader := range files {
 			filePath := "./Uploads/" + fileHeader.Filename
-
 			if err := c.SaveUploadedFile(fileHeader, filePath); err != nil {
 				log.Println("error saving file:", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "file doesn't save"})
@@ -186,7 +184,6 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		}
 	}
 
-	// به‌روزرسانی اطلاعات پیام
 	if err := mc.db.Model(&message).Updates(models.Message{Files: message.Files}).Error; err != nil {
 		log.Println("error updating message information:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error updating message information"})

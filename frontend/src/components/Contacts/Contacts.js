@@ -1,28 +1,41 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { getContacts } from '../../api';
+import { Button, Box, Typography, TextField, List, ListItem, ListItemText } from '@mui/material';
 
-const Contacts = ({ token, isAdmin }) => {
+const Contacts = ({ token, isAdmin, onLogout }) => {
   const [contacts, setContacts] = useState([]);
+  const [showContacts, setShowContacts] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [newContact, setNewContact] = useState({ name: '', phone: '' });
+  const [groupData, setGroupData] = useState({ name: '', userIds: [] });
+  const [channelData, setChannelData] = useState({ name: '', description: '', userIds: [] });
+  const navigate = useNavigate();
+
+  console.log('Contacts: Rendering, isAdmin:', isAdmin, 'token:', token);
+
+  const validatePhone = (phone) => {
+    const regex = /^09[0-9]{9}$/;
+    return regex.test(phone) && phone.length === 11;
+  };
 
   const fetchContacts = useCallback(async () => {
     try {
-      if (!token) {
-        throw new Error('No token provided');
-      }
-      console.log('Fetching contacts with token:', token);
+      if (!token) throw new Error('No token provided');
+      console.log('Contacts: Fetching contacts with token:', token);
       const response = await getContacts(token);
-      // لاگ‌گذاری پاسخ سرور برای بررسی
-      console.log('Contacts response:', response);
-      setContacts(response);
+      console.log('Contacts: Response:', response);
+      setContacts(Array.isArray(response) ? response : []);
     } catch (error) {
-      console.error('Error fetching contacts:', {
+      console.error('Contacts: Error fetching contacts:', {
         message: error.message,
         response: error.response?.data,
         status: error.response?.status,
       });
+      setContacts([]);
     }
   }, [token]);
 
@@ -32,60 +45,402 @@ const Contacts = ({ token, isAdmin }) => {
 
   const handleAddContact = async () => {
     if (!newContact.name || !newContact.phone) {
-      console.error('Name and phone are required');
+      console.error('Contacts: Name and phone are required');
+      alert('نام و شماره تلفن الزامی است');
       return;
     }
-
+    if (!validatePhone(newContact.phone)) {
+      console.error('Contacts: Invalid phone number:', newContact.phone);
+      alert('شماره تلفن باید ۱۱ رقم باشد و با 09 شروع شود');
+      return;
+    }
     try {
-      console.log('Adding contact with token:', token);
+      console.log('Contacts: Adding contact with token:', token);
       const response = await axios.post('http://localhost:8080/admin/contacts', newContact, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      console.log('Add contact response:', response.data); // لاگ‌گذاری
+      console.log('Contacts: Add contact response:', response.data);
       setNewContact({ name: '', phone: '' });
-      fetchContacts();
       setShowAddContact(false);
+      fetchContacts();
     } catch (error) {
-      console.error('Error adding contact:', {
+      console.error('Contacts: Error adding contact:', {
         message: error.message,
         response: error.response?.data,
         status: error.response?.status,
       });
+      alert('خطا در افزودن مخاطب: ' + (error.response?.data?.error || 'مشکل ناشناخته'));
     }
   };
 
+  const handleCreateGroup = async () => {
+    try {
+      const response = await axios.post('http://localhost:8080/groups/with-members', groupData, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log('Contacts: Create group response:', response.data);
+      setGroupData({ name: '', userIds: [] });
+      setShowCreateGroup(false);
+    } catch (error) {
+      console.error('Contacts: Error creating group:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      alert('خطا در ایجاد گروه: ' + (error.response?.data?.error || 'مشکل ناشناخته'));
+    }
+  };
+
+  const handleCreateChannel = async () => {
+    try {
+      const response = await axios.post('http://localhost:8080/channels/with-members', channelData, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log('Contacts: Create channel response:', response.data);setChannelData({ name: '', description: '', userIds: [] });
+      setShowCreateChannel(false);
+    } catch (error) {
+      console.error('Contacts: Error creating channel:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      alert('خطا در ایجاد کانال: ' + (error.response?.data?.error || 'مشکل ناشناخته'));
+    }
+  };
+
+  const toggleContacts = () => {
+    console.log('Contacts: Toggling contacts, current showContacts:', showContacts);
+    setShowContacts(!showContacts);
+    if (!showContacts) setShowAddContact(false);
+  };
+
+  const handleContactClick = (userId) => {
+    console.log('Contacts: Navigating to chat for user:', userId);
+    navigate(`/chat/user/${userId}`);
+  };
+
   return (
-    <div>
-      <h2>Contacts</h2>
-      <ul>
-        {contacts.map((contact, index) => (
-          <li key={contact.id || `contact-${index}`}>
-            {contact.name} - {contact.phone}
-          </li>
-        ))}
-      </ul>
-      {isAdmin && (
-        <div>
-          <button onClick={() => setShowAddContact(true)}>+</button>
-          {showAddContact && (
-            <div>
-              <h3>افزودن مخاطب</h3>
-              <input
-                placeholder="نام"
-                value={newContact.name}
-                onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
-              />
-              <input
-                placeholder="شماره"
-                value={newContact.phone}
-                onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
-              />
-              <button onClick={handleAddContact}>اضافه کردن</button>
-            </div>
+    <Box sx={{ p: 3, maxWidth: 600, mx: 'auto' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+        <Typography variant="h4">مخاطبین</Typography>
+        <Button variant="outlined" color="secondary" onClick={onLogout}>
+          خروج
+        </Button>
+      </Box>
+      {isAdmin ? (
+        <Box>
+          <Button variant="contained" onClick={toggleContacts} sx={{ mb: 2 }}>
+            {showContacts ? 'مخفی کردن' : 'نمایش مخاطبین'}
+          </Button>
+          {showContacts && (
+            <Box sx={{ mt: 2 }}>
+              <Button
+                variant="contained"
+                onClick={() => {
+                  console.log('Contacts: New Contact button clicked');
+                  setShowAddContact(true);
+                }}
+                sx={{ mb: 2, mr: 1 }}
+              >
+                مخاطب جدید
+              </Button>
+              <Button
+                variant="contained"
+                onClick={() => setShowCreateGroup(true)}
+                sx={{ mb: 2, mr: 1 }}
+              >
+                ایجاد گروه
+              </Button>
+              <Button
+                variant="contained"
+                onClick={() => setShowCreateChannel(true)}
+                sx={{ mb: 2 }}
+              >
+                ایجاد کانال
+              </Button>
+              {showAddContact && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="h6">افزودن مخاطب</Typography>
+                  <TextField
+                    label="نام"
+                    value={newContact.name}
+                    onChange={(e) =>
+                      setNewContact({ ...newContact, name: e.target.value })
+                    }
+                    fullWidth
+                    margin="normal"
+                  />
+                  <TextField
+                    label="شماره تلفن (09123456789)"
+                    value={newContact.phone}
+                    onChange={(e) =>
+                      setNewContact({ ...newContact, phone: e.target.value })
+                    }
+                    fullWidth
+                    margin="normal"
+                  />
+                  <Button
+                    variant="contained"
+                    onClick={handleAddContact}
+                    sx={{ mr: 1 }}
+                  >
+                    اضافه کردن
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={() => setShowAddContact(false)}
+                  >
+                    لغو
+                  </Button>
+                </Box>
+              )}
+              {showCreateGroup && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="h6">ایجاد گروه</Typography>
+                  <TextField
+                    label="نام گروه"
+                    value={groupData.name}
+                    onChange={(e) =>
+                      setGroupData({ ...groupData, name: e.target.value })
+                    }
+                    fullWidth
+                    margin="normal"/>
+                    <TextField
+                      label="شناسه‌های کاربران (با کاما جدا کنید)"
+                      value={groupData.userIds.join(',')}
+                      onChange={(e) =>
+                        setGroupData({
+                          ...groupData,
+                          userIds: e.target.value
+                            .split(',')
+                            .map(Number)
+                            .filter((id) => id),
+                        })
+                      }
+                      fullWidth
+                      margin="normal"
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={handleCreateGroup}
+                      sx={{ mr: 1 }}
+                    >
+                      ایجاد
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      onClick={() => setShowCreateGroup(false)}
+                    >
+                      لغو
+                    </Button>
+                  </Box>
+                )}
+                {showCreateChannel && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="h6">ایجاد کانال</Typography>
+                    <TextField
+                      label="نام کانال"
+                      value={channelData.name}
+                      onChange={(e) =>
+                        setChannelData({ ...channelData, name: e.target.value })
+                      }
+                      fullWidth
+                      margin="normal"
+                    />
+                    <TextField
+                      label="توضیحات"
+                      value={channelData.description}
+                      onChange={(e) =>
+                        setChannelData({
+                          ...channelData,
+                          description: e.target.value,
+                        })
+                      }
+                      fullWidth
+                      margin="normal"
+                    />
+                    <TextField
+                      label="شناسه‌های کاربران (با کاما جدا کنید)"
+                      value={channelData.userIds.join(',')}
+                      onChange={(e) =>
+                        setChannelData({
+                          ...channelData,
+                          userIds: e.target.value
+                            .split(',')
+                            .map(Number)
+                            .filter((id) => id),
+                        })
+                      }
+                      fullWidth
+                      margin="normal"
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={handleCreateChannel}
+                      sx={{ mr: 1 }}
+                    >
+                      ایجاد
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      onClick={() => setShowCreateChannel(false)}
+                    >
+                      لغو
+                    </Button>
+                  </Box>
+                )}
+                {Array.isArray(contacts) && contacts.length > 0 ? (
+                  <List>
+                    {contacts.map((contact, index) => (
+                      <ListItem
+                        key={contact.id || `contact-${index}`}
+                        onClick={() => handleContactClick(contact.user_id)} // استفاده از user_id
+                        sx={{ cursor: 'pointer' }}
+                      >
+                        <ListItemText
+                          primary={contact.name}
+                          secondary={contact.phone}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                ) : (
+                  <Typography>هیچ مخاطبی وجود ندارد.</Typography>
+                )}
+              </Box>
+            )}
+          </Box>
+        ) : (
+          <Box>{Array.isArray(contacts) && contacts.length > 0 ? (
+            <List>
+              {contacts.map((contact, index) => (
+                <ListItem
+                  key={contact.id || `contact-${index}`}
+                  onClick={() => handleContactClick(contact.user_id)} // استفاده از user_id
+                  sx={{ cursor: 'pointer' }}
+                >
+                  <ListItemText
+                    primary={contact.name}
+                    secondary={contact.phone}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          ) : (
+            <Typography>هیچ مخاطبی وجود ندارد.</Typography>
           )}
-        </div>
+          <Button
+            variant="contained"
+            onClick={() => setShowCreateGroup(true)}
+            sx={{ mt: 2, mr: 1 }}
+          >
+            ایجاد گروه
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => setShowCreateChannel(true)}
+            sx={{ mt: 2 }}
+          >
+            ایجاد کانال
+          </Button>
+          {showCreateGroup && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="h6">ایجاد گروه</Typography>
+              <TextField
+                label="نام گروه"
+                value={groupData.name}
+                onChange={(e) =>
+                  setGroupData({ ...groupData, name: e.target.value })
+                }
+                fullWidth
+                margin="normal"
+              />
+              <TextField
+                label="شناسه‌های کاربران (با کاما جدا کنید)"
+                value={groupData.userIds.join(',')}
+                onChange={(e) =>
+                  setGroupData({
+                    ...groupData,
+                    userIds: e.target.value
+                      .split(',')
+                      .map(Number)
+                      .filter((id) => id),
+                  })
+                }
+                fullWidth
+                margin="normal"
+              />
+              <Button
+                variant="contained"
+                onClick={handleCreateGroup}
+                sx={{ mr: 1 }}
+              >
+                ایجاد
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={() => setShowCreateGroup(false)}
+              >
+                لغو
+              </Button>
+            </Box>
+          )}
+          {showCreateChannel && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="h6">ایجاد کانال</Typography>
+              <TextField
+                label="نام کانال"
+                value={channelData.name}
+                onChange={(e) =>
+                  setChannelData({ ...channelData, name: e.target.value })
+                }
+                fullWidth
+                margin="normal"
+              />
+              <TextField
+                label="توضیحات"
+                value={channelData.description}
+                onChange={(e) =>
+                  setChannelData({ ...channelData, description: e.target.value })
+                }
+                fullWidth
+                margin="normal"
+              />
+              <TextField
+                label="شناسه‌های کاربران (با کاما جدا کنید)"
+                value={channelData.userIds.join(',')}
+                onChange={(e) =>
+                  setChannelData({
+                    ...channelData,
+                    userIds: e.target.value
+                      .split(',')
+                      .map(Number)
+                      .filter((id) => id),
+                  })
+                }
+                fullWidth
+                margin="normal"
+              />
+              <Button
+                variant="contained"
+                onClick={handleCreateChannel}
+                sx={{ mr: 1 }}
+              >
+                ایجاد</Button>
+              <Button
+                variant="outlined"
+                onClick={() => setShowCreateChannel(false)}
+              >
+                لغو
+              </Button>
+            </Box>
+          )}
+          <Typography sx={{ mt: 2 }}>
+            شما فقط می‌توانید لیست مخاطبین را مشاهده کنید.
+          </Typography>
+        </Box>
       )}
-    </div>
+    </Box>
   );
 };
 

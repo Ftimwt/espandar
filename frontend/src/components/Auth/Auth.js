@@ -1,152 +1,172 @@
 import React, { useState } from 'react';
-import { Container, Typography, TextField, Button, Snackbar, Alert } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import {
+  Box,
+  Button,
+  TextField,
+  Typography,
+  FormControlLabel,
+  Checkbox,
+  Paper,
+  Alert,
+} from '@mui/material';
 
 const Auth = ({ onUserLogin, onAdminLogin }) => {
   const [isAdmin, setIsAdmin] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [email, setEmail] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
-  const [openSnackbar, setOpenSnackbar] = useState(false);
+  const [isSignup, setIsSignup] = useState(false);
+  const [formData, setFormData] = useState({
+    username: '',
+    phone: '',
+    password: '',
+  });
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const handleCloseSnackbar = () => {
-    setOpenSnackbar(false);
+  console.log('Auth: Rendering, isAdmin:', isAdmin, 'isSignup:', isSignup);
+
+  const validatePhone = (phone) => {
+    const regex = /^09[0-9]{9}$/;
+    return regex.test(phone) && phone.length === 11;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // اصلاح مسیر برای ثبت‌نام ادمین
-    const url = isSignUp
-      ? (isAdmin ? 'http://localhost:8080/admin/signup' : 'http://localhost:8080/signup')
-      : (isAdmin ? 'http://localhost:8080/admin/login' : 'http://localhost:8080/login');
-    
-    const body = isSignUp
-      ? JSON.stringify({ username, password, email, firstName, lastName })
-      : JSON.stringify({ username, password });
+    setError('');
+    console.log('Auth: Submitting form:', formData);
+
+    if (!validatePhone(formData.phone)) {
+      setError('شماره تلفن باید ۱۱ رقم باشد و با 09 شروع شود');
+      console.log('Auth: Invalid phone number:', formData.phone);
+      return;
+    }
 
     try {
-      const response = await axios.post(url, body, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      const token = response.data.token;
-      console.log('Login/SignUp successful, token:', token); // لاگ‌گذاری
+      let response;
+      const payload = isSignup
+        ? formData
+        : { phone: formData.phone, password: formData.password };
+
+      console.log('Auth: Sending request, payload:', payload);
+
       if (isAdmin) {
-        onAdminLogin(token);
+        if (isSignup) {
+          response = await axios.post('http://localhost:8080/admin/signup', payload);
+          console.log('Auth: Admin signup response:', response.data);
+          onAdminLogin(response.data.token);
+          navigate('/contacts');
+        } else {
+          response = await axios.post('http://localhost:8080/admin/login', payload);
+          console.log('Auth: Admin login response:', response.data);
+          onAdminLogin(response.data.token);
+          navigate('/contacts');
+        }
       } else {
-        onUserLogin(token);
+        if (isSignup) {
+          response = await axios.post('http://localhost:8080/signup', payload);
+          console.log('Auth: User signup response:', response.data);
+          onUserLogin(response.data.token);
+          navigate('/contacts');
+        } else {
+          response = await axios.post('http://localhost:8080/login', payload);
+          console.log('Auth: User login response:', response.data);
+          onUserLogin(response.data.token);
+          navigate('/contacts');
+        }
       }
-      navigate('/contacts');
     } catch (error) {
-      setErrorMessage(
-        isSignUp
-          ? 'خطا در ثبت‌نام.'
-          : (isAdmin ? 'نام کاربری یا رمز عبور ادمین اشتباه است.' : 'نام کاربری یا رمز عبور اشتباه است.')
+      console.error('Auth: Error:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      setError(
+        error.response?.data?.error || 'خطا در ورود یا ثبت‌نام: مشکل ناشناخته'
       );
-      setOpenSnackbar(true);
-      console.error('Auth error:', error.response?.data);
     }
   };
 
   return (
-    <Container maxWidth="xs">
-      <Typography variant="h5" align="center">
-        {isSignUp ? (isAdmin ? 'ثبت‌نام ادمین' : 'ثبت‌نام') : (isAdmin ? 'ورود به حساب ادمین' : 'ورود به حساب کاربر')}
-      </Typography>
-      <form onSubmit={handleSubmit}>
-        <TextField
-          label="Username"
-          variant="outlined"
-          fullWidth
-          margin="normal"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-        />
-        {isSignUp && (
-          <>
-            <TextField
-              label="Email"
-              variant="outlined"
-              fullWidth
-              margin="normal"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <TextField
-              label="First Name"
-              variant="outlined"
-              fullWidth
-              margin="normal"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              required
-            />
-            <TextField
-              label="Last Name"
-              variant="outlined"
-              fullWidth
-              margin="normal"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              required
-            />
-          </>
+    <Box
+      sx={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        bgcolor: '#f5f5f5',
+      }}
+    >
+      <Paper elevation={3} sx={{ p: 4, maxWidth: 400, width: '100%' }}>
+        <Typography variant="h5" align="center" gutterBottom>
+          {isAdmin ? 'ورود/ثبت‌نام ادمین' : 'ورود/ثبت‌نام کاربر'}
+        </Typography>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
         )}
-        <TextField
-          label="Password"
-          type="password"
-          variant="outlined"
-          fullWidth
-          margin="normal"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <Button type="submit" variant="contained" color="primary" fullWidth>
-          {isSignUp ? 'ثبت‌نام' : 'ورود'}
-        </Button>
-      </form>
-      <Button 
-        onClick={() => {
-          setIsSignUp((prev) => !prev);
-          setUsername('');
-          setPassword('');
-          setEmail('');
-          setFirstName('');
-          setLastName('');
-        }} 
-        color="secondary" 
-        fullWidth
-      >
-        {isSignUp ? 'قبلاً حساب دارید؟ ورود' : 'حساب کاربری ندارید؟ ثبت‌نام'}
-      </Button>
-      <Button 
-        onClick={() => {
-          setIsAdmin((prev) => !prev);
-          setUsername('');
-          setPassword('');
-          setEmail('');
-          setFirstName('');
-          setLastName('');
-        }} 
-        color="secondary" 
-        fullWidth
-      >
-        {isAdmin ? 'ورود به حساب کاربر' : 'ورود به حساب ادمین'}
-      </Button>
-      <Snackbar open={openSnackbar} autoHideDuration={6000} onClose={handleCloseSnackbar}>
-        <Alert onClose={handleCloseSnackbar} severity="error">{errorMessage}</Alert>
-      </Snackbar>
-    </Container>
+        <form onSubmit={handleSubmit}>
+          {isSignup && (
+            <TextField
+              label="نام کاربری"
+              value={formData.username}
+              onChange={(e) =>
+                setFormData({ ...formData, username: e.target.value })
+              }
+              fullWidth
+              margin="normal"
+              required
+            />
+          )}
+          <TextField
+            label="شماره تلفن"
+            value={formData.phone}
+            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+            placeholder="09123456789"fullWidth
+            margin="normal"
+            required
+          />
+          <TextField
+            label="رمز عبور"
+            type="password"
+            value={formData.password}
+            onChange={(e) =>
+              setFormData({ ...formData, password: e.target.value })
+            }
+            fullWidth
+            margin="normal"
+            required
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={isAdmin}
+                onChange={() => setIsAdmin(!isAdmin)}
+              />
+            }
+            label="ادمین"
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={isSignup}
+                onChange={() => setIsSignup(!isSignup)}
+              />
+            }
+            label={isSignup ? 'تغییر به ورود' : 'تغییر به ثبت‌نام'}
+          />
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            fullWidth
+            sx={{ mt: 2 }}
+          >
+            {isSignup ? 'ثبت‌نام' : 'ورود'}
+          </Button>
+        </form>
+      </Paper>
+    </Box>
   );
 };
 

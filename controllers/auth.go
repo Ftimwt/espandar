@@ -3,6 +3,8 @@ package controllers
 import (
 	"espandar/jwt"
 	"espandar/models"
+	"espandar/utils"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -18,154 +20,206 @@ func NewAuthController(db *gorm.DB) *AuthController {
 	return &AuthController{db: db}
 }
 
-// AdminSignUp - ثبت‌نام ادمین
-func (ac *AuthController) AdminSignUp(c *gin.Context) {
-	var user models.User
-	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
-		return
-	}
-
-	// چک کردن وجود کاربر
-	if err := ac.db.Where("username = ? OR email = ?", user.Username, user.Email).First(&user).Error; err == nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "username or email already exists"})
-		return
-	}
-
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error hashing password"})
-		return
-	}
-	user.Password = string(hashedPassword)
-	user.Role = "admin" // تنظیم نقش کاربر به 'admin'
-
-	result := ac.db.Create(&user)
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating user"})
-		return
-	}
-
-	token, err := jwt.Generate(&user)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error generating token"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"message": "admin registered successfully",
-		"token":   token,
-	})
-}
-
-// SignUp - ثبت‌نام کاربر عادی
 func (ac *AuthController) SignUp(c *gin.Context) {
-	var user models.User
-	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+	var input struct {
+		Username string `json:"username"`
+		Phone    string `json:"phone"`
+		Password string `json:"password"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		fmt.Println("SignUp: Invalid input:", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
 	}
 
-	// چک کردن وجود کاربر ادمین
-	var existingAdmin models.User
-	if err := ac.db.Where("role = ?", "admin").First(&existingAdmin).Error; err == nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Admin user already exists, cannot register as a normal user"})
+	// اعتبارسنجی شماره تلفن
+	if !utils.ValidatePhone(input.Phone) {
+		fmt.Println("SignUp: Invalid phone number:", input.Phone)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone number must be 11 digits starting with 09"})
 		return
 	}
 
-	// چک کردن وجود کاربر
-	if err := ac.db.Where("username = ? OR email = ?", user.Username, user.Email).First(&user).Error; err == nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "username or email already exists"})
+	// بررسی یونیک بودن شماره تلفن
+	var existingUser models.User
+	if err := ac.db.Where("phone = ?", input.Phone).First(&existingUser).Error; err == nil {
+		fmt.Println("SignUp: Phone number already exists:", input.Phone)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone number already exists"})
 		return
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error hashing password"})
+		fmt.Println("SignUp: Error hashing password:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error hashing password"})
 		return
 	}
-	user.Password = string(hashedPassword)
-	user.Role = "user" // تنظیم نقش کاربر به 'user'
 
-	result := ac.db.Create(&user)
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating user"})
+	user := models.User{
+		Username: input.Username,
+		Phone:    input.Phone,
+		Password: string(hashedPassword),
+		Role:     "user",
+	}
+
+	if err := ac.db.Create(&user).Error; err != nil {
+		fmt.Println("SignUp: Error creating user:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating user"})
 		return
 	}
 
 	token, err := jwt.Generate(&user)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error generating token"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"message": "user registered successfully",
-		"token":   token,
-	})
-}
-
-// AdminLogin - ورود ادمین
-func (ac *AuthController) AdminLogin(c *gin.Context) {
-	var user struct {
-		Username string `json:"username"`
-		Password string `json:"-"`
-	}
-
-	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+		fmt.Println("SignUp: Error generating token:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
 		return
 	}
 
-	var storedUser models.User
-	result := ac.db.Where("username=? AND role=?", user.Username, "admin").First(&storedUser)
-	if result.Error != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
-		return
-	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(storedUser.Password), []byte(user.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
-		return
-	}
-
-	token, err := jwt.Generate(&storedUser)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error generating token"})
-		return
-	}
-
+	fmt.Println("SignUp: User created, token:", token)
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 
-// Login - ورود کاربر عادی
-func (ac *AuthController) Login(c *gin.Context) {
-	var user struct {
+func (ac *AuthController) AdminSignUp(c *gin.Context) {
+	var input struct {
 		Username string `json:"username"`
-		Password string `json:"-"`
+		Phone    string `json:"phone"`
+		Password string `json:"password"`
 	}
 
-	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+	if err := c.ShouldBindJSON(&input); err != nil {
+		fmt.Println("AdminSignUp: Invalid input:", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
 	}
 
-	var storedUser models.User
-	result := ac.db.Where("username=? AND role=?", user.Username, "user").First(&storedUser)
-	if result.Error != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+	// اعتبارسنجی شماره تلفن
+	if !utils.ValidatePhone(input.Phone) {
+		fmt.Println("AdminSignUp: Invalid phone number:", input.Phone)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone number must be 11 digits starting with 09"})
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(storedUser.Password), []byte(user.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+	// بررسی یونیک بودن شماره تلفن
+	var existingUser models.User
+	if err := ac.db.Where("phone = ?", input.Phone).First(&existingUser).Error; err == nil {
+		fmt.Println("AdminSignUp: Phone number already exists:", input.Phone)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone number already exists"})
 		return
 	}
 
-	token, err := jwt.Generate(&storedUser)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error generating token"})
+		fmt.Println("AdminSignUp: Error hashing password:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error hashing password"})
 		return
 	}
 
+	user := models.User{
+		Username: input.Username,
+		Phone:    input.Phone,
+		Password: string(hashedPassword),
+		Role:     "admin",
+	}
+
+	if err := ac.db.Create(&user).Error; err != nil {
+		fmt.Println("AdminSignUp: Error creating admin:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating admin"})
+		return
+	}
+	token, err := jwt.Generate(&user)
+	if err != nil {
+		fmt.Println("AdminSignUp: Error generating token:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
+		return
+	}
+
+	fmt.Println("AdminSignUp: Admin created, token:", token)
+	c.JSON(http.StatusOK, gin.H{"token": token})
+}
+
+func (ac *AuthController) Login(c *gin.Context) {
+	var input struct {
+		Phone    string `json:"phone"`
+		Password string `json:"password"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		fmt.Println("Login: Invalid input:", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	// اعتبارسنجی شماره تلفن
+	if !utils.ValidatePhone(input.Phone) {
+		fmt.Println("Login: Invalid phone number:", input.Phone)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone number must be 11 digits starting with 09"})
+		return
+	}
+
+	var user models.User
+	if err := ac.db.Where("phone = ?", input.Phone).First(&user).Error; err != nil {
+		fmt.Println("Login: User not found for phone:", input.Phone)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid phone number or password"})
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
+		fmt.Println("Login: Invalid password for phone:", input.Phone)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid phone number or password"})
+		return
+	}
+
+	token, err := jwt.Generate(&user)
+	if err != nil {
+		fmt.Println("Login: Error generating token:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
+		return
+	}
+
+	fmt.Println("Login: User logged in, token:", token)
+	c.JSON(http.StatusOK, gin.H{"token": token})
+}
+
+func (ac *AuthController) AdminLogin(c *gin.Context) {
+	var input struct {
+		Phone    string `json:"phone"`
+		Password string `json:"password"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		fmt.Println("AdminLogin: Invalid input:", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	// اعتبارسنجی شماره تلفن
+	if !utils.ValidatePhone(input.Phone) {
+		fmt.Println("AdminLogin: Invalid phone number:", input.Phone)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone number must be 11 digits starting with 09"})
+		return
+	}
+
+	var user models.User
+	if err := ac.db.Where("phone = ? AND role = ?", input.Phone, "admin").First(&user).Error; err != nil {
+		fmt.Println("AdminLogin: Admin not found for phone:", input.Phone)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid phone number or password"})
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
+		fmt.Println("AdminLogin: Invalid password for phone:", input.Phone)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid phone number or password"})
+		return
+	}
+
+	token, err := jwt.Generate(&user)
+	if err != nil {
+		fmt.Println("AdminLogin: Error generating token:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
+		return
+	}
+
+	fmt.Println("AdminLogin: Admin logged in, token:", token)
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 

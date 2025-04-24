@@ -68,11 +68,20 @@ export const sendMessage = async (token, messageData) => {
 
 // توابع جدید برای مدیریت کانتکت‌ها
 export const getContacts = async (token) => {
- console.log('getContacts: Sending request with token:', token);
- const response = await axios.get(`${API_URL}/contacts`, {
- headers: { Authorization: `Bearer ${token}` },
- });
- return response.data;
+  try {
+    const response = await axios.get('http://localhost:8080/contacts', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    console.log('getContacts response:', response.data);
+    return Array.isArray(response.data) ? response.data : [];
+  } catch (error) {
+    console.error('Error in getContacts:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+    });
+    return [];
+  }
 };
 
 export const addContact = async (token, contact) => {

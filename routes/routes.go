@@ -48,6 +48,7 @@ func SetupRoutes(
 
 		// کانال‌ها
 		protected.POST("/channel", channelCtrl.CreateChannel)
+		protected.POST("/channels/with-members", channelCtrl.CreateChannelWithMembers)
 		protected.POST("/channel/:channel_id/user/:user_id", channelCtrl.AddMemberToChannel)
 		protected.DELETE("/channel/:channel_id/user/:user_id", channelCtrl.RemoveMemberFromChannel)
 		protected.GET("/channels", channelCtrl.GetChannels)
@@ -56,6 +57,7 @@ func SetupRoutes(
 
 		// گروه‌ها
 		protected.POST("/group", groupCtrl.CreateGroup)
+		protected.POST("/groups/with-members", groupCtrl.CreateGroupWithMembers)
 		protected.POST("/group/:group_id/user/:user_id", groupCtrl.AddMemberToGroup)
 		protected.DELETE("/group/:group_id/user/:user_id", groupCtrl.RemoveMemberFromGroup)
 		protected.GET("/groups", groupCtrl.GetGroups)

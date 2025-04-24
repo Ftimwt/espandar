@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"fmt"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -24,13 +26,72 @@ func (gc *GroupController) CreateGroup(c *gin.Context) {
 		return
 	}
 
+	user, _ := c.MustGet("user").(*models.User)
+	group.CreatorID = user.ID // تنظیم خالق گروه
+
 	result := gc.db.Create(&group)
 	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating group"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "group create successfully", "group": group})
+	// افزودن خالق به اعضای گروه
+	groupMember := models.GroupMember{
+		GroupID: group.ID,
+		UserID:  user.ID,
+	}
+	if err := gc.db.Create(&groupMember).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error adding creator to group"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "group created successfully", "group": group})
+}
+
+func (gc *GroupController) CreateGroupWithMembers(c *gin.Context) {
+	user, _ := c.MustGet("user").(*models.User)
+
+	var input struct {
+		Name    string `json:"name"`
+		UserIDs []uint `json:"user_ids"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+		return
+	}
+
+	group := models.Group{
+		Name:      input.Name,
+		CreatorID: user.ID,
+	}
+	if err := gc.db.Create(&group).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating group"})
+		return
+	}
+
+	// افزودن خالق به گروه
+	groupMember := models.GroupMember{
+		GroupID: group.ID,
+		UserID:  user.ID,
+	}
+	if err := gc.db.Create(&groupMember).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error adding creator to group"})
+		return
+	}
+
+	// افزودن کاربران انتخاب‌شده
+	for _, userID := range input.UserIDs {
+		member := models.GroupMember{
+			GroupID: group.ID,
+			UserID:  userID,
+		}
+		if err := gc.db.Create(&member).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("error adding user %d to group", userID)})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "group created successfully", "group": group})
 }
 
 func (gc *GroupController) AddMemberToGroup(c *gin.Context) {

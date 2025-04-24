@@ -1,52 +1,113 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
-import Auth from './components/Auth/Auth'; // فرض بر این است که کامپوننت Auth در این مسیر وجود دارد
+import axios from 'axios';
+import Auth from './components/Auth/Auth';
 import Contacts from './components/Contacts/Contacts';
+import Chat from './components/Chat/Chat';
 
-const App = () => {
-  const [userToken, setUserToken] = useState(() => localStorage.getItem('userToken'));
-  const [adminToken, setAdminToken] = useState(() => localStorage.getItem('adminToken'));
-  const [loading, setLoading] = useState(true);
+function App() {
+  const [token, setToken] = useState(localStorage.getItem('token') || '');
+  const [isAdmin, setIsAdmin] = useState(localStorage.getItem('isAdmin') === 'true');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const handleUserLogin = (token) => {
-    console.log('storing usertoken:', token);
-    localStorage.setItem('userToken', token);
-    setUserToken(token);
-  };
-
-  const handleAdminLogin = (token) => {
-    console.log('storing admintoken:', token);
-    localStorage.setItem('adminToken', token);
-    setAdminToken(token);
-  };
-
-  // استفاده از useEffect برای تنظیم loading به false بعد از بارگذاری اولیه
   useEffect(() => {
-    setLoading(false); // بعد از بارگذاری اولیه، وضعیت loading را به false تغییر می‌دهیم
-  }, []);
+    const validateToken = async () => {
+      if (!token) {
+        setIsAuthenticated(false);
+        return;
+      }
+      try {
+        await axios.get('http://localhost:8080/contacts', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        console.log('App: Token is valid');
+        setIsAuthenticated(true);
+      } catch (error) {
+        console.error('App: Token validation failed:', {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+        });
+        setIsAuthenticated(false);
+        localStorage.removeItem('token');
+        localStorage.removeItem('isAdmin');
+        setToken('');
+        setIsAdmin(false);
+      }
+    };
+    validateToken();
+  }, [token]);
 
-  if (loading) {
-    return <div>Loading...</div>;
-  }
+  const handleUserLogin = (newToken) => {
+    console.log('App: User logged in, token:', newToken);
+    setToken(newToken);
+    setIsAdmin(false);
+    setIsAuthenticated(true);
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('isAdmin', 'false');
+  };
+
+  const handleAdminLogin = (newToken) => {
+    console.log('App: Admin logged in, token:', newToken);
+    setToken(newToken);
+    setIsAdmin(true);
+    setIsAuthenticated(true);
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('isAdmin', 'true');
+  };
+
+  const handleLogout = () => {
+    console.log('App: Logging out');
+    setToken('');
+    setIsAdmin(false);
+    setIsAuthenticated(false);
+    localStorage.removeItem('token');
+    localStorage.removeItem('isAdmin');
+  };
 
   return (
     <Router>
-      <div>
-        <h1>Welcome to Espandar</h1>
-        <Routes>
-          <Route path="/login" element={<Auth onUserLogin={handleUserLogin} onAdminLogin={handleAdminLogin} />} />
-          <Route path="/contacts" 
-            element={
-              adminToken ? <Contacts token={adminToken} isAdmin={true} /> : 
-              userToken ? <Contacts token={userToken} isAdmin={false} /> : 
-              <Navigate to="/login" />
-            } 
-          />
-          <Route path="*" element={<Navigate to="/login" />} /> {/* هدایت به صفحه لاگین برای تمامی مسیرهای دیگر */}
-        </Routes>
-      </div>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            isAuthenticated ? (
+              <Navigate to="/contacts" />
+            ) : (
+              <Auth
+                onUserLogin={handleUserLogin}
+                onAdminLogin={handleAdminLogin}
+              />
+            )
+          }
+        />
+        <Route
+          path="/contacts"
+          element={
+            isAuthenticated ? (
+              <Contacts
+                token={token}
+                isAdmin={isAdmin}
+                onLogout={handleLogout}
+              />
+            ) : (
+              <Navigate to="/" />
+            )
+          }
+        />
+        <Route
+          path="/chat/user/:id"
+          element={
+            isAuthenticated ? (
+              <Chat token={token} />
+            ) : (
+              <Navigate to="/" />
+            )
+          }
+        />
+      </Routes>
     </Router>
   );
-};
+}
 
 export default App;
