@@ -7,6 +7,7 @@ type FileType string
 const (
 	Voice   FileType = "voice"
 	Picture FileType = "picture"
+	Video   FileType = "video"
 	Default FileType = "default"
 )
 

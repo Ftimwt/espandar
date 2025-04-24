@@ -34,7 +34,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	var formData dto.Message
 
 	if err := c.ShouldBind(&formData); err != nil {
-		log.Println("error binding form data:", err)
+		log.Println("SendMessage: Error binding form data:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
@@ -44,7 +44,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 
 	formContent, err := c.MultipartForm()
 	if err != nil {
-		log.Println("error parsing form:", err)
+		log.Println("SendMessage: Error parsing form:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unable to parse form"})
 		return
 	}
@@ -57,6 +57,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	} else if len(formContent.File["files"]) > 0 {
 		messageType = "file"
 	} else {
+		log.Println("SendMessage: No content or file provided")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "content or file is required"})
 		return
 	}
@@ -65,7 +66,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	if messageType == "text" {
 		encryptedContent, err = aesCipher.Encrypt(content[0])
 		if err != nil {
-			log.Println("error encrypting message:", err)
+			log.Println("SendMessage: Error encrypting message:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error encrypting message"})
 			return
 		}
@@ -73,17 +74,18 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 
 	receiverIDUint, err := strconv.Atoi(receiverID)
 	if err != nil {
-		log.Println("invalid receiver id:", "error:", err)
+		log.Println("SendMessage: Invalid receiver ID:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver id"})
 		return
 	}
 
 	user, _ := c.MustGet("user").(*models.User)
+	log.Printf("SendMessage: Sender ID: %d, Receiver ID: %d, Type: %s", user.ID, receiverIDUint, receiverType)
 
-	// بررسی وجود گیرنده
 	var receiverUser models.User
 	if receiverType == "user" {
 		if err := mc.db.Where("id = ?", receiverIDUint).First(&receiverUser).Error; err != nil {
+			log.Println("SendMessage: Receiver not found:", err)
 			c.JSON(http.StatusNotFound, gin.H{"error": "receiver not found"})
 			return
 		}
@@ -102,25 +104,28 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	switch receiverType {
 	case "user":
 		message.UserID = receiverUser.ID
+		log.Printf("SendMessage: Checking chat between User %d and User %d", user.ID, receiverUser.ID)
 		if err := mc.db.Where("user_id_1 = ? AND user_id_2 = ?", user.ID, receiverUser.ID).
 			Or("user_id_1 = ? AND user_id_2 = ?", receiverUser.ID, user.ID).
 			First(&chat).Error; err != nil {
+			log.Println("SendMessage: Creating new chat")
 			chat = models.Chat{
 				UserID1: user.ID,
 				UserID2: receiverUser.ID,
 			}
 			if err := mc.db.Create(&chat).Error; err != nil {
-				log.Println("error creating chat:", err)
+				log.Println("SendMessage: Error creating chat:", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating chat"})
 				return
 			}
+			log.Printf("SendMessage: Chat created, ID: %d", chat.ID)
 		}
 		message.ChatID = chat.ID
 	case "group":
 		message.GroupID = uint(receiverIDUint)
 		var member models.GroupMember
 		if err := mc.db.Where("group_id = ? AND user_id = ?", receiverIDUint, user.ID).First(&member).Error; err != nil {
-			log.Println("user not a group member:", err)
+			log.Println("SendMessage: User not a group member:", err)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not a group member"})
 			return
 		}
@@ -128,7 +133,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		message.ChannelID = uint(receiverIDUint)
 		var channel models.Channel
 		if err := mc.db.Where("id = ?", receiverIDUint).Preload("Members").First(&channel).Error; err != nil {
-			log.Println("channel not found:", err)
+			log.Println("SendMessage: Channel not found:", err)
 			c.JSON(http.StatusNotFound, gin.H{"error": "channel not found"})
 			return
 		}
@@ -140,31 +145,32 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 			}
 		}
 		if !isMember {
+			log.Println("SendMessage: User not a channel member")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not a channel member"})
 			return
 		}
 	default:
-		log.Println("receiver type does not exist:", receiverType)
+		log.Println("SendMessage: Invalid receiver type:", receiverType)
 		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exist"})
 		return
 	}
 
 	if err := mc.db.Create(&message).Error; err != nil {
-		log.Println("error sending message:", err)
+		log.Println("SendMessage: Error creating message:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not sent"})
 		return
 	}
 
 	if receiverType == "user" {
+		log.Printf("SendMessage: Broadcasting to user %d, event: new_message", receiverUser.ID)
 		mc.broadcaster.BroadcastToUser(receiverUser.ID, "new_message", message)
 	}
-
 	files := formContent.File["files"]
 	if len(files) > 0 {
 		for _, fileHeader := range files {
 			filePath := "./Uploads/" + fileHeader.Filename
 			if err := c.SaveUploadedFile(fileHeader, filePath); err != nil {
-				log.Println("error saving file:", err)
+				log.Println("SendMessage: Error saving file:", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "file doesn't save"})
 				return
 			}
@@ -175,7 +181,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 			}
 
 			if err := mc.db.Create(&newFile).Error; err != nil {
-				log.Println("unable to save file:", err)
+				log.Println("SendMessage: Error saving file to DB:", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to save file"})
 				return
 			}
@@ -185,12 +191,12 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	}
 
 	if err := mc.db.Model(&message).Updates(models.Message{Files: message.Files}).Error; err != nil {
-		log.Println("error updating message information:", err)
+		log.Println("SendMessage: Error updating message with files:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error updating message information"})
 		return
 	}
 
-	log.Println("message sent successfully:", message.ID)
+	log.Printf("SendMessage: Message sent successfully, ID: %d", message.ID)
 	c.JSON(http.StatusOK, gin.H{"message": "message sent successfully", "message_id": message.ID})
 }
 
@@ -201,6 +207,8 @@ func (mc *MessageController) FileType(fileName string) models.FileType {
 			return models.Voice
 		case strings.HasSuffix(fileName, ".jpg") || strings.HasSuffix(fileName, ".png") || strings.HasSuffix(fileName, ".jpeg"):
 			return models.Picture
+		case strings.HasSuffix(fileName, ".mp4") || strings.HasSuffix(fileName, ".webm"):
+			return models.Video
 		default:
 			return models.Default
 		}

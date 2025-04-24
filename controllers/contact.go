@@ -20,33 +20,46 @@ func NewContactController(db *gorm.DB) *ContactController {
 }
 
 func (c *ContactController) AddContact(ctx *gin.Context) {
-	fmt.Println("Received request to add contact")
+	fmt.Println("AddContact: Received request to add contact")
 	user, exists := ctx.Get("user")
 	if !exists {
+		fmt.Println("AddContact: User not found in context")
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
 		return
 	}
 
 	userModel, ok := user.(*models.User)
 	if !ok {
+		fmt.Println("AddContact: Invalid user type")
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user"})
 		return
 	}
 
 	if userModel.Role != "admin" {
+		fmt.Println("AddContact: User is not admin, ID:", userModel.ID)
 		ctx.JSON(http.StatusForbidden, gin.H{"error": "You are not authorized to add contacts"})
 		return
 	}
 
 	var contact models.Contact
 	if err := ctx.ShouldBindJSON(&contact); err != nil {
+		fmt.Println("AddContact: Invalid input:", err)
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
 	}
 
 	// اعتبارسنجی شماره تلفن
 	if !utils.ValidatePhone(contact.Phone) {
+		fmt.Println("AddContact: Invalid phone number:", contact.Phone)
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Phone number must be 11 digits starting with 09"})
+		return
+	}
+
+	// بررسی وجود مخاطب با شماره تلفن
+	var existingContact models.Contact
+	if err := c.db.Where("phone = ? AND user_id = ?", contact.Phone, userModel.ID).First(&existingContact).Error; err == nil {
+		fmt.Println("AddContact: Contact already exists for phone:", contact.Phone)
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Contact with this phone number already exists"})
 		return
 	}
 
@@ -56,6 +69,7 @@ func (c *ContactController) AddContact(ctx *gin.Context) {
 		// اگر کاربر وجود ندارد، کاربر جدید ایجاد می‌کنیم
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte("default123"), bcrypt.DefaultCost)
 		if err != nil {
+			fmt.Println("AddContact: Error hashing password:", err)
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating user"})
 			return
 		}
@@ -67,20 +81,26 @@ func (c *ContactController) AddContact(ctx *gin.Context) {
 			Role:     "user",
 		}
 		if err := c.db.Create(&newUser).Error; err != nil {
+			fmt.Println("AddContact: Error creating user:", err)
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating user"})
 			return
 		}
 		contact.UserID = newUser.ID
+		fmt.Println("AddContact: Created new user with ID:", newUser.ID)
 	} else {
 		contact.UserID = existingUser.ID
+		fmt.Println("AddContact: Using existing user with ID:", existingUser.ID)
 	}
 
-	contact.UserID = userModel.ID // تنظیم user_id برای ادمین که مخاطب را اضافه کرده
+	// تنظیم user_id برای ادمین که مخاطب را اضافه کرده
+	contact.UserID = userModel.ID
 	if err := c.db.Create(&contact).Error; err != nil {
+		fmt.Println("AddContact: Error creating contact:", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Could not create contact"})
 		return
 	}
 
+	fmt.Println("AddContact: Contact created successfully, ID:", contact.ID)
 	ctx.JSON(http.StatusOK, contact)
 }
 

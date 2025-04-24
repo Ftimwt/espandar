@@ -45,31 +45,34 @@ func InitSocketServer() {
 		values, _ := url.ParseQuery(scUrl.RawQuery)
 		token := values["Authorization"]
 		if len(token) == 0 {
+			log.Println("OnConnect: No token provided")
 			return errors.New("invalid token")
 		}
 
 		userID, err := jwt.ValidateJWT(token[0])
 		if err != nil {
-			log.Print("error socket token on connect: ", err)
+			log.Printf("OnConnect: Invalid token: %v", err)
 			return err
 		}
 
 		db := database.Database()
 		var user models.User
-		tx := db.Where("id=?", userID).Find(&user)
-		if err := tx.Error; err != nil {
-			log.Print("socket on connect: ", err)
+		if err := db.Where("id = ?", userID).First(&user).Error; err != nil {
+			log.Printf("OnConnect: User not found, ID: %d, error: %v", userID, err)
 			return err
 		}
 
-		s.Join(fmt.Sprintf("user_%d", userID))
-		updateUserStatus(fmt.Sprintf("user_%d", userID), true)
-		log.Printf("user %s connected\n", s.ID())
+		roomID := fmt.Sprintf("user_%d", userID)
+		s.Join(roomID)
+		updateUserStatus(roomID, true)
+		log.Printf("OnConnect: User %d connected, joined room: %s", userID, roomID)
 		return nil
 	})
 
-	Server.OnEvent("/", "send_message", func(s socketio.Conn, msg models.Message) {
-		Server.BroadcastToRoom("/", fmt.Sprintf("user_%d", msg.UserID), "new_message", msg)
+	Server.OnDisconnect("/", func(s socketio.Conn, msg string) {
+		userID := s.ID()
+		log.Printf("OnDisconnect: User %s disconnected: %s", userID, msg)
+		updateUserStatus(userID, false)
 	})
 
 	// تماس خصوصی
@@ -525,6 +528,7 @@ func SocketHandler(w http.ResponseWriter, r *http.Request) {
 
 func BroadcastToUser(userID uint, event string, args ...interface{}) {
 	roomID := fmt.Sprintf("user_%d", userID)
+	log.Printf("BroadcastToUser: Broadcasting to room %s, event: %s, args: %v", roomID, event, args)
 	Server.BroadcastToRoom("/", roomID, event, args...)
 }
 

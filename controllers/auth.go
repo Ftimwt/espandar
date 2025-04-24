@@ -40,14 +40,48 @@ func (ac *AuthController) SignUp(c *gin.Context) {
 		return
 	}
 
-	// بررسی یونیک بودن شماره تلفن
+	// بررسی وجود کاربر با شماره تلفن
 	var existingUser models.User
 	if err := ac.db.Where("phone = ?", input.Phone).First(&existingUser).Error; err == nil {
-		fmt.Println("SignUp: Phone number already exists:", input.Phone)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone number already exists"})
-		return
+		// بررسی اینکه آیا کاربر توسط ادمین ایجاد شده است
+		defaultPassword := "default123"
+		if bcrypt.CompareHashAndPassword([]byte(existingUser.Password), []byte(defaultPassword)) == nil {
+			// کاربر توسط ادمین ایجاد شده است، اطلاعات را به‌روزرسانی می‌کنیم
+			fmt.Println("SignUp: Found user created by admin, updating user:", input.Phone)
+			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+			if err != nil {
+				fmt.Println("SignUp: Error hashing password:", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error hashing password"})
+				return
+			}
+
+			existingUser.Username = input.Username
+			existingUser.Password = string(hashedPassword)
+			if err := ac.db.Save(&existingUser).Error; err != nil {
+				fmt.Println("SignUp: Error updating user:", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating user"})
+				return
+			}
+
+			token, err := jwt.Generate(&existingUser)
+			if err != nil {
+				fmt.Println("SignUp: Error generating token:", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
+				return
+			}
+
+			fmt.Println("SignUp: User updated and logged in, token:", token)
+			c.JSON(http.StatusOK, gin.H{"token": token})
+			return
+		} else {
+			// کاربر وجود دارد و توسط ادمین ایجاد نشده است
+			fmt.Println("SignUp: Phone number already exists:", input.Phone)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Phone number already exists"})
+			return
+		}
 	}
 
+	// ایجاد کاربر جدید
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
 		fmt.Println("SignUp: Error hashing password:", err)
