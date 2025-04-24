@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-d
 import axios from 'axios';
 import Auth from './components/Auth/Auth';
 import Contacts from './components/Contacts/Contacts';
-import Chat from './components/Chat/Chat';
+import Chat from './components/Chat/Chat'; // اضافه کردن import Chat
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
@@ -99,12 +99,14 @@ function App() {
           path="/chat/user/:id"
           element={
             isAuthenticated ? (
-              <Chat token={token} />
+              <Chat />
             ) : (
               <Navigate to="/" />
             )
           }
         />
+        {/* اضافه کردن مسیر پیش‌فرض برای مدیریت مسیرهای نامعتبر */}
+        <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>
   );

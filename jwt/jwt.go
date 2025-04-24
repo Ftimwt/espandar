@@ -46,7 +46,7 @@ func Generate(user *models.User) (string, error) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "",
 			Subject:   fmt.Sprintf("%d", user.ID),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 24)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 24 * 30)),
 			ID:        fmt.Sprintf("%d", user.ID),
 		},
 	}
@@ -60,20 +60,20 @@ func Generate(user *models.User) (string, error) {
 }
 
 func ValidateJWT(tokenString string) (uint, error) {
-	fmt.Println("ValidateJWT: Parsing token:", tokenString[:10]+"...") // لاگ‌گذاری (فقط 10 کاراکتر اول برای امنیت)
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		fmt.Println("ValidateJWT: Signing method:", token.Method.Alg()) // لاگ‌گذاری
+	fmt.Println("ValidateJWT: Parsing token:", tokenString[:10]+"...")
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		fmt.Println("ValidateJWT: Signing method:", token.Method.Alg())
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			fmt.Println("ValidateJWT: Invalid signing method:", token.Method.Alg())
-			return nil, errors.New("unauthorized")
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-		fmt.Println("ValidateJWT: Using jwtSecret:", string(jwtSecret)) // لاگ‌گذاری
+		fmt.Println("ValidateJWT: Using jwtSecret:", string(jwtSecret))
 		return jwtSecret, nil
 	})
 
 	if err != nil {
 		fmt.Println("ValidateJWT: Parse error:", err)
-		return 0, err
+		return 0, fmt.Errorf("failed to parse token: %v", err)
 	}
 
 	if !token.Valid {
@@ -81,20 +81,15 @@ func ValidateJWT(tokenString string) (uint, error) {
 		return 0, errors.New("forbidden")
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
+	claims, ok := token.Claims.(*Claims)
 	if !ok {
 		fmt.Println("ValidateJWT: Invalid claims")
-		return 0, errors.New("forbidden")
+		return 0, errors.New("invalid claims")
 	}
 
-	userID, ok := claims["user_id"].(float64)
-	if !ok {
-		fmt.Println("ValidateJWT: Invalid user_id in claims")
-		return 0, errors.New("invalid user_id")
-	}
-
-	fmt.Println("ValidateJWT: UserID:", uint(userID))
-	return uint(userID), nil
+	userID := claims.UserID
+	fmt.Println("ValidateJWT: UserID:", userID)
+	return userID, nil
 }
 
 func JWTAuthMiddleware(db *gorm.DB) gin.HandlerFunc {

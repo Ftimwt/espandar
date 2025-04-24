@@ -32,7 +32,6 @@ func NewMessageController(db *gorm.DB, broadcaster Broadcaster) *MessageControll
 
 func (mc *MessageController) SendMessage(c *gin.Context) {
 	var formData dto.Message
-
 	if err := c.ShouldBind(&formData); err != nil {
 		log.Println("SendMessage: Error binding form data:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
@@ -41,6 +40,20 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 
 	receiverType := c.Param("receiver_type")
 	receiverID := c.Param("receiver_id")
+
+	// اعتبارسنجی اولیه
+	if receiverID == "" || receiverID == "undefined" {
+		log.Printf("SendMessage: Invalid receiver ID: %s", receiverID)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "receiver ID cannot be empty or undefined"})
+		return
+	}
+
+	receiverIDUint, err := strconv.Atoi(receiverID)
+	if err != nil {
+		log.Printf("SendMessage: Invalid receiver ID format: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver ID format"})
+		return
+	}
 
 	formContent, err := c.MultipartForm()
 	if err != nil {
@@ -70,13 +83,6 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error encrypting message"})
 			return
 		}
-	}
-
-	receiverIDUint, err := strconv.Atoi(receiverID)
-	if err != nil {
-		log.Println("SendMessage: Invalid receiver ID:", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver id"})
-		return
 	}
 
 	user, _ := c.MustGet("user").(*models.User)
@@ -165,6 +171,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		log.Printf("SendMessage: Broadcasting to user %d, event: new_message", receiverUser.ID)
 		mc.broadcaster.BroadcastToUser(receiverUser.ID, "new_message", message)
 	}
+
 	files := formContent.File["files"]
 	if len(files) > 0 {
 		for _, fileHeader := range files {
@@ -218,11 +225,20 @@ func (mc *MessageController) FileType(fileName string) models.FileType {
 
 func (mc *MessageController) GetMessages(c *gin.Context) {
 	userID := c.MustGet("user").(*models.User).ID
-
 	receiverType := c.Param("receiver_type")
-	receiverID, err := strconv.Atoi(c.Param("receiver_id"))
+	receiverIDStr := c.Param("receiver_id")
+
+	// اعتبارسنجی اولیه
+	if receiverIDStr == "" || receiverIDStr == "undefined" {
+		log.Printf("GetMessages: Invalid receiver ID: %s", receiverIDStr)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "receiver ID cannot be empty or undefined"})
+		return
+	}
+
+	receiverID, err := strconv.Atoi(receiverIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver id"})
+		log.Printf("GetMessages: Invalid receiver ID format: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver ID format"})
 		return
 	}
 

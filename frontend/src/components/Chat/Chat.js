@@ -1,30 +1,74 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import io from 'socket.io-client';
 import EmojiPicker from 'emoji-picker-react';
 import './Chat.css';
 
-const Chat = ({ receiverId }) => {
+const Chat = () => {
+    const { id } = useParams();
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const [error, setError] = useState('');
-    const [socket, setSocket] = useState(null);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [selectedFiles, setSelectedFiles] = useState([]);
     const [recording, setRecording] = useState(false);
     const [mediaRecorder, setMediaRecorder] = useState(null);
     const [audioChunks, setAudioChunks] = useState([]);
+    const [socket, setSocket] = useState(null); // ذخیره socket در state
     const token = localStorage.getItem('token');
     const messagesEndRef = useRef(null);
 
+    // اعتبارسنجی id
+    useEffect(() => {
+        if (!id || isNaN(id)) {
+            setError('شناسه کاربر نامعتبر است');
+            console.error('Chat: Invalid receiverId:', id);
+        }
+    }, [id]);
+
     // اتصال به WebSocket
     useEffect(() => {
+        if (!token) {
+            setError('توکن ورود یافت نشد');
+            console.error('Chat: No token found');
+            return;
+        }
+
+        console.log('Chat: Attempting WebSocket connection with token:', token);
+
         const newSocket = io('http://localhost:8080', {
             query: { Authorization: token },
+            transports: ['websocket'],
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 3000,
         });
+
+        setSocket(newSocket); // ذخیره socket در state
 
         newSocket.on('connect', () => {
             console.log('Chat: Connected to WebSocket');
+        });
+
+        newSocket.on('connect_error', (err) => {
+            console.error('Chat: WebSocket connection error:', {
+                message: err.message,
+                description: err.description,
+                context: err.context,
+                status: err.status,
+            });
+            setError(`خطا در اتصال به سرور: ${err.message}`); // اصلاح استفاده از backticks
+        });
+
+        newSocket.on('error', (err) => {
+            console.error('Chat: WebSocket server error:', {
+                message: err.message,
+                description: err.description,
+                context: err.context,
+                status: err.status,
+            });
+            setError(`خطا در سرور: ${err.message}`); // اصلاح استفاده از backticks
         });
 
         newSocket.on('new_message', (message) => {
@@ -45,42 +89,44 @@ const Chat = ({ receiverId }) => {
             ]);
         });
 
-        newSocket.on('error', (err) => {
-            console.error('Chat: WebSocket error:', err);
-            setError('خطا در اتصال به سرور');
-        });
-
-        setSocket(newSocket);
-
         return () => {
             newSocket.disconnect();
             console.log('Chat: Disconnected from WebSocket');
+            setSocket(null);
         };
     }, [token]);
 
     // بارگذاری پیام‌های اولیه
     useEffect(() => {
         const fetchMessages = async () => {
+            if (!id || isNaN(id)) {
+                setError('شناسه کاربر نامعتبر است');
+                return;
+            }
             try {
-                console.log('Chat: Fetching messages for receiver:', receiverId);
+                console.log('Chat: Fetching messages for receiver:', id);
                 const response = await axios.get(
-                    `http://localhost:8080/messages/user/${receiverId}`,
+                    `http://localhost:8080/messages/user/${id}`, // اصلاح استفاده از backticks
                     {
                         headers: {
-                            Authorization: `Bearer ${token}`,
+                            Authorization: `Bearer ${token}`, // اصلاح استفاده از backticks
                         },
                     }
                 );
                 console.log('Chat: Messages response:', response.data);
                 setMessages(response.data);
             } catch (error) {
-                console.error('Chat: Error fetching messages:', error);
+                console.error('Chat: Error fetching messages:', {
+                    message: error.message,
+                    response: error.response?.data,
+                    status: error.response?.status,
+                });
                 setError('خطا در بارگذاری پیام‌ها');
             }
         };
 
         fetchMessages();
-    }, [receiverId, token]);
+    }, [id, token]);
 
     // اسکرول به پایین پیام‌ها
     useEffect(() => {
@@ -131,27 +177,24 @@ const Chat = ({ receiverId }) => {
 
     // ارسال پیام (متن، فایل، یا ویس)
     const handleSendMessage = async () => {
+        if (!id || isNaN(id)) {
+            setError('شناسه کاربر نامعتبر است');
+            return;
+        }
         try {
             const formData = new FormData();
-
-            // افزودن متن (در صورت وجود)
             if (newMessage.trim()) {
                 formData.append('content', newMessage);
             }
-
-            // افزودن فایل‌ها (در صورت وجود)
             if (selectedFiles.length > 0) {
                 for (let i = 0; i < selectedFiles.length; i++) {
                     formData.append('files', selectedFiles[i]);
                 }
             }
-
-            // افزودن ویس (در صورت وجود)
             if (audioChunks.length > 0) {
                 const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                 formData.append('files', audioBlob, 'voice.webm');
             }
-
             if (!newMessage.trim() && selectedFiles.length === 0 && audioChunks.length === 0) {
                 setError('پیام، فایل یا ویس نمی‌تواند خالی باشد');
                 console.log('Chat: Empty message/files/voice');
@@ -160,39 +203,55 @@ const Chat = ({ receiverId }) => {
 
             console.log('Chat: Sending message/files/voice');
             const response = await axios.post(
-                `http://localhost:8080/message/user/${receiverId}`,
+                `http://localhost:8080/message/user/${id}`, // اصلاح استفاده از backticks
                 formData,
                 {
                     headers: {
-                        Authorization: `Bearer ${token}`,
+                        Authorization: `Bearer ${token}`, // اصلاح استفاده از backticks
                         'Content-Type': 'multipart/form-data',
                     },
                 }
             );
             console.log('Chat: Send response:', response.data);
 
-            // اضافه کردن پیام به لیست
+            // ارسال پیام از طریق WebSocket
+            if (socket) {
+                socket.emit('send_message', {
+                    id: response.data.message_id,
+                    content: newMessage || '',
+                    sender_id: parseInt(localStorage.getItem('user_id')),
+                    receiver_id: parseInt(id),
+                });
+            }
+
             setMessages((prevMessages) => [
                 ...prevMessages,
                 {
                     id: response.data.message_id,
                     content: newMessage || '',
                     sender_id: parseInt(localStorage.getItem('user_id')),
-                    receiver_id: parseInt(receiverId),
+                    receiver_id: parseInt(id),
                     created_at: new Date().toISOString(),
                     seen: false,
                     is_received: false,
                     type: newMessage.trim() ? 'text' : 'file',
                     files: selectedFiles.length > 0 || audioChunks.length > 0
-                        ? Array.from(selectedFiles).map((file) => ({
-                              FilePath: `./Uploads/${file.name}`,
-                              Type: file.name.endsWith('.mp3') || file.name.endsWith('.wav') || file.name === 'voice.webm'
-                                  ? 'voice'
-                                  : file.name.endsWith('.mp4') || file.name.endsWith('.webm')
-                                  ? 'video'
-                                  : file.name.endsWith('.jpg') || file.name.endsWith('.png') || file.name.endsWith('.jpeg')
-                                  ? 'picture'
-                                  : 'default',
+                        ? Array.from(selectedFiles).concat(
+                              audioChunks.length > 0 ? [{ name: 'voice.webm' }] : []
+                          ).map((file) => ({
+                              FilePath: `./Uploads/${file.name}`, // اصلاح استفاده از backticks
+                              Type:
+                                  file.name.endsWith('.mp3') ||
+                                  file.name.endsWith('.wav') ||
+                                  file.name === 'voice.webm'
+                                      ? 'voice'
+                                      : file.name.endsWith('.mp4') || file.name.endsWith('.webm')
+                                      ? 'video'
+                                      : file.name.endsWith('.jpg') ||
+                                        file.name.endsWith('.png') ||
+                                        file.name.endsWith('.jpeg')
+                                      ? 'picture'
+                                      : 'default',
                           }))
                         : [],
                 },
@@ -209,15 +268,15 @@ const Chat = ({ receiverId }) => {
                 status: error.response?.status,
             });
             setError(
-                error.response?.data?.error ||
-                ` خطا در ارسال پیام: ${error.message}`
+                error.response?.data?.error || `خطا در ارسال پیام: ${error.message}` // اصلاح استفاده از backticks
             );
         }
     };
 
     return (
         <div className="chat-container">
-            <h2>چت با کاربر {receiverId}</h2>
+            <h2>چت با کاربر {id}</h2>
+            <p>تست رندر صفحه چت</p>
             {error && <p className="error">{error}</p>}
             <div className="messages">
                 {messages.length === 0 ? (

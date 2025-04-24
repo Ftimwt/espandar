@@ -37,30 +37,42 @@ var rooms = make(map[string]*webrtc.Room)
 
 func InitSocketServer() {
 	Server = socketio.NewServer(nil)
+	log.Println("socket.io server initialized")
 
 	go Server.Serve()
 
 	Server.OnConnect("/", func(s socketio.Conn) error {
 		scUrl := s.URL()
-		values, _ := url.ParseQuery(scUrl.RawQuery)
+		values, err := url.ParseQuery(scUrl.RawQuery)
+		if err != nil {
+			log.Printf("OnConnect: Failed to parse query: %v", err)
+			return fmt.Errorf("failed to parse query: %v", err)
+		}
 		token := values["Authorization"]
+		log.Printf("OnConnect: Received token: %v", token)
 		if len(token) == 0 {
 			log.Println("OnConnect: No token provided")
-			return errors.New("invalid token")
+			return errors.New("no token provided")
 		}
 
 		userID, err := jwt.ValidateJWT(token[0])
 		if err != nil {
-			log.Printf("OnConnect: Invalid token: %v", err)
-			return err
+			log.Printf("OnConnect: Invalid token: %v, token: %s", err, token[0][:10]+"...")
+			return fmt.Errorf("invalid token: %v", err)
 		}
+		log.Printf("OnConnect: Validated userID: %d", userID)
 
 		db := database.Database()
+		if db == nil {
+			log.Println("OnConnect: Database connection is nil")
+			return errors.New("database connection failed")
+		}
 		var user models.User
 		if err := db.Where("id = ?", userID).First(&user).Error; err != nil {
 			log.Printf("OnConnect: User not found, ID: %d, error: %v", userID, err)
-			return err
+			return fmt.Errorf("user not found: %v", err)
 		}
+		log.Printf("OnConnect: Found user: %+v", user)
 
 		roomID := fmt.Sprintf("user_%d", userID)
 		s.Join(roomID)
@@ -69,10 +81,12 @@ func InitSocketServer() {
 		return nil
 	})
 
+	Server.OnError("/", func(s socketio.Conn, e error) {
+		log.Printf("OnError: WebSocket error for connection %s: %v", s.ID(), e)
+	})
+
 	Server.OnDisconnect("/", func(s socketio.Conn, msg string) {
-		userID := s.ID()
-		log.Printf("OnDisconnect: User %s disconnected: %s", userID, msg)
-		updateUserStatus(userID, false)
+		log.Printf("OnDisconnect: Connection %s disconnected, reason: %s", s.ID(), msg)
 	})
 
 	// تماس خصوصی
