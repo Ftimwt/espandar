@@ -18,11 +18,11 @@ func Database() *gorm.DB {
 			log.Fatalf("Failed to connect to database: %v", err)
 		}
 		log.Println("Database connection established")
-	}
 
-	if err := db.AutoMigrate(&models.User{}, &models.Message{}, &models.Channel{}, &models.Group{}, &models.File{}, &models.Contact{}, &models.Chat{}); err != nil {
-		log.Fatalf("Failed to auto-migrate models: %v", err)
+		if err := db.AutoMigrate(&models.User{}, &models.Message{}, &models.Channel{}, &models.Group{}, &models.File{}, &models.Contact{}, &models.Chat{}); err != nil {
+			log.Fatalf("Failed to auto-migrate models: %v", err)
+		}
+		log.Println("Database migration completed")
 	}
-	log.Println("Database migration completed")
 	return db
 }

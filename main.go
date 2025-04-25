@@ -7,6 +7,7 @@ import (
 	"espandar/routes"
 	"espandar/websocket"
 	"fmt"
+	"log"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -14,7 +15,6 @@ import (
 )
 
 func main() {
-	// لود فایل .env
 	if err := godotenv.Load(); err != nil {
 		fmt.Println("Error loading .env file")
 	}
@@ -26,32 +26,31 @@ func main() {
 
 	r := gin.Default()
 
-	// تنظیم CORS
 	r.Use(cors.New(cors.Config{
-		AllowAllOrigins:  true,
+		AllowOrigins:     []string{"http://localhost:3000"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
+		MaxAge:           12 * 60 * 60,
 	}))
 
-	// مقداردهی JWT
 	jwt.InitJWT()
 
-	// ایجاد Broadcaster
 	broadcaster := &websocket.SocketBroadcaster{}
 
-	// ایجاد Controllerها
 	authController := controllers.NewAuthController(db)
 	messageController := controllers.NewMessageController(db, broadcaster)
 	channelController := controllers.NewChannelController(db)
 	groupController := controllers.NewGroupController(db)
 	contactController := controllers.NewContactController(db)
 
-	// تنظیم روت‌ها
 	routes.SetupRoutes(r, db, authController, messageController, channelController, groupController, contactController)
 
-	websocket.InitSocketServer()
+	// مسیر WebSocket
+	r.GET("/ws", func(c *gin.Context) {
+		websocket.SocketHandler(c.Writer, c.Request)
+	})
 
-	r.Run(":8080")
+	log.Fatal(r.Run(":8080"))
 }

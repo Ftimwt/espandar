@@ -3,17 +3,14 @@ package routes
 import (
 	"espandar/controllers"
 	"espandar/jwt"
-	"espandar/websocket"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-// SetupRoutes تنظیم مسیرهای برنامه
 func SetupRoutes(
 	r *gin.Engine,
-	db *gorm.DB, // اضافه کردن db
+	db *gorm.DB,
 	authCtrl *controllers.AuthController,
 	messageCtrl *controllers.MessageController,
 	channelCtrl *controllers.ChannelController,
@@ -22,31 +19,22 @@ func SetupRoutes(
 ) {
 	r.Static("/static", "./static")
 
-	// مسیرهای بدون نیاز به احراز هویت
-	r.POST("/signup", authCtrl.SignUp)            // ثبت‌نام کاربر عادی
-	r.POST("/login", authCtrl.Login)              // ورود کاربر عادی
-	r.POST("/admin/signup", authCtrl.AdminSignUp) // ثبت‌نام ادمین
-	r.POST("/admin/login", authCtrl.AdminLogin)   // ورود ادمین
+	r.POST("/signup", authCtrl.SignUp)
+	r.POST("/login", authCtrl.Login)
+	r.POST("/admin/signup", authCtrl.AdminSignUp)
+	r.POST("/admin/login", authCtrl.AdminLogin)
 
-	// گروه مسیرهای احراز هویت‌شده
 	protected := r.Group("/")
-	protected.Use(jwt.JWTAuthMiddleware(db)) // پاس دادن db
+	protected.Use(jwt.JWTAuthMiddleware(db))
 	{
-		// پروفایل کاربر
 		protected.GET("/profile", authCtrl.GetProfile)
 		protected.PUT("/profile", authCtrl.UpdateProfile)
 		protected.POST("/signout", authCtrl.SignOut)
-
-		// دریافت لیست کاربران (برای ادمین و کاربران عادی)
-		protected.GET("/users", authCtrl.GetUsers) // دریافت لیست کاربران برای چت
-
-		// پیام‌ها
+		protected.GET("/users", authCtrl.GetUsers)
 		protected.POST("/message/:receiver_type/:receiver_id", messageCtrl.SendMessage)
 		protected.GET("/messages/:receiver_type/:receiver_id", messageCtrl.GetMessages)
 		protected.PUT("/message/:message_id", messageCtrl.UpdateMessage)
 		protected.DELETE("/message/:message_id", messageCtrl.DeleteMessage)
-
-		// کانال‌ها
 		protected.POST("/channel", channelCtrl.CreateChannel)
 		protected.POST("/channels/with-members", channelCtrl.CreateChannelWithMembers)
 		protected.POST("/channel/:channel_id/user/:user_id", channelCtrl.AddMemberToChannel)
@@ -54,8 +42,6 @@ func SetupRoutes(
 		protected.GET("/channels", channelCtrl.GetChannels)
 		protected.GET("/channel/:id", channelCtrl.GetChannel)
 		protected.DELETE("/channel/:channel_id", channelCtrl.DeleteChannel)
-
-		// گروه‌ها
 		protected.POST("/group", groupCtrl.CreateGroup)
 		protected.POST("/groups/with-members", groupCtrl.CreateGroupWithMembers)
 		protected.POST("/group/:group_id/user/:user_id", groupCtrl.AddMemberToGroup)
@@ -63,23 +49,16 @@ func SetupRoutes(
 		protected.GET("/groups", groupCtrl.GetGroups)
 		protected.GET("/group/:id", groupCtrl.GetGroup)
 		protected.DELETE("/group/:group_id", groupCtrl.DeleteGroup)
-
-		// کانتکت‌ها
-		protected.GET("/contacts", contactController.GetContacts) // دریافت لیست کانتکت‌ها
+		protected.GET("/contacts", contactController.GetContacts)
 	}
 
-	// مسیرهای مخصوص ادمین
 	adminProtected := r.Group("/admin")
-	adminProtected.Use(jwt.JWTAuthMiddleware(db)) // پاس دادن db
+	adminProtected.Use(jwt.JWTAuthMiddleware(db))
 	{
-		adminProtected.GET("/user/:id", authCtrl.GetUserByID)          // دریافت اطلاعات خاص یک کاربر
-		adminProtected.PUT("/user/:id", authCtrl.UpdateUser)           // به‌روزرسانی اطلاعات یک کاربر
-		adminProtected.DELETE("/user/:id", authCtrl.DeleteUser)        // حذف یک کاربر
-		adminProtected.POST("/users", authCtrl.AddUser)                // اضافه کردن کاربر جدید
-		adminProtected.POST("/contacts", contactController.AddContact) // افزودن کانتکت جدید
+		adminProtected.GET("/user/:id", authCtrl.GetUserByID)
+		adminProtected.PUT("/user/:id", authCtrl.UpdateUser)
+		adminProtected.DELETE("/user/:id", authCtrl.DeleteUser)
+		adminProtected.POST("/users", authCtrl.AddUser)
+		adminProtected.POST("/contacts", contactController.AddContact)
 	}
-
-	// مسیر WebSocket
-	r.GET("/socket.io/*any", gin.WrapH(http.HandlerFunc(websocket.SocketHandler)))
-	r.POST("/socket.io/*any", gin.WrapH(http.HandlerFunc(websocket.SocketHandler)))
 }

@@ -10,7 +10,7 @@ import (
 func (r *Room) ConnectRoom(sender MessageSender, userData UserConnData) {
 	peerConnection, err := webrtc.NewPeerConnection(r.config)
 	if err != nil {
-		log.Printf("Creating peer connection error: %v\n", err)
+		log.Printf("ConnectRoom: Creating peer connection error: %v", err)
 		return
 	}
 
@@ -18,7 +18,7 @@ func (r *Room) ConnectRoom(sender MessageSender, userData UserConnData) {
 		if _, err := peerConnection.AddTransceiverFromKind(typ, webrtc.RTPTransceiverInit{
 			Direction: webrtc.RTPTransceiverDirectionSendrecv,
 		}); err != nil {
-			log.Printf("Error adding transceiver %d: %v", typ, err)
+			log.Printf("ConnectRoom: Error adding transceiver %d: %v", typ, err)
 			return
 		}
 	}
@@ -37,7 +37,7 @@ func (r *Room) ConnectRoom(sender MessageSender, userData UserConnData) {
 			return
 		}
 		candidate, _ := json.Marshal(i.ToJSON())
-		log.Printf("Sending candidate for %s: %s", userData.MemberID, candidate)
+		log.Printf("ConnectRoom: Sending candidate for %s: %s", userData.MemberID, candidate)
 		peer.Sender.Emit("signal", WebsocketMessage{
 			Event: "candidate",
 			Data:  string(candidate),
@@ -45,7 +45,7 @@ func (r *Room) ConnectRoom(sender MessageSender, userData UserConnData) {
 	})
 
 	peerConnection.OnConnectionStateChange(func(pcs webrtc.PeerConnectionState) {
-		log.Println("Connection state for", userData.MemberID, ":", pcs.String())
+		log.Printf("ConnectRoom: Connection state for %s: %s", userData.MemberID, pcs.String())
 		if pcs == webrtc.PeerConnectionStateFailed || pcs == webrtc.PeerConnectionStateClosed {
 			r.RemovePeer(peer.ID)
 			peerConnection.Close()
@@ -53,7 +53,7 @@ func (r *Room) ConnectRoom(sender MessageSender, userData UserConnData) {
 	})
 
 	peerConnection.OnTrack(func(tr *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
-		log.Println("New track received for user:", userData.MemberID)
+		log.Printf("ConnectRoom: New track received for user: %s", userData.MemberID)
 		trackLocal := r.AddTrack(tr, userData.MemberID)
 		if trackLocal == nil {
 			return
@@ -63,11 +63,11 @@ func (r *Room) ConnectRoom(sender MessageSender, userData UserConnData) {
 		for {
 			i, _, err := tr.Read(buf)
 			if err != nil {
-				log.Println("Track read error:", err)
+				log.Printf("ConnectRoom: Track read error: %v", err)
 				return
 			}
 			if _, err = trackLocal.Write(buf[:i]); err != nil {
-				log.Println("Track write error:", err)
+				log.Printf("ConnectRoom: Track write error: %v", err)
 				return
 			}
 		}

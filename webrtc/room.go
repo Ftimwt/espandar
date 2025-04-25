@@ -36,6 +36,8 @@ type WebsocketMessage struct {
 	Data  interface{} `json:"data"`
 }
 
+var Rooms = make(map[string]*Room)
+
 func NewRoom() *Room {
 	return &Room{
 		Peers:  make(map[string]*Peer),
@@ -65,7 +67,7 @@ func (r *Room) AddTrack(t *webrtc.TrackRemote, id string) *webrtc.TrackLocalStat
 	defer r.mu.Unlock()
 	trackLocal, err := webrtc.NewTrackLocalStaticRTP(t.Codec().RTPCodecCapability, id, "stream")
 	if err != nil {
-		log.Printf("Error creating local track: %v", err)
+		log.Printf("AddTrack: Error creating local track: %v", err)
 		return nil
 	}
 	r.Tracks[id] = trackLocal
