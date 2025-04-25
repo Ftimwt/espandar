@@ -111,8 +111,8 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	case "user":
 		message.UserID = receiverUser.ID
 		log.Printf("SendMessage: Checking chat between User %d and User %d", user.ID, receiverUser.ID)
-		if err := mc.db.Where("user_id_1 = ? AND user_id_2 = ?", user.ID, receiverUser.ID).
-			Or("user_id_1 = ? AND user_id_2 = ?", receiverUser.ID, user.ID).
+		if err := mc.db.Where("user_id1 = ? AND user_id2 = ?", user.ID, receiverUser.ID).
+			Or("user_id1 = ? AND user_id2 = ?", receiverUser.ID, user.ID).
 			First(&chat).Error; err != nil {
 			log.Println("SendMessage: Creating new chat")
 			chat = models.Chat{
@@ -168,8 +168,9 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	}
 
 	if receiverType == "user" {
-		log.Printf("SendMessage: Broadcasting to user %d, event: new_message", receiverUser.ID)
+		log.Printf("SendMessage: Broadcasting to users %d and %d, event: new_message", receiverUser.ID, user.ID)
 		mc.broadcaster.BroadcastToUser(receiverUser.ID, "new_message", message)
+		mc.broadcaster.BroadcastToUser(user.ID, "new_message", message)
 	}
 
 	files := formContent.File["files"]
@@ -256,17 +257,32 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 
 	switch receiverType {
 	case "user":
-		if err := mc.db.Where("(user_id = ? AND sender_id = ?) OR (user_id = ? AND sender_id = ?) AND id > ?", userID, receiverID, receiverID, userID, lastMessageID).Find(&messages).Error; err != nil {
+		var chat models.Chat
+		if err := mc.db.Where("user_id1 = ? AND user_id2 = ?", userID, receiverID).
+			Or("user_id1 = ? AND user_id2 = ?", receiverID, userID).
+			First(&chat).Error; err != nil {
+			log.Printf("GetMessages: Chat not found between users %d and %d: %v", userID, receiverID, err)
+			c.JSON(http.StatusOK, []models.Message{}) // چت وجود ندارد، آرایه خالی برگردان
+			return
+		}
+		if err := mc.db.Where("chat_id = ? AND id > ?", chat.ID, lastMessageID).
+			Preload("Files").
+			Find(&messages).Error; err != nil {
+			log.Printf("GetMessages: Error fetching messages for chat %d: %v", chat.ID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 			return
 		}
 	case "group":
-		if err := mc.db.Where("group_id = ? AND id > ?", receiverID, lastMessageID).Find(&messages).Error; err != nil {
+		if err := mc.db.Where("group_id = ? AND id > ?", receiverID, lastMessageID).
+			Preload("Files").
+			Find(&messages).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 			return
 		}
 	case "channel":
-		if err := mc.db.Where("channel_id = ? AND id > ?", receiverID, lastMessageID).Find(&messages).Error; err != nil {
+		if err := mc.db.Where("channel_id = ? AND id > ?", receiverID, lastMessageID).
+			Preload("Files").
+			Find(&messages).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 			return
 		}
@@ -278,16 +294,13 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 	isOnline := userStatus[fmt.Sprintf("user_%d", receiverID)]
 
 	for i := range messages {
-		if messages[i].UserID == userID {
-			messages[i].IsReceived = isOnline
-			messages[i].Seen = messages[i].Seen || isOnline
-		} else {
-			messages[i].IsReceived = false
-			messages[i].Seen = false
+		if messages[i].SenderID != userID {
+			messages[i].IsReceived = true
+			messages[i].Seen = isOnline
 		}
-
 		decryptedContent, err := aesCipher.Decrypt(messages[i].Content)
 		if err != nil {
+			log.Printf("GetMessages: Error decrypting message %d: %v", messages[i].ID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error decrypting message"})
 			return
 		}
@@ -296,10 +309,13 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 
 	for _, message := range messages {
 		if err := mc.db.Model(&message).Updates(models.Message{IsReceived: message.IsReceived, Seen: message.Seen}).Error; err != nil {
+			log.Printf("GetMessages: Error updating message %d status: %v", message.ID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error updating message status"})
 			return
 		}
 	}
+
+	log.Printf("GetMessages: Fetched %d messages for user %d, receiver %d", len(messages), userID, receiverID)
 	c.JSON(http.StatusOK, messages)
 }
 

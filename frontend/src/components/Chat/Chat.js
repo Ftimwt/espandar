@@ -15,7 +15,7 @@ const Chat = () => {
     const [recording, setRecording] = useState(false);
     const [mediaRecorder, setMediaRecorder] = useState(null);
     const [audioChunks, setAudioChunks] = useState([]);
-    const [socket, setSocket] = useState(null); // ذخیره socket در state
+    const [socket, setSocket] = useState(null);
     const token = localStorage.getItem('token');
     const messagesEndRef = useRef(null);
 
@@ -45,7 +45,7 @@ const Chat = () => {
             reconnectionDelay: 3000,
         });
 
-        setSocket(newSocket); // ذخیره socket در state
+        setSocket(newSocket);
 
         newSocket.on('connect', () => {
             console.log('Chat: Connected to WebSocket');
@@ -92,7 +92,6 @@ const Chat = () => {
         return () => {
             newSocket.disconnect();
             console.log('Chat: Disconnected from WebSocket');
-            setSocket(null);
         };
     }, [token]);
 
@@ -175,7 +174,7 @@ const Chat = () => {
         }
     };
 
-    // ارسال پیام (متن، فایل، یا ویس)
+    // ارسال پیام
     const handleSendMessage = async () => {
         if (!id || isNaN(id)) {
             setError('شناسه کاربر نامعتبر است');
@@ -221,6 +220,27 @@ const Chat = () => {
                     content: newMessage || '',
                     sender_id: parseInt(localStorage.getItem('user_id')),
                     receiver_id: parseInt(id),
+                    created_at: new Date().toISOString(),
+                    seen: false,
+                    is_received: false,
+                    type: newMessage.trim() ? 'text' : 'file',
+                    files: selectedFiles.length > 0 || audioChunks.length > 0
+                        ? Array.from(selectedFiles).map((file) => ({
+                              FilePath: `./Uploads/${file.name}`, // اصلاح استفاده از backticks
+                              Type:
+                                  file.name.endsWith('.mp3') ||
+                                  file.name.endsWith('.wav') ||
+                                  file.name === 'voice.webm'
+                                      ? 'voice'
+                                      : file.name.endsWith('.mp4') || file.name.endsWith('.webm')
+                                      ? 'video'
+                                      : file.name.endsWith('.jpg') ||
+                                        file.name.endsWith('.png') ||
+                                        file.name.endsWith('.jpeg')
+                                      ? 'picture'
+                                      : 'default',
+                          }))
+                        : [],
                 });
             }
 
@@ -236,9 +256,7 @@ const Chat = () => {
                     is_received: false,
                     type: newMessage.trim() ? 'text' : 'file',
                     files: selectedFiles.length > 0 || audioChunks.length > 0
-                        ? Array.from(selectedFiles).concat(
-                              audioChunks.length > 0 ? [{ name: 'voice.webm' }] : []
-                          ).map((file) => ({
+                        ? Array.from(selectedFiles).map((file) => ({
                               FilePath: `./Uploads/${file.name}`, // اصلاح استفاده از backticks
                               Type:
                                   file.name.endsWith('.mp3') ||
@@ -276,7 +294,6 @@ const Chat = () => {
     return (
         <div className="chat-container">
             <h2>چت با کاربر {id}</h2>
-            <p>تست رندر صفحه چت</p>
             {error && <p className="error">{error}</p>}
             <div className="messages">
                 {messages.length === 0 ? (

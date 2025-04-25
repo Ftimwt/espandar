@@ -4,11 +4,11 @@ import (
 	"errors"
 	"espandar/models"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/caarlos0/env/v6"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
@@ -26,13 +26,11 @@ type Config struct {
 var jwtSecret []byte
 
 func InitJWT() {
-	cfg := Config{}
-	if err := env.Parse(&cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to load environment variables: %v\n", err)
-		os.Exit(1)
+	jwtSecret = []byte(os.Getenv("jwt_secret"))
+	if len(jwtSecret) == 0 {
+		log.Fatal("JWT secret is not set")
 	}
-	jwtSecret = []byte(cfg.JwtSecret)
-	fmt.Println("JWT Secret loaded:", cfg.JwtSecret) // لاگ‌گذاری
+	log.Printf("JWT Secret loaded: %s", jwtSecret)
 }
 
 // GetJWTSecret برای دسترسی به jwtSecret از سایر پکیج‌ها

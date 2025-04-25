@@ -2,6 +2,7 @@ package database
 
 import (
 	"espandar/models"
+	"log"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -14,10 +15,14 @@ func Database() *gorm.DB {
 		var err error
 		db, err = gorm.Open(sqlite.Open("espandar.db"), &gorm.Config{})
 		if err != nil {
-			panic(err)
+			log.Fatalf("Failed to connect to database: %v", err)
 		}
+		log.Println("Database connection established")
 	}
 
-	db.AutoMigrate(&models.User{}, &models.Message{}, &models.Channel{}, &models.Group{}, &models.File{}, &models.Contact{}, &models.Chat{})
+	if err := db.AutoMigrate(&models.User{}, &models.Message{}, &models.Channel{}, &models.Group{}, &models.File{}, &models.Contact{}, &models.Chat{}); err != nil {
+		log.Fatalf("Failed to auto-migrate models: %v", err)
+	}
+	log.Println("Database migration completed")
 	return db
 }

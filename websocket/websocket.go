@@ -48,16 +48,16 @@ func InitSocketServer() {
 			log.Printf("OnConnect: Failed to parse query: %v", err)
 			return fmt.Errorf("failed to parse query: %v", err)
 		}
-		token := values["Authorization"]
-		log.Printf("OnConnect: Received token: %v", token)
-		if len(token) == 0 {
+		token := values.Get("Authorization")
+		log.Printf("OnConnect: Received token: %s", token[:10]+"...")
+		if token == "" {
 			log.Println("OnConnect: No token provided")
 			return errors.New("no token provided")
 		}
 
-		userID, err := jwt.ValidateJWT(token[0])
+		userID, err := jwt.ValidateJWT(token)
 		if err != nil {
-			log.Printf("OnConnect: Invalid token: %v, token: %s", err, token[0][:10]+"...")
+			log.Printf("OnConnect: Invalid token: %v, token: %s", err, token[:10]+"...")
 			return fmt.Errorf("invalid token: %v", err)
 		}
 		log.Printf("OnConnect: Validated userID: %d", userID)
@@ -70,6 +70,10 @@ func InitSocketServer() {
 		var user models.User
 		if err := db.Where("id = ?", userID).First(&user).Error; err != nil {
 			log.Printf("OnConnect: User not found, ID: %d, error: %v", userID, err)
+			// برای دیباگ، تمام کاربران را لاگ کنید
+			var users []models.User
+			db.Find(&users)
+			log.Printf("OnConnect: All users in DB: %+v", users)
 			return fmt.Errorf("user not found: %v", err)
 		}
 		log.Printf("OnConnect: Found user: %+v", user)
