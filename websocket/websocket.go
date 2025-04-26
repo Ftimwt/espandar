@@ -35,7 +35,7 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
 		log.Printf("CheckOrigin: Origin=%s", origin)
-		return origin == "http://localhost:3000" // فقط اجازه به کلاینت محلی
+		return true // برای تست، همه Originها را قبول کنید
 	},
 }
 
@@ -180,6 +180,5 @@ func (c *Client) read() {
 		}
 
 		log.Printf("read: Received message from user %d: event=%s", c.userID, message.Event)
-		// در اینجا می‌توانید منطق بیشتری برای مدیریت پیام‌ها اضافه کنید
 	}
 }

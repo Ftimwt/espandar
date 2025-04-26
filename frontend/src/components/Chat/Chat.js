@@ -14,11 +14,12 @@ const Chat = () => {
     const [recording, setRecording] = useState(false);
     const [mediaRecorder, setMediaRecorder] = useState(null);
     const [audioChunks, setAudioChunks] = useState([]);
-    const [socket, setSocket] = useState(null);
     const token = localStorage.getItem('token');
-    const userId = localStorage.getItem('user_id');
+    const userId = parseInt(localStorage.getItem('user_id'), 10);
     const messagesEndRef = useRef(null);
+    const socketRef = useRef(null); // استفاده از useRef برای socket
 
+    // WebSocket connection with reconnection
     useEffect(() => {
         if (!id || isNaN(id)) {
             setError('شناسه کاربر نامعتبر است');
@@ -32,68 +33,81 @@ const Chat = () => {
             return;
         }
 
-        console.log('Chat: Attempting WebSocket connection with token:', token.slice(0, 10) + '...');
+        if (isNaN(userId)) {
+            setError('شناسه کاربر نامعتبر است');
+            console.error('Chat: Invalid userId:', localStorage.getItem('user_id'));
+            return;
+        }
 
-        const ws = new WebSocket(`ws://localhost:8080/ws?Authorization=${token}`); // اصلاح استفاده از backticks
-        setSocket(ws);
+        const connectWebSocket = () => {
+            console.log('Chat: Attempting WebSocket connection with token:', token.slice(0, 10) + '...');
 
-        ws.onopen = () => {
-            console.log('Chat: WebSocket connected');
+            const ws = new WebSocket(`ws://localhost:8080/ws?Authorization=${token}`);
+            socketRef.current = ws;
+
+            ws.onopen = () => {
+                console.log('Chat: WebSocket connected');
+                setError('');
+            };
+
+            ws.onmessage = (event) => {
+                console.log('Chat: Raw WebSocket message:', event.data);
+                let message;
+                try {
+                    message = JSON.parse(event.data);
+                } catch (err) {
+                    console.error('Chat: Error parsing WebSocket message:', err);
+                    return;
+                }
+                console.log('Chat: Parsed message:', message);
+
+                switch (message.event) {
+                    case 'connect_success':
+                        console.log('Chat: WebSocket connect success:', message.data);
+                        break;
+                    case 'new_message':
+                        console.log('Chat: New message received:', message.data);
+                        setMessages((prevMessages) => [
+                            ...prevMessages,
+                            {
+                                id: message.data.ID,
+                                content: message.data.Content,
+                                sender_id: message.data.SenderID,
+                                receiver_id: message.data.UserID,
+                                created_at: message.data.CreatedAt,
+                                seen: message.data.Seen,
+                                is_received: message.data.IsReceived,
+                                type: message.data.Type,
+                                files: message.data.Files || [],
+                            },
+                        ]);
+                        break;
+                    default:
+                        console.log('Chat: Unknown event:', message.event);
+                }
+            };
+
+            ws.onclose = (event) => {
+                console.log('Chat: WebSocket disconnected, code:', event.code, 'reason:', event.reason);
+                setError('اتصال به سرور قطع شد، در حال تلاش مجدد...');
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = (err) => {
+                console.error('Chat: WebSocket error:', err);
+                setError('خطا در اتصال به سرور');
+            };
         };
 
-        ws.onmessage = (event) => {
-            console.log('Chat: Raw WebSocket message:', event.data);
-            let message;
-            try {
-                message = JSON.parse(event.data);
-            } catch (err) {
-                console.error('Chat: Error parsing WebSocket message:', err);
-                return;
-            }
-            console.log('Chat: Parsed message:', message);
-
-            switch (message.event) {
-                case 'connect_success':
-                    console.log('Chat: WebSocket connect success:', message.data);
-                    break;
-                case 'new_message':
-                    console.log('Chat: New message received:', message.data);
-                    setMessages((prevMessages) => [
-                        ...prevMessages,
-                        {
-                            id: message.data.ID,
-                            content: message.data.Content,
-                            sender_id: message.data.SenderID,
-                            receiver_id: message.data.UserID,
-                            created_at: message.data.CreatedAt,
-                            seen: message.data.Seen,
-                            is_received: message.data.IsReceived,
-                            type: message.data.Type,
-                            files: message.data.Files || [],
-                        },
-                    ]);
-                    break;
-                default:
-                    console.log('Chat: Unknown event:', message.event);
-            }
-        };
-
-        ws.onclose = (event) => {
-            console.log('Chat: WebSocket disconnected, code:', event.code, 'reason:', event.reason);
-            setError('اتصال به سرور قطع شد');
-        };
-
-        ws.onerror = (err) => {
-            console.error('Chat: WebSocket error:', err);
-            setError('خطا در اتصال به سرور');
-        };
-
-        return () => {
+        connectWebSocket();return () => {
             console.log('Chat: Closing WebSocket');
-            ws.close();
+            if (socketRef.current) {
+                socketRef.current.close();
+            }
         };
-    }, [token]);
+    }, [token, id, userId]);
 
+    // Fetch messages
     useEffect(() => {
         const fetchMessages = async () => {
             if (!id || isNaN(id)) {
@@ -103,10 +117,10 @@ const Chat = () => {
             try {
                 console.log('Chat: Fetching messages for receiver:', id);
                 const response = await axios.get(
-                    `http://localhost:8080/messages/user/${id}`, // اصلاح استفاده از backticks
+                    `http://localhost:8080/messages/user/${id}`,
                     {
                         headers: {
-                            Authorization: `Bearer ${token}`, // اصلاح استفاده از backticks
+                            Authorization: `Bearer ${token}`,
                         },
                     }
                 );
@@ -125,6 +139,7 @@ const Chat = () => {
         fetchMessages();
     }, [id, token]);
 
+    // Scroll to the latest message
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
@@ -174,20 +189,20 @@ const Chat = () => {
         }
         try {
             const formData = new FormData();
+            let messageType = 'text';
             if (newMessage.trim()) {
                 formData.append('content', newMessage);
-                formData.append('type', 'text');
             }
             if (selectedFiles.length > 0) {
                 for (let i = 0; i < selectedFiles.length; i++) {
                     formData.append('files', selectedFiles[i]);
                 }
-                formData.append('type', 'file');
+                messageType = 'file';
             }
             if (audioChunks.length > 0) {
                 const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                 formData.append('files', audioBlob, 'voice.webm');
-                formData.append('type', 'voice');
+                messageType = 'voice';
             }
             if (!newMessage.trim() && selectedFiles.length === 0 && audioChunks.length === 0) {
                 setError('پیام، فایل یا ویس نمی‌تواند خالی باشد');
@@ -195,33 +210,33 @@ const Chat = () => {
                 return;
             }
 
-            console.log('Chat: Sending message/files/voice');
+            formData.append('type', messageType);console.log('Chat: Sending message/files/voice');
             const response = await axios.post(
-                `http://localhost:8080/message/user/${id}`, // اصلاح استفاده از backticks
+                `http://localhost:8080/message/user/${id}`,
                 formData,
                 {
                     headers: {
-                        Authorization: `Bearer ${token}`, // اصلاح استفاده از backticks
+                        Authorization: `Bearer ${token}`,
                         'Content-Type': 'multipart/form-data',
                     },
                 }
             );
             console.log('Chat: Send response:', response.data);
 
-            setMessages((prevMessages) => [
-                ...prevMessages, 
-                {
-                    id: response.data.message_id,
-                    content: newMessage || '',
-                    sender_id: parseInt(userId),
-                    receiver_id: parseInt(id),
-                    created_at: new Date().toISOString(),
-                    seen: false,
-                    is_received: false,
-                    type: newMessage.trim() ? 'text' : selectedFiles.length > 0 ? 'file' : 'voice',
-                    files: selectedFiles.length > 0 || audioChunks.length > 0
+            // ارسال پیام به WebSocket برای پخش real-time
+            if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+                const messageData = {
+                    ID: response.data.message_id,
+                    Content: newMessage || '',
+                    SenderID: userId,
+                    UserID: parseInt(id, 10),
+                    CreatedAt: new Date().toISOString(),
+                    Seen: false,
+                    IsReceived: false,
+                    Type: messageType,
+                    Files: selectedFiles.length > 0 || audioChunks.length > 0
                         ? Array.from(selectedFiles).map((file) => ({
-                              FilePath: `./Uploads/${file.name}`, // اصلاح استفاده از backticks
+                              FilePath: `./Uploads/${file.name}`,
                               Type:
                                   file.name.endsWith('.mp3') ||
                                   file.name.endsWith('.wav') ||
@@ -236,10 +251,48 @@ const Chat = () => {
                                       : 'default',
                           }))
                         : [],
-                },
-            ]);
+                };
 
-            setNewMessage('');
+                socketRef.current.send(JSON.stringify({
+                    event: 'new_message',
+                    data: messageData,
+                }));
+                console.log('Chat: Sent message to WebSocket:', messageData);
+            } else {
+                console.warn('Chat: WebSocket not connected, cannot send message');
+            }
+
+            // به‌روزرسانی پیام‌ها در UI
+            setMessages((prevMessages) => [
+                ...prevMessages,
+                {
+                    id: response.data.message_id,
+                    content: newMessage || '',
+                    sender_id: userId,
+                    receiver_id: parseInt(id, 10),
+                    created_at: new Date().toISOString(),
+                    seen: false,
+                    is_received: false,
+                    type: messageType,
+                    files: selectedFiles.length > 0 || audioChunks.length > 0
+                        ? Array.from(selectedFiles).map((file) => ({
+                              FilePath: `./Uploads/${file.name}`,
+                              Type:
+                                  file.name.endsWith('.mp3') ||
+                                  file.name.endsWith('.wav') ||
+                                  file.name === 'voice.webm'
+                                  ? 'voice'
+                                  : file.name.endsWith('.mp4') || file.name.endsWith('.webm')
+                                  ? 'video'
+                                  : file.name.endsWith('.jpg') ||
+                                    file.name.endsWith('.png') ||
+                                    file.name.endsWith('.jpeg')
+                                  ? 'picture'
+                                  : 'default',
+                          }))
+                        : [],
+                },
+            ]);setNewMessage('');
             setSelectedFiles([]);
             setAudioChunks([]);
             setError('');
@@ -250,7 +303,7 @@ const Chat = () => {
                 status: error.response?.status,
             });
             setError(
-                error.response?.data?.error || `خطا در ارسال پیام: ${error.message}` // اصلاح استفاده از backticks
+                error.response?.data?.error || `خطا در ارسال پیام: ${error.message}`
             );
         }
     };
@@ -267,7 +320,7 @@ const Chat = () => {
                         <div
                             key={msg.id}
                             className={`message ${
-                                msg.sender_id === parseInt(userId) ? 'sent' : 'received'
+                                msg.sender_id === userId ? 'sent' : 'received'
                             }`}
                         >
                             {msg.content && <p>{msg.content}</p>}
