@@ -1,7 +1,8 @@
 package dto
 
 type Message struct {
-	Content string `json:"content" form:"content" binding:"required"`
+	Content string `json:"content" form:"Content" binding:"omitempty"` // Content اختیاری و مطابق با کلاینت
+	Type    string `json:"type" form:"type" binding:"required"`        // type اجباری
 }
 
 type group struct {

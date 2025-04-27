@@ -33,8 +33,8 @@ func NewMessageController(db *gorm.DB, broadcaster Broadcaster) *MessageControll
 func (mc *MessageController) SendMessage(c *gin.Context) {
 	var formData dto.Message
 	if err := c.ShouldBind(&formData); err != nil {
-		log.Println("SendMessage: Error binding form data:", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+		log.Printf("SendMessage: Error binding form data: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -55,20 +55,22 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	}
 
+	// پردازش دستی multipart/form-data
 	formContent, err := c.MultipartForm()
 	if err != nil {
-		log.Println("SendMessage: Error parsing form:", err)
+		log.Printf("SendMessage: Error parsing form: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unable to parse form"})
 		return
 	}
 
-	content := formContent.Value["content"]
-	messageType := formContent.Value["type"]
-	if len(messageType) == 0 {
-		if len(content) > 0 && content[0] != "" {
-			messageType = []string{"text"}
+	// بررسی Content و type
+	content := formData.Content // از formData استفاده می‌کنیم که از ShouldBind پر شده
+	messageType := formData.Type
+	if messageType == "" {
+		if content != "" {
+			messageType = "text"
 		} else if len(formContent.File["files"]) > 0 {
-			messageType = []string{"file"}
+			messageType = "file"
 		} else {
 			log.Println("SendMessage: No content or file provided")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "content or file is required"})
@@ -76,11 +78,12 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		}
 	}
 
+	// رمزنگاری Content در صورت وجود
 	var encryptedContent string
-	if messageType[0] == "text" && len(content) > 0 && content[0] != "" {
-		encryptedContent, err = aesCipher.Encrypt(content[0])
+	if messageType == "text" && content != "" {
+		encryptedContent, err = aesCipher.Encrypt(content)
 		if err != nil {
-			log.Println("SendMessage: Error encrypting message:", err)
+			log.Printf("SendMessage: Error encrypting message: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error encrypting message"})
 			return
 		}
@@ -92,7 +95,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	var receiverUser models.User
 	if receiverType == "user" {
 		if err := mc.db.Where("id = ?", receiverIDUint).First(&receiverUser).Error; err != nil {
-			log.Println("SendMessage: Receiver not found:", err)
+			log.Printf("SendMessage: Receiver not found: %v", err)
 			c.JSON(http.StatusNotFound, gin.H{"error": "receiver not found"})
 			return
 		}
@@ -101,7 +104,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	message := models.Message{
 		Content:    encryptedContent,
 		SenderID:   user.ID,
-		Type:       messageType[0],
+		Type:       messageType,
 		UserID:     uint(receiverIDUint),
 		IsReceived: false,
 		Seen:       false,
@@ -121,7 +124,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 				UserID2: receiverUser.ID,
 			}
 			if err := mc.db.Create(&chat).Error; err != nil {
-				log.Println("SendMessage: Error creating chat:", err)
+				log.Printf("SendMessage: Error creating chat: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating chat"})
 				return
 			}
@@ -132,7 +135,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		message.GroupID = uint(receiverIDUint)
 		var member models.GroupMember
 		if err := mc.db.Where("group_id = ? AND user_id = ?", receiverIDUint, user.ID).First(&member).Error; err != nil {
-			log.Println("SendMessage: User not a group member:", err)
+			log.Printf("SendMessage: User not a group member: %v", err)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not a group member"})
 			return
 		}
@@ -140,7 +143,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		message.ChannelID = uint(receiverIDUint)
 		var channel models.Channel
 		if err := mc.db.Where("id = ?", receiverIDUint).Preload("Members").First(&channel).Error; err != nil {
-			log.Println("SendMessage: Channel not found:", err)
+			log.Printf("SendMessage: Channel not found: %v", err)
 			c.JSON(http.StatusNotFound, gin.H{"error": "channel not found"})
 			return
 		}
@@ -157,29 +160,30 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 			return
 		}
 	default:
-		log.Println("SendMessage: Invalid receiver type:", receiverType)
+		log.Printf("SendMessage: Invalid receiver type: %s", receiverType)
 		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exist"})
 		return
 	}
 
+	// پردازش فایل‌ها
 	files := formContent.File["files"]
 	var filePaths []models.File
 	if len(files) > 0 {
 		for _, fileHeader := range files {
 			filePath := fmt.Sprintf("./Uploads/%s", fileHeader.Filename)
 			if err := c.SaveUploadedFile(fileHeader, filePath); err != nil {
-				log.Println("SendMessage: Error saving file:", err)
+				log.Printf("SendMessage: Error saving file: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "file doesn't save"})
 				return
 			}
 
 			newFile := models.File{
-				FilePath: fmt.Sprintf("/uploads/%s", fileHeader.Filename), // مسیر قابل دسترسی
+				FilePath: fmt.Sprintf("/Uploads/%s", fileHeader.Filename),
 				Type:     mc.FileType(fileHeader.Filename),
 			}
 
 			if err := mc.db.Create(&newFile).Error; err != nil {
-				log.Println("SendMessage: Error saving file to DB:", err)
+				log.Printf("SendMessage: Error saving file to DB: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to save file"})
 				return
 			}
@@ -189,18 +193,20 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		message.Files = filePaths
 	}
 
+	// ذخیره پیام در دیتابیس
 	if err := mc.db.Create(&message).Error; err != nil {
-		log.Println("SendMessage: Error creating message:", err)
+		log.Printf("SendMessage: Error creating message: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not sent"})
 		return
 	}
 
+	// پاسخ به کلاینت
 	response := gin.H{
-		"message":     "message sent successfully",
 		"message_id":  message.ID,
 		"content":     encryptedContent,
 		"sender_id":   message.SenderID,
 		"receiver_id": message.UserID,
+		"chat_id":     message.ChatID,
 		"created_at":  message.CreatedAt,
 		"seen":        message.Seen,
 		"is_received": message.IsReceived,
@@ -208,6 +214,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		"files":       message.Files,
 	}
 
+	// ارسال به WebSocket
 	if receiverType == "user" {
 		log.Printf("SendMessage: Broadcasting to user %d, event: new_message", receiverUser.ID)
 		mc.broadcaster.BroadcastToUser(receiverUser.ID, "new_message", response)

@@ -50,15 +50,43 @@ const Chat = () => {
   const AES_KEY = 'this_is_a_32_byte_long_key_1234!'; // کلید AES (باید با سرور یکسان باشد)
 
   // تابع رمزگشایی پیام
-  const decryptMessage = (encrypted) => {
-    try {
-      const bytes = CryptoJS.AES.decrypt(encrypted, AES_KEY);
-      return bytes.toString(CryptoJS.enc.Utf8);
-    } catch (err) {
-      console.warn('Chat: Decryption failed:', err);
-      return encrypted; // در صورت خطا، محتوای اصلی را برگردان
+const decryptMessage = (encrypted) => {
+  try {
+    if (!encrypted || typeof encrypted !== 'string') {
+      console.warn('Chat: Invalid encrypted message:', encrypted);
+      return encrypted || '';
     }
-  };
+
+    // دیکود Base64
+    const encryptedBytes = CryptoJS.enc.Base64.parse(encrypted);
+    const encryptedStr = encryptedBytes.toString(CryptoJS.enc.Hex);
+
+    // جدا کردن IV (16 بایت اول)
+    const ivHex = encryptedStr.slice(0, 32); // 16 بایت = 32 کاراکتر هگز
+    const ciphertextHex = encryptedStr.slice(32);
+
+    // تبدیل به فرمت مورد نیاز CryptoJS
+    const iv = CryptoJS.enc.Hex.parse(ivHex);
+    const ciphertext = CryptoJS.enc.Hex.parse(ciphertextHex);
+
+    // رمزگشایی
+    const decrypted = CryptoJS.AES.decrypt(
+      { ciphertext: ciphertext },
+      CryptoJS.enc.Utf8.parse(AES_KEY),
+      { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 }
+    );
+
+    const decryptedText = decrypted.toString(CryptoJS.enc.Utf8);
+    if (!decryptedText) {
+      console.warn('Chat: Decryption returned empty string for:', encrypted);
+      return encrypted;
+    }
+    return decryptedText;
+  } catch (err) {
+    console.warn('Chat: Decryption failed for:', encrypted, 'Error:', err.message);
+    return encrypted;
+  }
+};
 
   // WebRTC signaling handler
   const handleWebRTCSignaling = useCallback(
@@ -129,21 +157,21 @@ const Chat = () => {
         try {
           const message = JSON.parse(event.data);
           console.log('Chat: Parsed message:', message);
-
+      
           switch (message.event) {
             case 'connect_success':
               console.log('Chat: WebSocket connect success:', message.data);
               break;
             case 'new_message':
               console.log('Chat: New message received:', message.data);
-              const decodedContent = decryptMessage(message.data.Content); // رمزگشایی پیام
               setMessages((prev) => [
                 ...prev,
                 {
                   id: message.data.ID,
-                  content: decodedContent,
+                  content: decryptMessage(message.data.Content), // رمزگشایی
                   sender_id: message.data.SenderID,
                   receiver_id: message.data.UserID,
+                  chat_id: message.data.ChatID,
                   created_at: message.data.CreatedAt,
                   seen: message.data.Seen,
                   is_received: message.data.IsReceived,
@@ -186,12 +214,20 @@ const Chat = () => {
           headers: { Authorization: `Bearer ${token}` },
         });
         console.log('Chat: Messages response:', response.data);
-        // رمزگشایی پیام‌های دریافت‌شده
-        const decryptedMessages = response.data.map((msg) => ({
-          ...msg,
-          content: decryptMessage(msg.content),
-        }));
-        setMessages(decryptedMessages);
+        setMessages(
+          response.data.map((msg) => ({
+            id: msg.ID,
+            content: decryptMessage(msg.Content), // رمزگشایی
+            sender_id: msg.SenderID,
+            receiver_id: msg.UserID,
+            chat_id: msg.ChatID,
+            created_at: msg.CreatedAt,
+            seen: msg.Seen,
+            is_received: msg.IsReceived,
+            type: msg.Type,
+            files: msg.Files || [],
+          }))
+        );
       } catch (error) {
         console.error('Chat: Error fetching messages:', {
           message: error.message,
@@ -368,52 +404,56 @@ const Chat = () => {
       console.error('Chat: Invalid receiverId:', id);
       return;
     }
-
+  
     if (!token) {
       setError('توکن ورود یافت نشد');
       console.error('Chat: No token found');
       return;
     }
-
+  
     if (isNaN(userId)) {
       setError('شناسه کاربر نامعتبر است');
       console.error('Chat: Invalid userId:', userIdStr);
       navigate('/');
       return;
-    }if (!newMessage.trim() && selectedFiles.length === 0 && audioChunks.length === 0) {
+    }
+  
+    if (!newMessage.trim() && selectedFiles.length === 0 && audioChunks.length === 0) {
       setError('پیام، فایل یا ویس نمی‌تواند خالی باشد');
       console.log('Chat: Empty message/files/voice');
       return;
     }
-
+  
     try {
       const formData = new FormData();
       let messageType = 'text';
-
+  
       if (newMessage.trim()) {
         formData.append('Content', newMessage);
+        console.log('Chat: Appending Content:', newMessage);
       }
-
+  
       if (selectedFiles.length > 0) {
         for (let i = 0; i < selectedFiles.length; i++) {
           formData.append('files', selectedFiles[i]);
         }
         messageType = 'file';
       }
-
+  
       if (audioChunks.length > 0) {
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
         formData.append('files', audioBlob, 'voice.webm');
         messageType = 'voice';
       }
-
+  
       formData.append('type', messageType);
-
-      // لاگ کردن formData
+      formData.append('ChatID', id); // برای مدل سرور
+  
+      // لاگ‌گیری دقیق محتوای فرم
       for (let pair of formData.entries()) {
-        console.log(`${pair[0]}: ${pair[1]}`);
+        console.log(`FormData: ${pair[0]}: ${pair[1]}`);
       }
-
+  
       const response = await axios.post(`${API_URL}/message/user/${id}`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -421,29 +461,41 @@ const Chat = () => {
         },
       });
       console.log('Chat: Send response:', response.data);
-
+  
       const messageData = {
         id: response.data.message_id,
-        content: response.data.content || '',
+        content: decryptMessage(response.data.content), // رمزگشایی پاسخ
         sender_id: response.data.sender_id,
         receiver_id: response.data.receiver_id,
+        chat_id: response.data.chat_id,
         created_at: response.data.created_at,
         seen: response.data.seen,
         is_received: response.data.is_received,
         type: response.data.type,
         files: response.data.files || [],
       };
-
+  
       if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
         socketRef.current.send(
           JSON.stringify({
             event: 'new_message',
-            data: messageData,
+            data: {
+              ID: messageData.id,
+              Content: response.data.content, // بدون رمزگشایی برای WebSocket
+              SenderID: messageData.sender_id,
+              UserID: messageData.receiver_id,
+              ChatID: messageData.chat_id,
+              CreatedAt: messageData.created_at,
+              Seen: messageData.seen,
+              IsReceived: messageData.is_received,
+              Type: messageData.type,
+              Files: messageData.files,
+            },
           })
         );
         console.log('Chat: Sent message to WebSocket:', messageData);
       }
-
+  
       setMessages((prev) => [...prev, messageData]);
       setNewMessage('');
       setSelectedFiles([]);
@@ -511,59 +563,63 @@ const Chat = () => {
           </Alert>
         )}
   
-        <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
-          {messages.length === 0 ? (
-            <Typography align="center" color="text.secondary">
-              هیچ پیامی وجود ندارد
-            </Typography>
-          ) : (
-            messages.map((msg) => (
-              <Paper
-                key={msg.id}
-                sx={{
-                  p: 2,
-                  mb: 1,
-                  maxWidth: '70%',
-                  alignSelf: msg.sender_id === userId ? 'flex-end' : 'flex-start',
-                  bgcolor: msg.sender_id === userId ? 'primary.light' : 'grey.200',
-                }}
-              >
-                {msg.content && <Typography>{msg.content}</Typography>}
-                {msg.files &&
-                  msg.files.map((file, index) => (
-                    <Box key={index} sx={{ mt: 1 }}>
-                      {file.Type === 'picture' && (
-                        <img
-                          src={`${API_URL}${file.FilePath}`}
-                          alt="عکس"
-                          style={{ maxWidth: '200px', borderRadius: '8px' }}
-                        />
-                      )}
-                      {file.Type === 'video' && (
-                        <video controls style={{ maxWidth: '200px', borderRadius: '8px' }}>
-                          <source src={`${API_URL}${file.FilePath}`} type="video/mp4" />
-                        </video>
-                      )}
-                      {file.Type === 'voice' && (
-                        <audio controls>
-                          <source src={`${API_URL}${file.FilePath}`} type="audio/webm" />
-                        </audio>
-                      )}
-                      {file.Type === 'default' && (
-                        <a href={`${API_URL}${file.FilePath}`} download>
-                          {file.FilePath.split('/').pop()}
-                        </a>
-                      )}
-                    </Box>
-                  ))}
-                <Typography variant="caption" color="text.secondary">
-                  {new Date(msg.created_at).toLocaleTimeString()}
-                </Typography>
-              </Paper>
-            ))
-          )}
-          <div ref={messagesEndRef} />
-        </Box>
+  <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
+  {messages.length === 0 ? (
+    <Typography align="center" color="text.secondary">
+      هیچ پیامی وجود ندارد
+    </Typography>
+  ) : (
+    messages.map((msg) => (
+      <Paper
+        key={msg.id}
+        sx={{
+          p: 2,
+          mb: 1,
+          maxWidth: '70%',
+          alignSelf: msg.sender_id === userId ? 'flex-end' : 'flex-start',
+          bgcolor: msg.sender_id === userId ? 'primary.light' : 'grey.200',
+        }}
+      >
+        {msg.content && <Typography>{msg.content}</Typography>}
+        {msg.files &&
+          msg.files.map((file, index) => (
+            <Box key={index} sx={{ mt: 1 }}>
+              {file.Type === 'picture' && (
+                <img
+                  src={`${API_URL}/Uploads/${file.FilePath.split('/').pop()}`}
+                  alt="عکس"
+                  style={{ maxWidth: '200px', borderRadius: '8px' }}
+                />
+              )}
+              {file.Type === 'video' && (
+                <video controls style={{ maxWidth: '200px', borderRadius: '8px' }}>
+                  <source src={`${API_URL}/Uploads/${file.FilePath.split('/').pop()}`} type="video/mp4" />
+                </video>
+              )}
+              {file.Type === 'voice' &&  (file.FilePath.includes('.webm') ? (
+                <audio controls>
+                  <source src={`${API_URL}/Uploads/${file.FilePath.split('/').pop()}`} type="audio/webm" />
+                </audio>
+              ) : (
+                <audio controls>
+                  <source src={`${API_URL}/Uploads/${file.FilePath.split('/').pop()}`} type="audio/mpeg" />
+                </audio>
+              ))}
+              {file.Type === 'default' && (
+                <a href={`${API_URL}/Uploads/${file.FilePath.split('/').pop()}`} download>
+                  {file.FilePath.split('/').pop()}
+                </a>
+              )}
+            </Box>
+          ))}
+        <Typography variant="caption" color="text.secondary">
+          {new Date(msg.created_at).toLocaleTimeString()}
+        </Typography>
+      </Paper>
+    ))
+  )}
+  <div ref={messagesEndRef} />
+</Box>
   
         <Box sx={{ p: 2, bgcolor: 'background.paper', borderTop: '1px solid', borderColor: 'divider' }}>
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>

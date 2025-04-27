@@ -36,7 +36,7 @@ func main() {
 		MaxAge:           12 * 60 * 60,
 	}))
 
-	r.Static("/uploads", "Uploads")
+	r.Static("/Uploads", "./Uploads")
 
 	jwt.InitJWT()
 
