@@ -63,20 +63,21 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	}
 
 	content := formContent.Value["content"]
-	var messageType string
-
-	if len(content) > 0 && content[0] != "" {
-		messageType = "text"
-	} else if len(formContent.File["files"]) > 0 {
-		messageType = "file"
-	} else {
-		log.Println("SendMessage: No content or file provided")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "content or file is required"})
-		return
+	messageType := formContent.Value["type"]
+	if len(messageType) == 0 {
+		if len(content) > 0 && content[0] != "" {
+			messageType = []string{"text"}
+		} else if len(formContent.File["files"]) > 0 {
+			messageType = []string{"file"}
+		} else {
+			log.Println("SendMessage: No content or file provided")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "content or file is required"})
+			return
+		}
 	}
 
 	var encryptedContent string
-	if messageType == "text" {
+	if messageType[0] == "text" && len(content) > 0 && content[0] != "" {
 		encryptedContent, err = aesCipher.Encrypt(content[0])
 		if err != nil {
 			log.Println("SendMessage: Error encrypting message:", err)
@@ -100,8 +101,8 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	message := models.Message{
 		Content:    encryptedContent,
 		SenderID:   user.ID,
-		Type:       messageType,
-		UserID:     receiverUser.ID,
+		Type:       messageType[0],
+		UserID:     uint(receiverIDUint),
 		IsReceived: false,
 		Seen:       false,
 	}
@@ -111,8 +112,8 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	case "user":
 		message.UserID = receiverUser.ID
 		log.Printf("SendMessage: Checking chat between User %d and User %d", user.ID, receiverUser.ID)
-		if err := mc.db.Where("user_id1 = ? AND user_id2 = ?", user.ID, receiverUser.ID).
-			Or("user_id1 = ? AND user_id2 = ?", receiverUser.ID, user.ID).
+		if err := mc.db.Where("user_id_1 = ? AND user_id_2 = ?", user.ID, receiverUser.ID).
+			Or("user_id_1 = ? AND user_id_2 = ?", receiverUser.ID, user.ID).
 			First(&chat).Error; err != nil {
 			log.Println("SendMessage: Creating new chat")
 			chat = models.Chat{
@@ -161,22 +162,11 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	}
 
-	if err := mc.db.Create(&message).Error; err != nil {
-		log.Println("SendMessage: Error creating message:", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not sent"})
-		return
-	}
-
-	if receiverType == "user" {
-		log.Printf("SendMessage: Broadcasting to users %d and %d, event: new_message", receiverUser.ID, user.ID)
-		mc.broadcaster.BroadcastToUser(receiverUser.ID, "new_message", message)
-		mc.broadcaster.BroadcastToUser(user.ID, "new_message", message)
-	}
-
 	files := formContent.File["files"]
+	var filePaths []models.File
 	if len(files) > 0 {
 		for _, fileHeader := range files {
-			filePath := "./Uploads/" + fileHeader.Filename
+			filePath := fmt.Sprintf("./Uploads/%s", fileHeader.Filename)
 			if err := c.SaveUploadedFile(fileHeader, filePath); err != nil {
 				log.Println("SendMessage: Error saving file:", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "file doesn't save"})
@@ -184,7 +174,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 			}
 
 			newFile := models.File{
-				FilePath: filePath,
+				FilePath: fmt.Sprintf("/uploads/%s", fileHeader.Filename), // مسیر قابل دسترسی
 				Type:     mc.FileType(fileHeader.Filename),
 			}
 
@@ -194,28 +184,47 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 				return
 			}
 
-			message.Files = append(message.Files, newFile)
+			filePaths = append(filePaths, newFile)
 		}
+		message.Files = filePaths
 	}
 
-	if err := mc.db.Model(&message).Updates(models.Message{Files: message.Files}).Error; err != nil {
-		log.Println("SendMessage: Error updating message with files:", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error updating message information"})
+	if err := mc.db.Create(&message).Error; err != nil {
+		log.Println("SendMessage: Error creating message:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not sent"})
 		return
 	}
 
+	response := gin.H{
+		"message":     "message sent successfully",
+		"message_id":  message.ID,
+		"content":     encryptedContent,
+		"sender_id":   message.SenderID,
+		"receiver_id": message.UserID,
+		"created_at":  message.CreatedAt,
+		"seen":        message.Seen,
+		"is_received": message.IsReceived,
+		"type":        message.Type,
+		"files":       message.Files,
+	}
+
+	if receiverType == "user" {
+		log.Printf("SendMessage: Broadcasting to user %d, event: new_message", receiverUser.ID)
+		mc.broadcaster.BroadcastToUser(receiverUser.ID, "new_message", response)
+	}
+
 	log.Printf("SendMessage: Message sent successfully, ID: %d", message.ID)
-	c.JSON(http.StatusOK, gin.H{"message": "message sent successfully", "message_id": message.ID})
+	c.JSON(http.StatusOK, response)
 }
 
 func (mc *MessageController) FileType(fileName string) models.FileType {
 	if len(fileName) > 0 {
 		switch {
-		case strings.HasSuffix(fileName, ".mp3") || strings.HasSuffix(fileName, ".wav"):
+		case strings.HasSuffix(fileName, ".mp3") || strings.HasSuffix(fileName, ".wav") || strings.HasSuffix(fileName, ".webm"):
 			return models.Voice
 		case strings.HasSuffix(fileName, ".jpg") || strings.HasSuffix(fileName, ".png") || strings.HasSuffix(fileName, ".jpeg"):
 			return models.Picture
-		case strings.HasSuffix(fileName, ".mp4") || strings.HasSuffix(fileName, ".webm"):
+		case strings.HasSuffix(fileName, ".mp4"):
 			return models.Video
 		default:
 			return models.Default
@@ -254,33 +263,26 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 	}
 
 	var messages []models.Message
-
 	switch receiverType {
 	case "user":
-		var chat models.Chat
-		if err := mc.db.Where("user_id1 = ? AND user_id2 = ?", userID, receiverID).
-			Or("user_id1 = ? AND user_id2 = ?", receiverID, userID).
-			First(&chat).Error; err != nil {
-			log.Printf("GetMessages: Chat not found between users %d and %d: %v", userID, receiverID, err)
-			c.JSON(http.StatusOK, []models.Message{}) // چت وجود ندارد، آرایه خالی برگردان
-			return
-		}
-		if err := mc.db.Where("chat_id = ? AND id > ?", chat.ID, lastMessageID).
+		if err := mc.db.
+			Where("(user_id = ? AND sender_id = ?) OR (user_id = ? AND sender_id = ?) AND id > ?", userID, receiverID, receiverID, userID, lastMessageID).
 			Preload("Files").
 			Find(&messages).Error; err != nil {
-			log.Printf("GetMessages: Error fetching messages for chat %d: %v", chat.ID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 			return
 		}
 	case "group":
-		if err := mc.db.Where("group_id = ? AND id > ?", receiverID, lastMessageID).
+		if err := mc.db.
+			Where("group_id = ? AND id > ?", receiverID, lastMessageID).
 			Preload("Files").
 			Find(&messages).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 			return
 		}
 	case "channel":
-		if err := mc.db.Where("channel_id = ? AND id > ?", receiverID, lastMessageID).
+		if err := mc.db.
+			Where("channel_id = ? AND id > ?", receiverID, lastMessageID).
 			Preload("Files").
 			Find(&messages).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
@@ -292,30 +294,32 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 	}
 
 	isOnline := userStatus[fmt.Sprintf("user_%d", receiverID)]
-
 	for i := range messages {
-		if messages[i].SenderID != userID {
-			messages[i].IsReceived = true
-			messages[i].Seen = isOnline
+		if messages[i].UserID == userID {
+			messages[i].IsReceived = isOnline
+			messages[i].Seen = messages[i].Seen || isOnline
+		} else {
+			messages[i].IsReceived = false
+			messages[i].Seen = false
 		}
-		decryptedContent, err := aesCipher.Decrypt(messages[i].Content)
-		if err != nil {
-			log.Printf("GetMessages: Error decrypting message %d: %v", messages[i].ID, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error decrypting message"})
-			return
+
+		if messages[i].Content != "" {
+			decryptedContent, err := aesCipher.Decrypt(messages[i].Content)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "error decrypting message"})
+				return
+			}
+			messages[i].Content = decryptedContent
 		}
-		messages[i].Content = decryptedContent
 	}
 
 	for _, message := range messages {
 		if err := mc.db.Model(&message).Updates(models.Message{IsReceived: message.IsReceived, Seen: message.Seen}).Error; err != nil {
-			log.Printf("GetMessages: Error updating message %d status: %v", message.ID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error updating message status"})
 			return
 		}
 	}
 
-	log.Printf("GetMessages: Fetched %d messages for user %d, receiver %d", len(messages), userID, receiverID)
 	c.JSON(http.StatusOK, messages)
 }
 

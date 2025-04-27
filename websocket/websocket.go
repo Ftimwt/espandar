@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"sync"
 
 	"espandar/database"
 	"espandar/jwt"
 	"espandar/models"
+	"espandar/webrtc"
 
 	"github.com/gorilla/websocket"
 )
@@ -27,6 +29,7 @@ type Client struct {
 type Message struct {
 	Event string      `json:"event"`
 	Data  interface{} `json:"data"`
+	To    string      `json:"to"` // کاربر مقصد (user_id)
 }
 
 var upgrader = websocket.Upgrader{
@@ -35,7 +38,7 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
 		log.Printf("CheckOrigin: Origin=%s", origin)
-		return true // برای تست، همه Originها را قبول کنید
+		return origin == "http://localhost:3000" // محدود به کلاینت React
 	},
 }
 
@@ -43,7 +46,8 @@ var broadcaster = &SocketBroadcaster{
 	clients: make(map[uint]*Client),
 }
 
-func (s *SocketBroadcaster) BroadcastToUser(userID uint, event string, args ...interface{}) {
+// BroadcastToUser پیام را به کاربر مقصد ارسال می‌کند
+func (s *SocketBroadcaster) BroadcastToUser(userID uint, event string, data ...interface{}) {
 	s.mu.RLock()
 	client, exists := s.clients[userID]
 	s.mu.RUnlock()
@@ -53,7 +57,15 @@ func (s *SocketBroadcaster) BroadcastToUser(userID uint, event string, args ...i
 		return
 	}
 
-	msg, err := json.Marshal(Message{Event: event, Data: args[0]})
+	// فرض می‌کنیم اولین آرگومان data پیام است
+	var msgData interface{}
+	if len(data) > 0 {
+		msgData = data[0]
+	} else {
+		msgData = nil
+	}
+
+	msg, err := json.Marshal(Message{Event: event, Data: msgData})
 	if err != nil {
 		log.Printf("BroadcastToUser: Error marshaling message for user %d: %v", userID, err)
 		return
@@ -132,11 +144,51 @@ func SocketHandler(w http.ResponseWriter, r *http.Request) {
 		Event: "connect_success",
 		Data:  map[string]interface{}{"user_id": userID},
 	})
-	client.send <- welcomeMsg
+	client.send <- welcomeMsg                      // ایجاد یا پیوستن به اتاق WebRTC
+	receiverID := r.URL.Query().Get("receiver_id") // دریافت receiver_id از query
+	roomID := createRoomID(userID, receiverID)
+	room, exists := webrtc.Rooms[roomID]
+	if !exists {
+		room = webrtc.NewRoom()
+		webrtc.Rooms[roomID] = room
+	}
+
+	// پیاده‌سازی MessageSender برای WebRTC
+	sender := &WebSocketMessageSender{
+		userID: userID,
+		client: client,
+	}
+
+	// اتصال کاربر به اتاق WebRTC
+	room.ConnectRoom(sender, webrtc.UserConnData{
+		MemberID: strconv.FormatUint(uint64(userID), 10),
+		Username: user.Username,
+	})
 
 	// مدیریت خواندن و نوشتن
 	go client.write()
-	go client.read()
+	go client.read(roomID)
+}
+
+// WebSocketMessageSender برای ارسال پیام‌های WebRTC
+type WebSocketMessageSender struct {
+	userID uint
+	client *Client
+}
+
+func (s *WebSocketMessageSender) Emit(event string, data interface{}) {
+	msg, err := json.Marshal(Message{Event: event, Data: data})
+	if err != nil {
+		log.Printf("WebSocketMessageSender: Error marshaling message for user %d: %v", s.userID, err)
+		return
+	}
+
+	select {
+	case s.client.send <- msg:
+		log.Printf("WebSocketMessageSender: Sent to user %d, event: %s", s.userID, event)
+	default:
+		log.Printf("WebSocketMessageSender: Channel full for user %d", s.userID)
+	}
 }
 
 func (c *Client) write() {
@@ -155,13 +207,21 @@ func (c *Client) write() {
 	}
 }
 
-func (c *Client) read() {
+func (c *Client) read(roomID string) {
 	defer func() {
 		broadcaster.mu.Lock()
 		delete(broadcaster.clients, c.userID)
 		broadcaster.mu.Unlock()
 		c.conn.Close()
 		log.Printf("read: User %d disconnected", c.userID)
+
+		// حذف کاربر از اتاق WebRTC
+		if room, exists := webrtc.Rooms[roomID]; exists {
+			room.RemovePeer(strconv.FormatUint(uint64(c.userID), 10))
+			if len(room.Peers) == 0 {
+				delete(webrtc.Rooms, roomID)
+			}
+		}
 	}()
 
 	for {
@@ -179,6 +239,37 @@ func (c *Client) read() {
 			continue
 		}
 
-		log.Printf("read: Received message from user %d: event=%s", c.userID, message.Event)
+		log.Printf("read: Received message from user %d: event=%s, to=%s", c.userID, message.Event, message.To)
+
+		// پردازش پیام‌ها
+		switch message.Event {
+		case "new_message":
+			if toID, err := strconv.ParseUint(message.To, 10, 32); err == nil {
+				broadcaster.BroadcastToUser(uint(toID), message.Event, message.Data)
+			} else {
+				log.Printf("read: Invalid 'to' user ID: %s", message.To)
+			}
+		case "webrtc_offer", "webrtc_answer", "candidate":
+			if toID, err := strconv.ParseUint(message.To, 10, 32); err == nil {
+				broadcaster.BroadcastToUser(uint(toID), message.Event, message.Data)
+			} else {
+				log.Printf("read: Invalid 'to' user ID for WebRTC: %s", message.To)
+			}
+		default:
+			log.Printf("read: Unknown event from user %d: %s", c.userID, message.Event)
+		}
 	}
+} // createRoomID یک ID منحصربه‌فرد برای اتاق WebRTC ایجاد می‌کند
+func createRoomID(userID uint, receiverID string) string {
+	if receiverID == "" {
+		return "default_" + strconv.FormatUint(uint64(userID), 10)
+	}
+	recvID, err := strconv.ParseUint(receiverID, 10, 32)
+	if err != nil {
+		return "default_" + strconv.FormatUint(uint64(userID), 10)
+	}
+	if userID < uint(recvID) {
+		return "chat_" + strconv.FormatUint(uint64(userID), 10) + "_" + strconv.FormatUint(recvID, 10)
+	}
+	return "chat_" + strconv.FormatUint(recvID, 10) + "_" + strconv.FormatUint(uint64(userID), 10)
 }

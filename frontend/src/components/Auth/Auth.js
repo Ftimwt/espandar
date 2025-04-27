@@ -7,165 +7,188 @@ import {
   TextField,
   Typography,
   FormControlLabel,
-  Checkbox,
-  Paper,
+  Switch,
   Alert,
 } from '@mui/material';
 
 const Auth = ({ onUserLogin, onAdminLogin }) => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [phone, setPhone] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSignup, setIsSignup] = useState(false);
-  const [formData, setFormData] = useState({
-    username: '',
-    phone: '',
-    password: '',
-  });
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  console.log('Auth: Rendering, isAdmin:', isAdmin, 'isSignup:', isSignup);
-
   const validatePhone = (phone) => {
-    const regex = /^09[0-9]{9}$/;
-    return regex.test(phone) && phone.length === 11;
+    const phoneRegex = /^[0-9]{10,}$/;
+    return phoneRegex.test(phone);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    console.log('Auth: Submitting form:', formData);
 
-    if (!validatePhone(formData.phone)) {
-      setError('شماره تلفن باید ۱۱ رقم باشد و با 09 شروع شود');
-      console.log('Auth: Invalid phone number:', formData.phone);
-      return;
+    if (isSignup && !validatePhone(phone)) {
+        setError('شماره تلفن نامعتبر است');
+        return;
     }
+
+    const payload = { username, password, phone };
+    const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+    let response;
 
     try {
-      let response;
-      const payload = isSignup
-        ? formData
-        : { phone: formData.phone, password: formData.password };
-
-      console.log('Auth: Sending request, payload:', payload);
-
-      if (isAdmin) {
-        if (isSignup) {
-          response = await axios.post('http://localhost:8080/admin/signup', payload);
-          console.log('Auth: Admin signup response:', response.data);
-          onAdminLogin(response.data.token);
-          navigate('/contacts');
+        if (isAdmin) {
+            if (isSignup) {
+                response = await axios.post(`${API_URL}/admin/signup`, payload);
+                console.log('Auth: Admin signup response:', response.data);
+                if (!response.data.user_id) {
+                    console.error('Auth: user_id not found in response');
+                    setError('خطا: شناسه کاربر از سرور دریافت نشد');
+                    return;
+                }
+                onAdminLogin(response.data.token);
+                localStorage.setItem('token', response.data.token);
+                localStorage.setItem('user_id', response.data.user_id);
+                navigate('/contacts');
+            } else {
+                response = await axios.post(`${API_URL}/admin/login`, payload);
+                console.log('Auth: Admin login response:', response.data);
+                if (!response.data.user_id) {
+                    console.error('Auth: user_id not found in response');
+                    setError('خطا: شناسه کاربر از سرور دریافت نشد');
+                    return;
+                }
+                onAdminLogin(response.data.token);
+                localStorage.setItem('token', response.data.token);
+                localStorage.setItem('user_id', response.data.user_id);
+                navigate('/contacts');
+            }
         } else {
-          response = await axios.post('http://localhost:8080/admin/login', payload);
-          console.log('Auth: Admin login response:', response.data);
-          onAdminLogin(response.data.token);
-          navigate('/contacts');
+            if (isSignup) {
+                response = await axios.post(`${API_URL}/signup`, payload);
+                console.log('Auth: User signup response:', response.data);
+                if (!response.data.user_id) {
+                    console.error('Auth: user_id not found in response');
+                    setError('خطا: شناسه کاربر از سرور دریافت نشد');
+                    return;
+                }
+                onUserLogin(response.data.token);
+                localStorage.setItem('token', response.data.token);
+                localStorage.setItem('user_id', response.data.user_id);
+                navigate('/contacts');
+            } else {
+                response = await axios.post(`${API_URL}/login`, payload);
+                console.log('Auth: User login response:', response.data);
+                if (!response.data.user_id) {
+                    console.error('Auth: user_id not found in response');
+                    setError('خطا: شناسه کاربر از سرور دریافت نشد');
+                    return;
+                }
+                onUserLogin(response.data.token);
+                localStorage.setItem('token', response.data.token);
+                localStorage.setItem('user_id', response.data.user_id);
+                navigate('/contacts');
+            }
         }
-      } else {
-        if (isSignup) {
-          response = await axios.post('http://localhost:8080/signup', payload);
-          console.log('Auth: User signup response:', response.data);
-          onUserLogin(response.data.token);
-          navigate('/contacts');
-        } else {
-          response = await axios.post('http://localhost:8080/login', payload);
-          console.log('Auth: User login response:', response.data);
-          onUserLogin(response.data.token);
-          navigate('/contacts');
-        }
-      }
     } catch (error) {
-      console.error('Auth: Error:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-      });
-      setError(
-        error.response?.data?.error || 'خطا در ورود یا ثبت‌نام: مشکل ناشناخته'
-      );
+        console.error('Auth: Error:', {
+            message: error.message,
+            response: error.response?.data,
+            status: error.response?.status,
+            code: error.code,
+        });
+        setError(
+            error.response?.data?.error ||
+            error.message === 'Network Error'
+                ? 'اتصال به سرور برقرار نشد. لطفاً مطمئن شوید که سرور در حال اجراست.'
+                : 'خطا در ورود یا ثبت‌نام'
+        );
     }
-  };
+};
 
   return (
     <Box
       sx={{
         display: 'flex',
-        justifyContent: 'center',
+        flexDirection: 'column',
         alignItems: 'center',
+        justifyContent: 'center',
         minHeight: '100vh',
-        bgcolor: '#f5f5f5',
+        bgcolor: 'background.default',
+        p: 3,
       }}
     >
-      <Paper elevation={3} sx={{ p: 4, maxWidth: 400, width: '100%' }}>
-        <Typography variant="h5" align="center" gutterBottom>
-          {isAdmin ? 'ورود/ثبت‌نام ادمین' : 'ورود/ثبت‌نام کاربر'}
-        </Typography>
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
-        <form onSubmit={handleSubmit}>
-          {isSignup && (
-            <TextField
-              label="نام کاربری"
-              value={formData.username}
-              onChange={(e) =>
-                setFormData({ ...formData, username: e.target.value })
-              }
-              fullWidth
-              margin="normal"
-              required
-            />
-          )}
-          <TextField
+      <Typography variant="h4" gutterBottom>
+        {isSignup ? 'ثبت‌نام' : 'ورود'} {isAdmin ? 'ادمین' : 'کاربر'}
+      </Typography>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2, width: '100%', maxWidth: 400 }}>
+          {error}
+        </Alert>
+      )}
+
+      <Box
+        component="form"
+        onSubmit={handleSubmit}
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          width: '100%',
+          maxWidth: 400,
+        }}
+      >
+        <TextField
+          label="نام کاربری"
+          variant="outlined"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          required
+          fullWidth
+        />
+        <TextField
+          label="رمز عبور"
+          type="password"
+          variant="outlined"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          fullWidth
+        />
+        {isSignup && (<TextField
             label="شماره تلفن"
-            value={formData.phone}
-            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-            placeholder="09123456789"fullWidth
-            margin="normal"
-            required
-          />
-          <TextField
-            label="رمز عبور"
-            type="password"
-            value={formData.password}
-            onChange={(e) =>
-              setFormData({ ...formData, password: e.target.value })
-            }
+            variant="outlined"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
             fullWidth
-            margin="normal"
-            required
           />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={isAdmin}
-                onChange={() => setIsAdmin(!isAdmin)}
-              />
-            }
-            label="ادمین"
-          />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={isSignup}
-                onChange={() => setIsSignup(!isSignup)}
-              />
-            }
-            label={isSignup ? 'تغییر به ورود' : 'تغییر به ثبت‌نام'}
-          />
-          <Button
-            type="submit"
-            variant="contained"
-            color="primary"
-            fullWidth
-            sx={{ mt: 2 }}
-          >
-            {isSignup ? 'ثبت‌نام' : 'ورود'}
-          </Button>
-        </form>
-      </Paper>
+        )}
+        <Button type="submit" variant="contained" color="primary" fullWidth>
+          {isSignup ? 'ثبت‌نام' : 'ورود'}
+        </Button>
+      </Box>
+
+      <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={isAdmin}
+              onChange={() => setIsAdmin(!isAdmin)}
+              color="primary"
+            />
+          }
+          label={`تغییر به ${isAdmin ? 'کاربر' : 'ادمین'}`}
+        />
+        <Button
+          variant="outlined"
+          onClick={() => setIsSignup(!isSignup)}
+        >
+          تغییر به {isSignup ? 'ورود' : 'ثبت‌نام'}
+        </Button>
+      </Box>
     </Box>
   );
 };

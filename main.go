@@ -4,6 +4,7 @@ import (
 	"espandar/controllers"
 	"espandar/database"
 	"espandar/jwt"
+	"espandar/middlewares"
 	"espandar/routes"
 	"espandar/websocket"
 	"fmt"
@@ -35,6 +36,8 @@ func main() {
 		MaxAge:           12 * 60 * 60,
 	}))
 
+	r.Static("/uploads", "Uploads")
+
 	jwt.InitJWT()
 
 	broadcaster := &websocket.SocketBroadcaster{}
@@ -47,8 +50,8 @@ func main() {
 
 	routes.SetupRoutes(r, db, authController, messageController, channelController, groupController, contactController)
 
-	// مسیر WebSocket
-	r.GET("/ws", func(c *gin.Context) {
+	// مسیر WebSocket با middleware احراز هویت
+	r.GET("/ws", middlewares.AuthMiddleware(db), func(c *gin.Context) {
 		websocket.SocketHandler(c.Writer, c.Request)
 	})
 

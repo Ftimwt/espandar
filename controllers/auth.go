@@ -110,7 +110,10 @@ func (ac *AuthController) SignUp(c *gin.Context) {
 	}
 
 	fmt.Println("SignUp: User created, token:", token)
-	c.JSON(http.StatusOK, gin.H{"token": token})
+	c.JSON(http.StatusOK, gin.H{
+		"token":   token,
+		"user_id": user.ID,
+	})
 }
 
 func (ac *AuthController) AdminSignUp(c *gin.Context) {
@@ -168,7 +171,10 @@ func (ac *AuthController) AdminSignUp(c *gin.Context) {
 	}
 
 	fmt.Println("AdminSignUp: Admin created, token:", token)
-	c.JSON(http.StatusOK, gin.H{"token": token})
+	c.JSON(http.StatusOK, gin.H{
+		"token":   token,
+		"user_id": user.ID,
+	})
 }
 
 func (ac *AuthController) Login(c *gin.Context) {
@@ -211,7 +217,10 @@ func (ac *AuthController) Login(c *gin.Context) {
 	}
 
 	fmt.Println("Login: User logged in, token:", token)
-	c.JSON(http.StatusOK, gin.H{"token": token})
+	c.JSON(http.StatusOK, gin.H{
+		"token":   token,
+		"user_id": user.ID,
+	})
 }
 
 func (ac *AuthController) AdminLogin(c *gin.Context) {
@@ -254,7 +263,10 @@ func (ac *AuthController) AdminLogin(c *gin.Context) {
 	}
 
 	fmt.Println("AdminLogin: Admin logged in, token:", token)
-	c.JSON(http.StatusOK, gin.H{"token": token})
+	c.JSON(http.StatusOK, gin.H{
+		"token":   token,
+		"user_id": user.ID,
+	})
 }
 
 // GetProfile - دریافت پروفایل کاربر
