@@ -40,8 +40,10 @@ const Contacts = ({ token, isAdmin, onLogout }) => {
   }, [token]);
 
   useEffect(() => {
-    fetchContacts();
-  }, [fetchContacts]);
+    if (showContacts) {
+      fetchContacts();
+    }
+  }, [fetchContacts, showContacts]);
 
   const handleAddContact = async () => {
     if (!newContact.name || !newContact.phone) {
