@@ -47,8 +47,9 @@ func main() {
 	channelController := controllers.NewChannelController(db)
 	groupController := controllers.NewGroupController(db)
 	contactController := controllers.NewContactController(db)
+	userController := controllers.NewUserController(db)
 
-	routes.SetupRoutes(r, db, authController, messageController, channelController, groupController, contactController)
+	routes.SetupRoutes(r, db, authController, messageController, channelController, groupController, contactController, userController)
 
 	// مسیر WebSocket با middleware احراز هویت
 	r.GET("/ws", middlewares.AuthMiddleware(db), func(c *gin.Context) {

@@ -15,7 +15,8 @@ func SetupRoutes(
 	messageCtrl *controllers.MessageController,
 	channelCtrl *controllers.ChannelController,
 	groupCtrl *controllers.GroupController,
-	contactController *controllers.ContactController,
+	contactCtrl *controllers.ContactController,
+	userCtrl *controllers.UserController, // کنترلر جدید
 ) {
 	r.Static("/static", "./static")
 
@@ -30,7 +31,7 @@ func SetupRoutes(
 		protected.GET("/profile", authCtrl.GetProfile)
 		protected.PUT("/profile", authCtrl.UpdateProfile)
 		protected.POST("/signout", authCtrl.SignOut)
-		protected.GET("/users", authCtrl.GetUsers)
+		protected.GET("/users", userCtrl.GetUsers) // مسیر جدید برای دریافت کاربران
 		protected.POST("/message/:receiver_type/:receiver_id", messageCtrl.SendMessage)
 		protected.GET("/messages/:receiver_type/:receiver_id", messageCtrl.GetMessages)
 		protected.PUT("/message/:message_id", messageCtrl.UpdateMessage)
@@ -39,6 +40,7 @@ func SetupRoutes(
 		protected.POST("/channels/with-members", channelCtrl.CreateChannelWithMembers)
 		protected.POST("/channel/:channel_id/user/:user_id", channelCtrl.AddMemberToChannel)
 		protected.DELETE("/channel/:channel_id/user/:user_id", channelCtrl.RemoveMemberFromChannel)
+		protected.POST("/channel/:channel_id/leave", channelCtrl.LeaveChannel) // مسیر جدید برای خروج
 		protected.GET("/channels", channelCtrl.GetChannels)
 		protected.GET("/channel/:id", channelCtrl.GetChannel)
 		protected.DELETE("/channel/:channel_id", channelCtrl.DeleteChannel)
@@ -46,10 +48,11 @@ func SetupRoutes(
 		protected.POST("/groups/with-members", groupCtrl.CreateGroupWithMembers)
 		protected.POST("/group/:group_id/user/:user_id", groupCtrl.AddMemberToGroup)
 		protected.DELETE("/group/:group_id/user/:user_id", groupCtrl.RemoveMemberFromGroup)
+		protected.POST("/group/:group_id/leave", groupCtrl.LeaveGroup) // مسیر جدید برای خروج
 		protected.GET("/groups", groupCtrl.GetGroups)
 		protected.GET("/group/:id", groupCtrl.GetGroup)
 		protected.DELETE("/group/:group_id", groupCtrl.DeleteGroup)
-		protected.GET("/contacts", contactController.GetContacts)
+		protected.GET("/contacts", contactCtrl.GetContacts)
 	}
 
 	adminProtected := r.Group("/admin")
@@ -59,6 +62,6 @@ func SetupRoutes(
 		adminProtected.PUT("/user/:id", authCtrl.UpdateUser)
 		adminProtected.DELETE("/user/:id", authCtrl.DeleteUser)
 		adminProtected.POST("/users", authCtrl.AddUser)
-		adminProtected.POST("/contacts", contactController.AddContact)
+		adminProtected.POST("/contacts", contactCtrl.AddContact)
 	}
 }

@@ -11,5 +11,5 @@ type group struct {
 
 type Channel struct {
 	Name        string `json:"name" form:"name" binding:"required"`
-	Description string `json:"description" form:"description" binding:"required"`
+	Description string `json:"description" form:"description"` // بدون binding:"required"
 }
