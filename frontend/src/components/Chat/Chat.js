@@ -3,10 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import CryptoJS from 'crypto-js';
 import EmojiPicker from 'emoji-picker-react';
+import { MentionsInput, Mention } from 'react-mentions';
 import {
   Box,
   Button,
-  TextField,
   Typography,
   Paper,
   IconButton,
@@ -66,7 +66,28 @@ const Chat = () => {
   const token = localStorage.getItem('token');
   const userIdStr = localStorage.getItem('user_id');
   const userId = userIdStr ? parseInt(userIdStr, 10) : null;
+  const [tagSuggestions, setTagSuggestions] = useState([]);
   const AES_KEY = 'this_is_a_32_byte_long_key_1234!';
+
+  // دریافت کاربران و فایل‌ها برای تگ کردن
+  useEffect(() => {
+    const fetchTagSuggestions = async () => {
+      try {
+        const usersRes = await axios.get(`${API_URL}/users`, { headers: { Authorization: `Bearer ${token}` } });
+        const users = usersRes.data
+          .filter((user) => user.ID && user.Username)
+          .map((user) => ({
+            id: user.ID.toString(),
+            display: user.Username,
+          }));
+        setTagSuggestions(users);
+      } catch (err) {
+        console.error('Error fetching tag suggestions:', err);
+        setTagSuggestions([]);
+      }
+    };
+    fetchTagSuggestions();
+  }, [token, API_URL]);
 
   // تابع رمزگشایی پیام
   const decryptMessage = (encrypted) => {
@@ -348,55 +369,72 @@ const Chat = () => {
   };
 
   // ارسال پیام
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() && selectedFiles.length === 0) return;
-
-    try {
-      const formData = new FormData();
-      const encryptedMessage = CryptoJS.AES.encrypt(
-        newMessage,
-        CryptoJS.enc.Utf8.parse(AES_KEY),
-        {
-          iv: CryptoJS.lib.WordArray.random(16),
-          mode: CryptoJS.mode.CBC,
-          padding: CryptoJS.pad.Pkcs7,
+    // اصلاح handleSendMessage برای تگ‌ها
+    const handleSendMessage = async () => {
+      if (!newMessage.trim() && selectedFiles.length === 0) return;
+  
+      try {
+        const formData = new FormData();
+        const encryptedMessage = CryptoJS.AES.encrypt(
+          newMessage,
+          CryptoJS.enc.Utf8.parse(AES_KEY),
+          {
+            iv: CryptoJS.lib.WordArray.random(16),
+            mode: CryptoJS.mode.CBC,
+            padding: CryptoJS.pad.Pkcs7,
+          }
+        );
+        const ivHex = CryptoJS.enc.Hex.stringify(encryptedMessage.iv);
+        const ciphertextHex = CryptoJS.enc.Hex.stringify(encryptedMessage.ciphertext);
+        const encryptedBase64 = CryptoJS.enc.Base64.stringify(
+          CryptoJS.enc.Hex.parse(ivHex + ciphertextHex)
+        );
+        formData.append('content', encryptedBase64);
+        formData.append('type', selectedFiles.length > 0 ? 'file' : 'text');
+  
+        // استخراج تگ‌ها
+        const tags = [];
+        const userMatches = newMessage.matchAll(/@(\w+)/g);
+          for (const match of userMatches) {
+        const user = tagSuggestions.find((s) => s.display === match[1]);
+          if (user) tags.push({ type: 'user', id: user.id, name: match[1] });
         }
-      );
-      const ivHex = CryptoJS.enc.Hex.stringify(encryptedMessage.iv);
-      const ciphertextHex = CryptoJS.enc.Hex.stringify(encryptedMessage.ciphertext);
-      const encryptedBase64 = CryptoJS.enc.Base64.stringify(
-        CryptoJS.enc.Hex.parse(ivHex + ciphertextHex)
-      );
-      formData.append('content', encryptedBase64);
-      formData.append('type', selectedFiles.length > 0 ? 'file' : 'text');
-      selectedFiles.forEach((file) => {
-        formData.append('files', file);
-      });
-
-      const response = await axios.post(
-        `${API_URL}/message/${type}/${id}`,
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data',
-          },
+        const fileMatches = newMessage.matchAll(/#(\w+)/g);
+          for (const match of fileMatches) {
+        const file = tagSuggestions.find((s) => s.display === match[1]);
+          if (file) tags.push({ type: 'file', id: file.id, name: match[1] });
         }
-      );
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: response.data.ID,
-          content: newMessage,
-          sender_id: userId,
-          receiver_id: parseInt(id, 10),
-          chat_id: response.data.ChatID,
-          created_at: response.data.CreatedAt,
-          seen: false,
+        formData.append('tags', JSON.stringify(tags));
+  
+        selectedFiles.forEach((file) => {
+          formData.append('files', file);
+        });
+  
+        const response = await axios.post(
+          `${API_URL}/message/${type}/${id}`,
+          formData,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'multipart/form-data',
+            },
+          }
+        );
+  
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: response.data.message_id,
+            content: newMessage,
+            sender_id: userId,
+            receiver_id: parseInt(id, 10),
+            chat_id: response.data.chat_id,
+            created_at: response.data.created_at,
+            seen: false,
           is_received: false,
-          type: response.data.Type,
-          files: response.data.Files || [],
+          type: response.data.type,
+          files: response.data.files || [],
+          tags: response.data.tags ? JSON.parse(response.data.tags) : [],
         },
       ]);
       setNewMessage('');
@@ -409,7 +447,23 @@ const Chat = () => {
 
   // انتخاب فایل
   const handleFileChange = (event) => {
-    setSelectedFiles(Array.from(event.target.files));
+    const files = Array.from(event.target.files);
+    const allowedTypes = ['image/jpeg', 'image/png', 'audio/webm', 'audio/mp3', 'audio/wav', 'video/mp4'];
+    const maxSize = 10 * 1024 * 1024; // 10MB
+  
+    const validFiles = files.filter((file) => {
+      if (!allowedTypes.includes(file.type)) {
+        setError(`نوع فایل ${file.name} مجاز نیست`);
+        return false;
+      }
+      if (file.size > maxSize) {
+        setError(`حجم فایل ${file.name} بیش از حد مجاز است (حداکثر 10MB)`);
+        return false;
+      }
+      return true;
+    });
+  
+    setSelectedFiles(validFiles);
   };
 
   // مدیریت Emoji
@@ -683,7 +737,7 @@ const Chat = () => {
         </Alert>
       )}
 
-      <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
+<Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
         {messages.length === 0 ? (
           <Typography align="center" color="text.secondary">
             هیچ پیامی وجود ندارد
@@ -691,7 +745,8 @@ const Chat = () => {
         ) : (
           messages.map((msg) => (
             <Paper
-              key={msg.id} sx={{
+              key={msg.id}
+              sx={{
                 p: 2,
                 mb: 1,
                 maxWidth: '70%',
@@ -699,7 +754,23 @@ const Chat = () => {
                 bgcolor: msg.sender_id === userId ? 'primary.light' : 'grey.200',
               }}
             >
-              {msg.content && <Typography>{msg.content}</Typography>}
+              {msg.content && (
+                <Typography>
+                  {msg.content.split(' ').map((part, index) => {
+                    if (part.startsWith('@') || part.startsWith('#')) {
+                      const tag = msg.tags?.find((t) => t.name === part.slice(1));
+                      if (tag) {
+                        return (
+                          <span key={index} style={{ color: 'blue', cursor: 'pointer' }}>
+                            {part}{' '}
+                          </span>
+                        );
+                      }
+                    }
+                    return part + ' ';
+                  })}
+                </Typography>
+              )}
               {msg.files &&
                 msg.files.map((file, index) => (
                   <Box key={index} sx={{ mt: 1 }}>
@@ -714,6 +785,11 @@ const Chat = () => {
                       <audio controls>
                         <source src={`${API_URL}/Uploads/${file.FilePath.split('/').pop()}`} type="audio/webm" />
                       </audio>
+                    )}
+                    {file.Type === 'video' && (
+                      <video controls style={{ maxWidth: '200px', borderRadius: '8px' }}>
+                        <source src={`${API_URL}/Uploads/${file.FilePath.split('/').pop()}`} type="video/mp4" />
+                      </video>
                     )}
                   </Box>
                 ))}
@@ -739,8 +815,7 @@ const Chat = () => {
           <AttachFile />
           <input type="file" hidden multiple onChange={handleFileChange} />
         </Button>
-        {recording ? (
-          <IconButton onClick={stopRecording}>
+        {recording ? (<IconButton onClick={stopRecording}>
             <Stop />
           </IconButton>
         ) : (
@@ -748,14 +823,20 @@ const Chat = () => {
             <Mic />
           </IconButton>
         )}
-        <TextField
-          fullWidth
-          variant="outlined"
-          placeholder="پیام خود را بنویسید..."
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-        />
+        <MentionsInput
+  value={newMessage}
+  onChange={(e) => setNewMessage(e.target.value)}
+  style={{
+    width: '100%',
+    minHeight: '40px',
+    padding: '8px',
+    border: '1px solid #ccc',
+    borderRadius: '4px',
+  }}
+  placeholder="پیام خود را بنویسید... (@username)"
+>
+  <Mention trigger="@" data={tagSuggestions} appendSpaceOnAdd />
+</MentionsInput>
         <IconButton color="primary" onClick={handleSendMessage}>
           <Send />
         </IconButton>

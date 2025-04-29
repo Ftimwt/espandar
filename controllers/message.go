@@ -41,7 +41,6 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	receiverType := c.Param("receiver_type")
 	receiverID := c.Param("receiver_id")
 
-	// اعتبارسنجی اولیه
 	if receiverID == "" || receiverID == "undefined" {
 		log.Printf("SendMessage: Invalid receiver ID: %s", receiverID)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "receiver ID cannot be empty or undefined"})
@@ -55,7 +54,6 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// پردازش دستی multipart/form-data
 	formContent, err := c.MultipartForm()
 	if err != nil {
 		log.Printf("SendMessage: Error parsing form: %v", err)
@@ -63,9 +61,9 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// بررسی Content و type
-	content := formData.Content // از formData استفاده می‌کنیم که از ShouldBind پر شده
+	content := formData.Content
 	messageType := formData.Type
+	tagsJSON := formContent.Value["tags"][0] // تگ‌ها از فرم
 	if messageType == "" {
 		if content != "" {
 			messageType = "text"
@@ -78,7 +76,6 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		}
 	}
 
-	// رمزنگاری Content در صورت وجود
 	var encryptedContent string
 	if messageType == "text" && content != "" {
 		encryptedContent, err = aesCipher.Encrypt(content)
@@ -108,6 +105,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		UserID:     uint(receiverIDUint),
 		IsReceived: false,
 		Seen:       false,
+		Tags:       tagsJSON,
 	}
 
 	var chat models.Chat
@@ -165,7 +163,6 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// پردازش فایل‌ها
 	files := formContent.File["files"]
 	var filePaths []models.File
 	if len(files) > 0 {
@@ -193,14 +190,12 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		message.Files = filePaths
 	}
 
-	// ذخیره پیام در دیتابیس
 	if err := mc.db.Create(&message).Error; err != nil {
 		log.Printf("SendMessage: Error creating message: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not sent"})
 		return
 	}
 
-	// پاسخ به کلاینت
 	response := gin.H{
 		"message_id":  message.ID,
 		"content":     encryptedContent,
@@ -212,9 +207,9 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		"is_received": message.IsReceived,
 		"type":        message.Type,
 		"files":       message.Files,
+		"tags":        message.Tags,
 	}
 
-	// ارسال به WebSocket
 	if receiverType == "user" {
 		log.Printf("SendMessage: Broadcasting to user %d, event: new_message", receiverUser.ID)
 		mc.broadcaster.BroadcastToUser(receiverUser.ID, "new_message", response)

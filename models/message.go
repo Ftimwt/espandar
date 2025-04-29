@@ -1,6 +1,10 @@
 package models
 
-import "gorm.io/gorm"
+import (
+	"encoding/json"
+
+	"gorm.io/gorm"
+)
 
 type Message struct {
 	gorm.Model
@@ -17,7 +21,14 @@ type Message struct {
 	User    User
 	Group   Group
 	Channel Channel
-	Files   []File
+	Tags    string `json:"tags"` // JSON-encoded array of Tags
+	Files   []File `gorm:"foreignKey:MessageID"`
+}
+
+type Tag struct {
+	Type string `json:"type"` // user
+	ID   uint   `json:"id"`   // contact_id
+	Name string `json:"name"` // contact name
 }
 
 type Chat struct {
@@ -25,4 +36,22 @@ type Chat struct {
 	UserID1  uint      `json:"user_id1" gorm:"column:user_id1"`
 	UserID2  uint      `json:"user_id2" gorm:"column:user_id2"`
 	Messages []Message `gorm:"foreignkey:ChatID"`
+}
+
+func (m *Message) GetTags() ([]Tag, error) {
+	var tags []Tag
+	if m.Tags == "" {
+		return tags, nil
+	}
+	err := json.Unmarshal([]byte(m.Tags), &tags)
+	return tags, err
+}
+
+func (m *Message) SetTags(tags []Tag) error {
+	data, err := json.Marshal(tags)
+	if err != nil {
+		return err
+	}
+	m.Tags = string(data)
+	return nil
 }
