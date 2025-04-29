@@ -73,21 +73,28 @@ const Chat = () => {
   useEffect(() => {
     const fetchTagSuggestions = async () => {
       try {
-        const [usersRes, filesRes] = await Promise.all([
-          axios.get(`${API_URL}/users`, { headers: { Authorization: `Bearer ${token}` } }),
-          axios.get(`${API_URL}/files`, { headers: { Authorization: `Bearer ${token}` } }), // فرضاً
-        ]);
-        const users = usersRes.data.map((user) => ({
-          id: user.ID,
-          display: user.Username,
-        }));
-        const files = filesRes.data.map((file) => ({
-          id: file.ID,
-          display: file.Name,
-        }));
-        setTagSuggestions([...users, ...files]);
+        console.log('Chat: Fetching users with token:', token);
+        const usersRes = await axios.get(`${API_URL}/users`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        console.log('Chat: Raw users response:', usersRes.data);
+        const users = usersRes.data
+          .filter((user) => {
+            const isValid = user.ID && user.Username;
+            if (!isValid) {
+              console.log('Chat: Filtered out user:', user);
+            }
+            return isValid;
+          })
+          .map((user) => ({
+            id: user.ID.toString(),
+            display: user.Username || `User_${user.ID}`,
+          }));
+        console.log('Chat: Processed tag suggestions:', users);
+        setTagSuggestions(users);
       } catch (err) {
-        console.error('Error fetching tag suggestions:', err);
+        console.error('Chat: Error fetching tag suggestions:', err.response?.data || err.message);
+        setTagSuggestions([]);
       }
     };
     fetchTagSuggestions();
@@ -827,21 +834,36 @@ const Chat = () => {
             <Mic />
           </IconButton>
         )}
-        <MentionsInput
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          style={{
-            width: '100%',
-            minHeight: '40px',
-            padding: '8px',
-            border: '1px solid #ccc',
-            borderRadius: '4px',
-          }}
-          placeholder="پیام خود را بنویسید... (@username یا #file123)"
-        >
-          <Mention trigger="@" data={tagSuggestions.filter((s) => !s.id.startsWith('file'))} appendSpaceOnAdd />
-          <Mention trigger="#" data={tagSuggestions.filter((s) => s.id.startsWith('file'))} appendSpaceOnAdd />
-        </MentionsInput>
+        {tagSuggestions.length > 0 ? (
+  <MentionsInput
+    value={newMessage}
+    onChange={(e) => setNewMessage(e.target.value)}
+    style={{
+      width: '100%',
+      minHeight: '40px',
+      padding: '8px',
+      border: '1px solid #ccc',
+      borderRadius: '4px',
+    }}
+    placeholder="پیام خود را بنویسید... (@username)"
+  >
+    <Mention trigger="@" data={tagSuggestions} appendSpaceOnAdd />
+  </MentionsInput>
+) : (
+  <input
+    type="text"
+    value={newMessage}
+    onChange={(e) => setNewMessage(e.target.value)}
+    style={{
+      width: '100%',
+      minHeight: '40px',
+      padding: '8px',
+      border: '1px solid #ccc',
+      borderRadius: '4px',
+    }}
+    placeholder="در حال بارگذاری پیشنهادات..."
+  />
+)}
         <IconButton color="primary" onClick={handleSendMessage}>
           <Send />
         </IconButton>

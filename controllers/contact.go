@@ -21,6 +21,12 @@ func NewContactController(db *gorm.DB) *ContactController {
 
 func (c *ContactController) AddContact(ctx *gin.Context) {
 	fmt.Println("AddContact: Received request to add contact")
+	if ctx.Request.Method != "POST" {
+		fmt.Println("AddContact: Invalid method:", ctx.Request.Method)
+		ctx.JSON(http.StatusMethodNotAllowed, gin.H{"error": "Method not allowed"})
+		return
+	}
+
 	user, exists := ctx.Get("user")
 	if !exists {
 		fmt.Println("AddContact: User not found in context")
@@ -48,14 +54,18 @@ func (c *ContactController) AddContact(ctx *gin.Context) {
 		return
 	}
 
-	// اعتبارسنجی شماره تلفن
+	if contact.Name == "" || contact.Phone == "" {
+		fmt.Println("AddContact: Name or phone missing")
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Name and phone are required"})
+		return
+	}
+
 	if !utils.ValidatePhone(contact.Phone) {
 		fmt.Println("AddContact: Invalid phone number:", contact.Phone)
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Phone number must be 11 digits starting with 09"})
 		return
 	}
 
-	// بررسی وجود مخاطب با شماره تلفن
 	var existingContact models.Contact
 	if err := c.db.Where("phone = ? AND user_id = ?", contact.Phone, userModel.ID).First(&existingContact).Error; err == nil {
 		fmt.Println("AddContact: Contact already exists for phone:", contact.Phone)
@@ -63,10 +73,8 @@ func (c *ContactController) AddContact(ctx *gin.Context) {
 		return
 	}
 
-	// بررسی وجود کاربر با شماره تلفن
 	var existingUser models.User
 	if err := c.db.Where("phone = ?", contact.Phone).First(&existingUser).Error; err != nil {
-		// اگر کاربر وجود ندارد، کاربر جدید ایجاد می‌کنیم
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte("default123"), bcrypt.DefaultCost)
 		if err != nil {
 			fmt.Println("AddContact: Error hashing password:", err)
@@ -85,14 +93,13 @@ func (c *ContactController) AddContact(ctx *gin.Context) {
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating user"})
 			return
 		}
-		contact.UserID = newUser.ID
+		contact.TargetID = newUser.ID
 		fmt.Println("AddContact: Created new user with ID:", newUser.ID)
 	} else {
-		contact.UserID = existingUser.ID
+		contact.TargetID = existingUser.ID
 		fmt.Println("AddContact: Using existing user with ID:", existingUser.ID)
 	}
 
-	// تنظیم user_id برای ادمین که مخاطب را اضافه کرده
 	contact.UserID = userModel.ID
 	if err := c.db.Create(&contact).Error; err != nil {
 		fmt.Println("AddContact: Error creating contact:", err)
@@ -148,6 +155,16 @@ func (c *ContactController) GetContacts(ctx *gin.Context) {
 			fmt.Println("GetContacts: Error fetching contacts for user:", err)
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Could not fetch contacts"})
 			return
+		}
+	}
+
+	// برگرداندن TargetID به جای UserID برای چت
+	for i, contact := range contacts {
+		contacts[i].UserID = contact.TargetID // برای استفاده در handleContactClick
+		var targetUser models.User
+		if err := c.db.Where("id = ?", contact.TargetID).First(&targetUser).Error; err == nil {
+			contacts[i].Name = targetUser.Username
+			contacts[i].Phone = targetUser.Phone
 		}
 	}
 

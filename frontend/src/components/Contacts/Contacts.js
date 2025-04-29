@@ -163,41 +163,30 @@ const Contacts = ({ token, isAdmin, onLogout }) => {
                 ایجاد کانال
               </Button>
               {showAddContact && (
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="h6">افزودن مخاطب</Typography>
-                  <TextField
-                    label="نام"
-                    value={newContact.name}
-                    onChange={(e) =>
-                      setNewContact({ ...newContact, name: e.target.value })
-                    }
-                    fullWidth
-                    margin="normal"
-                  />
-                  <TextField
-                    label="شماره تلفن (09123456789)"
-                    value={newContact.phone}
-                    onChange={(e) =>
-                      setNewContact({ ...newContact, phone: e.target.value })
-                    }
-                    fullWidth
-                    margin="normal"
-                  />
-                  <Button
-                    variant="contained"
-                    onClick={handleAddContact}
-                    sx={{ mr: 1 }}
-                  >
-                    اضافه کردن
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    onClick={() => setShowAddContact(false)}
-                  >
-                    لغو
-                  </Button>
-                </Box>
-              )}
+  <Box component="form" onSubmit={(e) => { e.preventDefault(); handleAddContact(); }} sx={{ mb: 2 }}>
+    <Typography variant="h6">افزودن مخاطب</Typography>
+    <TextField
+      label="نام"
+      value={newContact.name}
+      onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
+      fullWidth
+      margin="normal"
+    />
+    <TextField
+      label="شماره تلفن (09123456789)"
+      value={newContact.phone}
+      onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+      fullWidth
+      margin="normal"
+    />
+    <Button type="submit" variant="contained" sx={{ mr: 1 }}>
+      اضافه کردن
+    </Button>
+    <Button variant="outlined" onClick={() => setShowAddContact(false)}>
+      لغو
+    </Button>
+  </Box>
+)}
               {showCreateGroup && (
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="h6">ایجاد گروه</Typography>
