@@ -116,7 +116,9 @@ const Contacts = ({ token, isAdmin, onLogout }) => {
     if (!showContacts) setShowAddContact(false);
   };
 
-  const handleContactClick = (userId) => {
+  const handleContactClick = (event, userId) => {
+    event.preventDefault();
+    event.stopPropagation();
     console.log('Contacts: Navigating to chat for user:', userId);
     navigate(`/chat/user/${userId}`);
   };
@@ -295,10 +297,10 @@ const Contacts = ({ token, isAdmin, onLogout }) => {
                   <List>
                     {contacts.map((contact, index) => (
                       <ListItem
-                        key={contact.id || `contact-${index}`}
-                        onClick={() => handleContactClick(contact.user_id)} // استفاده از user_id
-                        sx={{ cursor: 'pointer' }}
-                      >
+                      key={contact.id || `contact-${index}`}
+                      onClick={(e) => handleContactClick(e, contact.user_id)}
+                      sx={{ cursor: 'pointer' }}
+                    >
                         <ListItemText
                           primary={contact.name}
                           secondary={contact.phone}
