@@ -57,14 +57,16 @@ func Generate(user *models.User) (string, error) {
 }
 
 func ValidateJWT(tokenString string) (uint, error) {
+	if len(tokenString) < 10 {
+		log.Printf("ValidateJWT: Token is too short: %s", tokenString)
+		return 0, fmt.Errorf("invalid token")
+	}
 	log.Printf("ValidateJWT: Parsing token: %s", tokenString[:10]+"...")
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			log.Printf("ValidateJWT: Unexpected signing method: %v", token.Header["alg"])
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-		log.Printf("ValidateJWT: Signing method: %s", token.Method.Alg())
-		log.Printf("ValidateJWT: Using jwtSecret: %s", jwtSecret)
 		return jwtSecret, nil
 	})
 	if err != nil {

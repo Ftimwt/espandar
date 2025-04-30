@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { signUp, login } from '../../api'; // مسیر فایل سرویس
 import {
   Box,
   Button,
@@ -30,83 +30,64 @@ const Auth = ({ onUserLogin, onAdminLogin }) => {
     setError('');
 
     if (isSignup && !validatePhone(phone)) {
-        setError('شماره تلفن نامعتبر است');
-        return;
+      setError('شماره تلفن نامعتبر است');
+      return;
     }
 
     const payload = { username, password, phone };
-    const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
-    let response;
 
     try {
-        if (isAdmin) {
-            if (isSignup) {
-                response = await axios.post(`${API_URL}/admin/signup`, payload);
-                console.log('Auth: Admin signup response:', response.data);
-                if (!response.data.user_id) {
-                    console.error('Auth: user_id not found in response');
-                    setError('خطا: شناسه کاربر از سرور دریافت نشد');
-                    return;
-                }
-                onAdminLogin(response.data.token);
-                localStorage.setItem('token', response.data.token);
-                localStorage.setItem('user_id', response.data.user_id);
-                navigate('/contacts');
-            } else {
-                response = await axios.post(`${API_URL}/admin/login`, payload);
-                console.log('Auth: Admin login response:', response.data);
-                if (!response.data.user_id) {
-                    console.error('Auth: user_id not found in response');
-                    setError('خطا: شناسه کاربر از سرور دریافت نشد');
-                    return;
-                }
-                onAdminLogin(response.data.token);
-                localStorage.setItem('token', response.data.token);
-                localStorage.setItem('user_id', response.data.user_id);
-                navigate('/contacts');
-            }
+      let response;
+      if (isAdmin) {
+        if (isSignup) {
+          response = await signUp(payload); // استفاده از signUp
         } else {
-            if (isSignup) {
-                response = await axios.post(`${API_URL}/signup`, payload);
-                console.log('Auth: User signup response:', response.data);
-                if (!response.data.user_id) {
-                    console.error('Auth: user_id not found in response');
-                    setError('خطا: شناسه کاربر از سرور دریافت نشد');
-                    return;
-                }
-                onUserLogin(response.data.token);
-                localStorage.setItem('token', response.data.token);
-                localStorage.setItem('user_id', response.data.user_id);
-                navigate('/contacts');
-            } else {
-                response = await axios.post(`${API_URL}/login`, payload);
-                console.log('Auth: User login response:', response.data);
-                if (!response.data.user_id) {
-                    console.error('Auth: user_id not found in response');
-                    setError('خطا: شناسه کاربر از سرور دریافت نشد');
-                    return;
-                }
-                onUserLogin(response.data.token);
-                localStorage.setItem('token', response.data.token);
-                localStorage.setItem('user_id', response.data.user_id);
-                navigate('/contacts');
-            }
+          response = await login(payload); // استفاده از login
         }
+      } else {
+        if (isSignup) {
+          response = await signUp(payload);
+        } else {
+          response = await login(payload);
+        }
+      }
+
+      // چک کردن پاسخ سرور
+      if (!response || !response.token || !response.user_id) {
+        console.error('Auth: Invalid response from server:', response);
+        setError('خطا: پاسخ سرور ناقص است');
+        return;
+      }
+
+      console.log(`${isAdmin ? 'Admin' : 'User'} ${isSignup ? 'signup' : 'login'} response:`, response);
+
+      // ذخیره توکن و user_id
+      const { token, user_id } = response;
+      localStorage.setItem('token', token);
+      localStorage.setItem('user_id', user_id);
+
+      // فراخوانی callback مناسب
+      if (isAdmin) {
+        onAdminLogin(token);
+      } else {
+        onUserLogin(token);
+      }
+
+      navigate('/contacts');
     } catch (error) {
-        console.error('Auth: Error:', {
-            message: error.message,
-            response: error.response?.data,
-            status: error.response?.status,
-            code: error.code,
-        });
-        setError(
-            error.response?.data?.error ||
-            error.message === 'Network Error'
-                ? 'اتصال به سرور برقرار نشد. لطفاً مطمئن شوید که سرور در حال اجراست.'
-                : 'خطا در ورود یا ثبت‌نام'
-        );
+      console.error('Auth: Error:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      setError(
+        error.response?.data?.error ||
+          (error.message === 'Network Error'
+            ? 'اتصال به سرور برقرار نشد. لطفاً مطمئن شوید که سرور در حال اجراست.'
+            : 'خطا در ورود یا ثبت‌نام')
+      );
     }
-};
+  };
 
   return (
     <Box
@@ -158,7 +139,8 @@ const Auth = ({ onUserLogin, onAdminLogin }) => {
           required
           fullWidth
         />
-        {isSignup && (<TextField
+        {isSignup && (
+          <TextField
             label="شماره تلفن"
             variant="outlined"
             value={phone}
@@ -169,9 +151,7 @@ const Auth = ({ onUserLogin, onAdminLogin }) => {
         <Button type="submit" variant="contained" color="primary" fullWidth>
           {isSignup ? 'ثبت‌نام' : 'ورود'}
         </Button>
-      </Box>
-
-      <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+      </Box><Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
         <FormControlLabel
           control={
             <Switch

@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"espandar/models"
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -58,36 +57,21 @@ func (gc *GroupController) CreateGroup(c *gin.Context) {
 }
 
 func (gc *GroupController) CreateGroupWithMembers(c *gin.Context) {
-	user, _ := c.MustGet("user").(*models.User)
-
-	// بررسی نقش کاربر
-	if user.Role != "user" && user.Role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "only users and admins can create groups"})
-		return
-	}
-
+	user := c.MustGet("user").(*models.User)
 	var input struct {
-		Name    string `json:"name" binding:"required"`
-		UserIDs []uint `json:"user_ids" binding:"required"`
+		Name    string `json:"name"`
+		UserIDs []uint `json:"user_ids"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
 
-	// بررسی اینکه UserIDs خالی نباشد و شامل خود کاربر نباشد
-	if len(input.UserIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "at least one member must be selected"})
+	if input.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name cannot be empty"})
 		return
 	}
-	for _, userID := range input.UserIDs {
-		if userID == user.ID {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "cannot add yourself as a member"})
-			return
-		}
-	}
 
-	// ایجاد گروه
 	group := models.Group{
 		Name:      input.Name,
 		CreatorID: user.ID,
@@ -97,84 +81,39 @@ func (gc *GroupController) CreateGroupWithMembers(c *gin.Context) {
 		return
 	}
 
-	// افزودن خالق به گروه
-	groupMember := models.GroupMember{
-		GroupID: group.ID,
-		UserID:  user.ID,
-	}
-	if err := gc.db.Create(&groupMember).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error adding creator to group"})
+	var members []models.User
+	if err := gc.db.Where("id IN ?", input.UserIDs).Find(&members).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user IDs"})
 		return
 	}
+	gc.db.Model(&group).Association("Members").Append(members)
 
-	// افزودن کاربران انتخاب‌شده
-	for _, userID := range input.UserIDs {
-		var member models.User
-		if err := gc.db.First(&member, userID).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("user %d not found", userID)})
-			return
-		}
-		groupMember := models.GroupMember{
-			GroupID: group.ID,
-			UserID:  userID,
-		}
-		if err := gc.db.Create(&groupMember).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("error adding user %d to group", userID)})
-			return
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "group created successfully",
-		"group":   group,
-	})
+	c.JSON(http.StatusOK, gin.H{"group": group})
 }
 
-func (gc *GroupController) AddMemberToGroup(c *gin.Context) {
-	groupID := c.Param("group_id")
-	userIDStr := c.Param("user_id")
-	user, _ := c.MustGet("user").(*models.User)
-	userID, err := strconv.ParseUint(userIDStr, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
-		return
-	}
+func (gc *GroupController) AddGroupMember(c *gin.Context) {
+	user := c.MustGet("user").(*models.User)
+	groupID := c.Param("id")
+	userID := c.Param("user_id")
 
 	var group models.Group
-	if err := gc.db.First(&group, groupID).Error; err != nil {
+	if err := gc.db.Where("id = ?", groupID).First(&group).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
 		return
 	}
-
-	// فقط خالق گروه می‌تواند عضو اضافه کند
-	if user.ID != group.CreatorID {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "only the group creator can add members"})
+	if group.CreatorID != user.ID {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "only creator can add members"})
 		return
 	}
 
 	var member models.User
-	if err := gc.db.First(&member, userID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("user %d not found", userID)})
+	if err := gc.db.Where("id = ?", userID).First(&member).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
 		return
 	}
+	gc.db.Model(&group).Association("Members").Append(&member)
 
-	// بررسی اینکه کاربر قبلاً عضو نباشد
-	var count int64
-	if err := gc.db.Where("group_id = ? AND user_id = ?", groupID, userID).Count(&count).Error; err != nil || count > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user is already a member"})
-		return
-	}
-
-	groupMember := models.GroupMember{
-		GroupID: group.ID,
-		UserID:  uint(userID),
-	}
-	if err := gc.db.Create(&groupMember).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error adding member"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "member added successfully", "group": group})
+	c.JSON(http.StatusOK, gin.H{"message": "member added"})
 }
 
 func (gc *GroupController) RemoveMemberFromGroup(c *gin.Context) {

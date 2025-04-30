@@ -2,14 +2,53 @@ import axios from 'axios';
 
 const API_URL = 'http://localhost:8080';
 
+// تنظیم Interceptor
+axios.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    console.log('Request headers:', config.headers); // برای دیباگ
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 export const signUp = async (userData) => {
- const response = await axios.post(`${API_URL}/signup`, userData);
- return response.data;
+  try {
+    const response = await axios.post(`${API_URL}/signup`, userData);
+    if (!response.data.token || !response.data.user_id) {
+      throw new Error('Invalid response: token or user_id missing');
+    }
+    console.log('signUp response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('signUp error:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+    });
+    throw error;
+  }
 };
 
 export const login = async (userData) => {
- const response = await axios.post(`${API_URL}/login`, userData);
- return response.data; // اطمینان حاصل کنید که توکن و اطلاعات کاربر در اینجا بازگشت داده می‌شود
+  try {
+    const response = await axios.post(`${API_URL}/login`, userData);
+    if (!response.data.token || !response.data.user_id) {
+      throw new Error('Invalid response: token or user_id missing');
+    }
+    console.log('login response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('login error:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+    });
+    throw error;
+  }
 };
 
 export const getProfile = async (token) => {

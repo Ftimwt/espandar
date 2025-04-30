@@ -3,7 +3,6 @@ package controllers
 import (
 	"espandar/dto"
 	"espandar/models"
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -55,37 +54,22 @@ func (cc *ChannelController) CreateChannel(c *gin.Context) {
 }
 
 func (cc *ChannelController) CreateChannelWithMembers(c *gin.Context) {
-	user, _ := c.MustGet("user").(*models.User)
-
-	// بررسی نقش کاربر
-	if user.Role != "user" && user.Role != "admin" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "only users and admins can create channels"})
-		return
-	}
-
+	user := c.MustGet("user").(*models.User)
 	var input struct {
-		Name        string `json:"name" binding:"required"`
+		Name        string `json:"name"`
 		Description string `json:"description"`
-		UserIDs     []uint `json:"user_ids" binding:"required"`
+		UserIDs     []uint `json:"user_ids"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
 
-	// بررسی اینکه UserIDs خالی نباشد و شامل خود کاربر نباشد
-	if len(input.UserIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "at least one member must be selected"})
+	if input.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name cannot be empty"})
 		return
 	}
-	for _, userID := range input.UserIDs {
-		if userID == user.ID {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "cannot add yourself as a member"})
-			return
-		}
-	}
 
-	// ایجاد کانال
 	channel := models.Channel{
 		Name:        input.Name,
 		Description: input.Description,
@@ -96,74 +80,39 @@ func (cc *ChannelController) CreateChannelWithMembers(c *gin.Context) {
 		return
 	}
 
-	// افزودن خالق به اعضای کانال
-	if err := cc.db.Model(&channel).Association("Members").Append(&user); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error adding creator to channel"})
-		return
-	}
-
-	// افزودن کاربران انتخاب‌شده
 	var members []models.User
-	for _, userID := range input.UserIDs {
-		var member models.User
-		if err := cc.db.First(&member, userID).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("user %d not found", userID)})
-			return
-		}
-		members = append(members, member)
-	}
-	if err := cc.db.Model(&channel).Association("Members").Append(members); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error adding members to channel"})
+	if err := cc.db.Where("id IN ?", input.UserIDs).Find(&members).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user IDs"})
 		return
 	}
+	cc.db.Model(&channel).Association("Members").Append(members)
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "channel created successfully",
-		"channel": channel,
-	})
+	c.JSON(http.StatusOK, gin.H{"channel": channel})
 }
 
-func (cc *ChannelController) AddMemberToChannel(c *gin.Context) {
-	channelID := c.Param("channel_id")
-	userIDStr := c.Param("user_id")
-	user, _ := c.MustGet("user").(*models.User)
-	userID, err := strconv.ParseUint(userIDStr, 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
-		return
-	}
+func (cc *ChannelController) AddChannelMember(c *gin.Context) {
+	user := c.MustGet("user").(*models.User)
+	channelID := c.Param("id")
+	userID := c.Param("user_id")
 
 	var channel models.Channel
-	if err := cc.db.First(&channel, channelID).Error; err != nil {
+	if err := cc.db.Where("id = ?", channelID).First(&channel).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "channel not found"})
 		return
 	}
-
-	// فقط خالق کانال می‌تواند عضو اضافه کند
-	if user.ID != channel.CreatorID {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "only the channel creator can add members"})
+	if channel.CreatorID != user.ID {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "only creator can add members"})
 		return
 	}
 
 	var member models.User
-	if err := cc.db.First(&member, userID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("user %d not found", userID)})
+	if err := cc.db.Where("id = ?", userID).First(&member).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
 		return
 	}
+	cc.db.Model(&channel).Association("Members").Append(&member)
 
-	// بررسی اینکه کاربر قبلاً عضو نباشد
-	count := cc.db.Model(&channel).Association("Members").Count()
-	if count > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user is already a member"})
-		return
-	}
-
-	if err := cc.db.Model(&channel).Association("Members").Append(&member); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error adding member"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "member added successfully", "channel": channel})
+	c.JSON(http.StatusOK, gin.H{"message": "member added"})
 }
 
 func (cc *ChannelController) RemoveMemberFromChannel(c *gin.Context) {

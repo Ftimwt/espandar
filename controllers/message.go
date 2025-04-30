@@ -1,328 +1,404 @@
 package controllers
 
 import (
-	"espandar/dto"
-	"espandar/encryption"
-	"espandar/models"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	"espandar/models"    // وارد کردن پکیج models
+	"espandar/websocket" // وارد کردن پکیج websocket (جایگزین با مسیر واقعی ماژول خودتون)
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-var aesCipher = encryption.NewAESCipher()
-var userStatus = make(map[string]bool)
-
-type Broadcaster interface {
-	BroadcastToUser(userID uint, event string, args ...interface{})
-}
-
+// MessageController برای مدیریت پیام‌ها
 type MessageController struct {
 	db          *gorm.DB
-	broadcaster Broadcaster
+	broadcaster *websocket.SocketBroadcaster
 }
 
-func NewMessageController(db *gorm.DB, broadcaster Broadcaster) *MessageController {
+// NewMessageController برای ایجاد کنترلر جدید
+func NewMessageController(db *gorm.DB, broadcaster *websocket.SocketBroadcaster) *MessageController {
 	return &MessageController{db: db, broadcaster: broadcaster}
 }
 
+// SendMessage برای ارسال پیام جدید
 func (mc *MessageController) SendMessage(c *gin.Context) {
-	var formData dto.Message
-	if err := c.ShouldBind(&formData); err != nil {
-		log.Printf("SendMessage: Error binding form data: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	user := c.MustGet("user").(*models.User)
+	receiverType := c.Param("type")
+	receiverID := c.Param("id")
+	roomID := c.Query("room_id") // برای هماهنگی با WebRTC
+
+	var receiverIDUint uint
+	if receiverID != "" {
+		id, err := strconv.ParseUint(receiverID, 10, 32)
+		if err != nil {
+			log.Printf("SendMessage: Invalid receiver ID: %s, error: %v", receiverID, err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver ID"})
+			return
+		}
+		receiverIDUint = uint(id)
 	}
 
-	receiverType := c.Param("receiver_type")
-	receiverID := c.Param("receiver_id")
-
-	if receiverID == "" || receiverID == "undefined" {
-		log.Printf("SendMessage: Invalid receiver ID: %s", receiverID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "receiver ID cannot be empty or undefined"})
-		return
-	}
-
-	receiverIDUint, err := strconv.Atoi(receiverID)
-	if err != nil {
-		log.Printf("SendMessage: Invalid receiver ID format: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver ID format"})
-		return
-	}
-
+	// دریافت داده‌های فرم
 	formContent, err := c.MultipartForm()
 	if err != nil {
-		log.Printf("SendMessage: Error parsing form: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "unable to parse form"})
+		log.Printf("SendMessage: Invalid form data: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid form data"})
 		return
 	}
 
-	content := formData.Content
-	messageType := formData.Type
-	tagsJSON := formContent.Value["tags"][0] // تگ‌ها از فرم
-	if messageType == "" {
-		if content != "" {
-			messageType = "text"
-		} else if len(formContent.File["files"]) > 0 {
-			messageType = "file"
-		} else {
-			log.Println("SendMessage: No content or file provided")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "content or file is required"})
+	// رمزنگاری AES
+	key := []byte("your_secure_key_32_bytes_long!!")
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		log.Printf("SendMessage: Encryption error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption error"})
+		return
+	}
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		log.Printf("SendMessage: GCM error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption error"})
+		return
+	}
+
+	// پردازش محتوا
+	var content string
+	if contentValues, ok := formContent.Value["content"]; ok && len(contentValues) > 0 {
+		content = contentValues[0]
+	}
+	nonce := make([]byte, aesGCM.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		log.Printf("SendMessage: Nonce generation error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption error"})
+		return
+	}
+	encryptedContent := aesGCM.Seal(nonce, nonce, []byte(content), nil)
+
+	// پردازش تگ‌ها
+	tagsJSON := formContent.Value["tags"][0]
+	var tags []models.Tag
+	if tagsJSON != "" {
+		if err := json.Unmarshal([]byte(tagsJSON), &tags); err != nil {
+			log.Printf("SendMessage: Invalid tags format: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tags format"})
 			return
 		}
-	}
-
-	var encryptedContent string
-	if messageType == "text" && content != "" {
-		encryptedContent, err = aesCipher.Encrypt(content)
-		if err != nil {
-			log.Printf("SendMessage: Error encrypting message: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error encrypting message"})
-			return
-		}
-	}
-
-	user, _ := c.MustGet("user").(*models.User)
-	log.Printf("SendMessage: Sender ID: %d, Receiver ID: %d, Type: %s", user.ID, receiverIDUint, receiverType)
-
-	var receiverUser models.User
-	if receiverType == "user" {
-		if err := mc.db.Where("id = ?", receiverIDUint).First(&receiverUser).Error; err != nil {
-			log.Printf("SendMessage: Receiver not found: %v", err)
-			c.JSON(http.StatusNotFound, gin.H{"error": "receiver not found"})
-			return
-		}
-	}
-
-	message := models.Message{
-		Content:    encryptedContent,
-		SenderID:   user.ID,
-		Type:       messageType,
-		UserID:     uint(receiverIDUint),
-		IsReceived: false,
-		Seen:       false,
-		Tags:       tagsJSON,
-	}
-
-	var chat models.Chat
-	switch receiverType {
-	case "user":
-		message.UserID = receiverUser.ID
-		log.Printf("SendMessage: Checking chat between User %d and User %d", user.ID, receiverUser.ID)
-		if err := mc.db.Where("user_id_1 = ? AND user_id_2 = ?", user.ID, receiverUser.ID).
-			Or("user_id_1 = ? AND user_id_2 = ?", receiverUser.ID, user.ID).
-			First(&chat).Error; err != nil {
-			log.Println("SendMessage: Creating new chat")
-			chat = models.Chat{
-				UserID1: user.ID,
-				UserID2: receiverUser.ID,
-			}
-			if err := mc.db.Create(&chat).Error; err != nil {
-				log.Printf("SendMessage: Error creating chat: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating chat"})
+		for _, tag := range tags {
+			switch tag.Type {
+			case "user":
+				var user models.User
+				if err := mc.db.Where("id = ?", tag.ID).First(&user).Error; err != nil {
+					log.Printf("SendMessage: Invalid user ID: %s, error: %v", tag.ID, err)
+					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid user ID: %s", tag.ID)})
+					return
+				}
+			case "file":
+				var file models.File
+				if err := mc.db.Where("id = ?", tag.ID).First(&file).Error; err != nil {
+					log.Printf("SendMessage: Invalid file ID: %s, error: %v", tag.ID, err)
+					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid file ID: %s", tag.ID)})
+					return
+				}
+			case "workflow":
+				var workflow models.Workflow
+				if err := mc.db.Where("id = ?", tag.ID).First(&workflow).Error; err != nil {
+					log.Printf("SendMessage: Invalid workflow ID: %s, error: %v", tag.ID, err)
+					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid workflow ID: %s", tag.ID)})
+					return
+				}
+			default:
+				log.Printf("SendMessage: Invalid tag type: %s", tag.Type)
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid tag type: %s", tag.Type)})
 				return
 			}
-			log.Printf("SendMessage: Chat created, ID: %d", chat.ID)
 		}
-		message.ChatID = chat.ID
+	}
+
+	// ایجاد پیام
+	message := models.Message{
+		Content:  base64.StdEncoding.EncodeToString(encryptedContent),
+		SenderID: user.ID,
+		Tags:     tagsJSON,
+		RoomID:   &roomID,
+	}
+
+	// تنظیم گیرنده پیام
+	switch strings.ToLower(receiverType) {
+	case "user":
+		userIDPtr := new(uint)
+		*userIDPtr = receiverIDUint
+		message.UserID = userIDPtr
 	case "group":
-		message.GroupID = uint(receiverIDUint)
-		var member models.GroupMember
-		if err := mc.db.Where("group_id = ? AND user_id = ?", receiverIDUint, user.ID).First(&member).Error; err != nil {
-			log.Printf("SendMessage: User not a group member: %v", err)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not a group member"})
-			return
-		}
+		groupIDPtr := new(uint)
+		*groupIDPtr = receiverIDUint
+		message.GroupID = groupIDPtr
 	case "channel":
-		message.ChannelID = uint(receiverIDUint)
-		var channel models.Channel
-		if err := mc.db.Where("id = ?", receiverIDUint).Preload("Members").First(&channel).Error; err != nil {
-			log.Printf("SendMessage: Channel not found: %v", err)
-			c.JSON(http.StatusNotFound, gin.H{"error": "channel not found"})
-			return
-		}
-		isMember := false
-		for _, member := range channel.Members {
-			if member.ID == user.ID {
-				isMember = true
-				break
-			}
-		}
-		if !isMember {
-			log.Println("SendMessage: User not a channel member")
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not a channel member"})
-			return
-		}
+		channelIDPtr := new(uint)
+		*channelIDPtr = receiverIDUint
+		message.ChannelID = channelIDPtr
 	default:
 		log.Printf("SendMessage: Invalid receiver type: %s", receiverType)
-		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exist"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver type"})
 		return
 	}
 
+	// آپلود فایل‌ها به S3
 	files := formContent.File["files"]
-	var filePaths []models.File
-	if len(files) > 0 {
-		for _, fileHeader := range files {
-			filePath := fmt.Sprintf("./Uploads/%s", fileHeader.Filename)
-			if err := c.SaveUploadedFile(fileHeader, filePath); err != nil {
-				log.Printf("SendMessage: Error saving file: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "file doesn't save"})
-				return
-			}
-
-			newFile := models.File{
-				FilePath: fmt.Sprintf("/Uploads/%s", fileHeader.Filename),
-				Type:     mc.FileType(fileHeader.Filename),
-			}
-
-			if err := mc.db.Create(&newFile).Error; err != nil {
-				log.Printf("SendMessage: Error saving file to DB: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to save file"})
-				return
-			}
-
-			filePaths = append(filePaths, newFile)
+	for _, fileHeader := range files {
+		file, err := fileHeader.Open()
+		if err != nil {
+			log.Printf("SendMessage: Error reading file %s: %v", fileHeader.Filename, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error reading file"})
+			return
 		}
-		message.Files = filePaths
+		defer file.Close()
+
+		filePath, err := mc.UploadFileToS3(fileHeader)
+		if err != nil {
+			log.Printf("SendMessage: Error uploading file %s: %v", fileHeader.Filename, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error uploading file"})
+			return
+		}
+		newFile := models.File{
+			FilePath: filePath,
+			Type:     mc.FileType(fileHeader.Filename, file),
+		}
+		message.Files = append(message.Files, newFile)
 	}
 
+	// ذخیره پیام در دیتابیس
 	if err := mc.db.Create(&message).Error; err != nil {
-		log.Printf("SendMessage: Error creating message: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not sent"})
+		log.Printf("SendMessage: Error saving message: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error saving message"})
 		return
 	}
 
+	// آماده‌سازی پاسخ
 	response := gin.H{
-		"message_id":  message.ID,
-		"content":     encryptedContent,
-		"sender_id":   message.SenderID,
-		"receiver_id": message.UserID,
-		"chat_id":     message.ChatID,
-		"created_at":  message.CreatedAt,
-		"seen":        message.Seen,
-		"is_received": message.IsReceived,
-		"type":        message.Type,
-		"files":       message.Files,
-		"tags":        message.Tags,
+		"ID":        message.ID,
+		"Content":   message.Content,
+		"SenderID":  message.SenderID,
+		"UserID":    message.UserID,
+		"GroupID":   message.GroupID,
+		"ChannelID": message.ChannelID,
+		"Files":     message.Files,
+		"Tags":      tags,
+		"RoomID":    message.RoomID,
+		"CreatedAt": message.CreatedAt,
 	}
 
-	if receiverType == "user" {
-		log.Printf("SendMessage: Broadcasting to user %d, event: new_message", receiverUser.ID)
+	// پخش پیام به گیرندگان
+	switch strings.ToLower(receiverType) {
+	case "user":
+		var receiverUser models.User
+		if err := mc.db.Where("id = ?", receiverIDUint).First(&receiverUser).Error; err != nil {
+			log.Printf("SendMessage: Receiver not found, ID: %d, error: %v", receiverIDUint, err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "receiver not found"})
+			return
+		}
 		mc.broadcaster.BroadcastToUser(receiverUser.ID, "new_message", response)
+	case "group":
+		var members []models.GroupMember
+		mc.db.Where("group_id = ?", receiverIDUint).Find(&members)
+		for _, member := range members {
+			mc.broadcaster.BroadcastToUser(member.UserID, "new_message", response)
+		}
+	case "channel":
+		var channel models.Channel
+		mc.db.Where("id = ?", receiverIDUint).Preload("Members").First(&channel)
+		for _, member := range channel.Members {
+			mc.broadcaster.BroadcastToUser(member.ID, "new_message", response)
+		}
 	}
 
-	log.Printf("SendMessage: Message sent successfully, ID: %d", message.ID)
 	c.JSON(http.StatusOK, response)
 }
 
-func (mc *MessageController) FileType(fileName string) models.FileType {
-	if len(fileName) > 0 {
-		switch {
-		case strings.HasSuffix(fileName, ".mp3") || strings.HasSuffix(fileName, ".wav") || strings.HasSuffix(fileName, ".webm"):
-			return models.Voice
-		case strings.HasSuffix(fileName, ".jpg") || strings.HasSuffix(fileName, ".png") || strings.HasSuffix(fileName, ".jpeg"):
-			return models.Picture
-		case strings.HasSuffix(fileName, ".mp4"):
-			return models.Video
-		default:
-			return models.Default
-		}
+// UploadFileToS3 برای آپلود فایل به S3
+func (mc *MessageController) UploadFileToS3(file *multipart.FileHeader) (string, error) {
+	// ایجاد جلسه AWS
+	sess, err := session.NewSession(&aws.Config{
+		Region: aws.String("your-region"), // جایگزین با منطقه AWS خودتون (مثل us-east-1)
+		// Credentials از ~/.aws/credentials یا متغیرهای محیطی خوانده می‌شه
+	})
+	if err != nil {
+		log.Printf("UploadFileToS3: Failed to create AWS session: %v", err)
+		return "", err
 	}
-	return models.Default
+	svc := s3.New(sess)
+
+	// باز کردن فایل
+	fileContent, err := file.Open()
+	if err != nil {
+		log.Printf("UploadFileToS3: Error opening file %s: %v", file.Filename, err)
+		return "", err
+	}
+	defer fileContent.Close()
+
+	// ایجاد نام فایل یکتا
+	filename := fmt.Sprintf("%s-%s", uuid.New().String(), file.Filename)
+
+	// آپلود به S3
+	_, err = svc.PutObject(&s3.PutObjectInput{
+		Bucket: aws.String("your-bucket"), // جایگزین با نام bucket خودتون
+		Key:    aws.String(filename),
+		Body:   fileContent,
+	})
+	if err != nil {
+		log.Printf("UploadFileToS3: Error uploading file %s: %v", filename, err)
+		return "", err
+	}
+
+	// بازگشت آدرس فایل
+	return fmt.Sprintf("https://your-bucket.s3.amazonaws.com/%s", filename), nil
 }
 
+// FileType برای تعیین نوع فایل
+func (mc *MessageController) FileType(fileName string, file io.Reader) models.FileType {
+	buffer := make([]byte, 512)
+	_, err := file.Read(buffer)
+	if err != nil && err != io.EOF {
+		log.Printf("FileType: Error reading file %s: %v", fileName, err)
+		return models.Default
+	}
+	mimeType := http.DetectContentType(buffer)
+	switch mimeType {
+	case "image/jpeg", "image/png":
+		return models.Picture
+	case "audio/mpeg", "audio/wav", "audio/webm":
+		return models.Voice
+	case "video/mp4":
+		return models.Video
+	default:
+		return models.Default
+	}
+}
+
+// GetMessages برای دریافت پیام‌ها
 func (mc *MessageController) GetMessages(c *gin.Context) {
-	userID := c.MustGet("user").(*models.User).ID
-	receiverType := c.Param("receiver_type")
-	receiverIDStr := c.Param("receiver_id")
-
-	// اعتبارسنجی اولیه
-	if receiverIDStr == "" || receiverIDStr == "undefined" {
-		log.Printf("GetMessages: Invalid receiver ID: %s", receiverIDStr)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "receiver ID cannot be empty or undefined"})
-		return
-	}
-
-	receiverID, err := strconv.Atoi(receiverIDStr)
-	if err != nil {
-		log.Printf("GetMessages: Invalid receiver ID format: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver ID format"})
-		return
-	}
-
-	lastMessageIDStr := c.Query("last_messageid")
-	var lastMessageID int
-	if lastMessageIDStr != "" {
-		lastMessageID, err = strconv.Atoi(lastMessageIDStr)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid message id"})
-			return
-		}
-	}
+	user := c.MustGet("user").(*models.User)
+	receiverID := c.Param("id")
+	receiverType := c.Param("type")
 
 	var messages []models.Message
-	switch receiverType {
+	query := mc.db.Where("sender_id = ? OR user_id = ?", user.ID, user.ID)
+	switch strings.ToLower(receiverType) {
 	case "user":
-		if err := mc.db.
-			Where("(user_id = ? AND sender_id = ?) OR (user_id = ? AND sender_id = ?) AND id > ?", userID, receiverID, receiverID, userID, lastMessageID).
-			Preload("Files").
-			Find(&messages).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
-			return
-		}
+		query = query.Where("user_id = ? OR (user_id = ? AND sender_id = ?)", receiverID, user.ID, receiverID)
 	case "group":
-		if err := mc.db.
-			Where("group_id = ? AND id > ?", receiverID, lastMessageID).
-			Preload("Files").
-			Find(&messages).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
-			return
-		}
+		query = query.Where("group_id = ?", receiverID)
 	case "channel":
-		if err := mc.db.
-			Where("channel_id = ? AND id > ?", receiverID, lastMessageID).
-			Preload("Files").
-			Find(&messages).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
-			return
-		}
+		query = query.Where("channel_id = ?", receiverID)
 	default:
-		c.JSON(http.StatusNotFound, gin.H{"error": "receiver type does not exist"})
+		log.Printf("GetMessages: Invalid receiver type: %s", receiverType)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver type"})
 		return
 	}
 
-	isOnline := userStatus[fmt.Sprintf("user_%d", receiverID)]
-	for i := range messages {
-		if messages[i].UserID == userID {
-			messages[i].IsReceived = isOnline
-			messages[i].Seen = messages[i].Seen || isOnline
-		} else {
-			messages[i].IsReceived = false
-			messages[i].Seen = false
-		}
-
-		if messages[i].Content != "" {
-			decryptedContent, err := aesCipher.Decrypt(messages[i].Content)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "error decrypting message"})
-				return
-			}
-			messages[i].Content = decryptedContent
-		}
-	}
-
-	for _, message := range messages {
-		if err := mc.db.Model(&message).Updates(models.Message{IsReceived: message.IsReceived, Seen: message.Seen}).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error updating message status"})
-			return
-		}
+	if err := query.Find(&messages).Error; err != nil {
+		log.Printf("GetMessages: Error fetching messages: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
+		return
 	}
 
 	c.JSON(http.StatusOK, messages)
+}
+
+// GetEncryptionKey برای دریافت کلید رمزنگاری
+func (mc *MessageController) GetEncryptionKey(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"key": "your_secure_key_32_bytes_long!!"})
+} // GetFiles برای دریافت فایل‌ها
+func (mc *MessageController) GetFiles(c *gin.Context) {
+	var files []models.File
+	if err := mc.db.Find(&files).Error; err != nil {
+		log.Printf("GetFiles: Error fetching files: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching files"})
+		return
+	}
+	c.JSON(http.StatusOK, files)
+}
+
+// GetWorkflows برای دریافت جریان‌های کاری
+func (mc *MessageController) GetWorkflows(c *gin.Context) {
+	var workflows []models.Workflow
+	if err := mc.db.Find(&workflows).Error; err != nil {
+		log.Printf("GetWorkflows: Error fetching workflows: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching workflows"})
+		return
+	}
+	c.JSON(http.StatusOK, workflows)
+}
+
+// CreateConference برای ایجاد کنفرانس
+func (mc *MessageController) CreateConference(c *gin.Context) {
+	user := c.MustGet("user").(*models.User)
+	var input struct {
+		Title     string `json:"title"`
+		StartTime string `json:"start_time"`
+		UserIDs   []uint `json:"user_ids"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		log.Printf("CreateConference: Invalid input: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+		return
+	}
+	startTime, err := time.Parse(time.RFC3339, input.StartTime)
+	if err != nil {
+		log.Printf("CreateConference: Invalid start time: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid start time"})
+		return
+	}
+
+	// ایجاد roomID برای کنفرانس
+	roomID := fmt.Sprintf("conference_%s", uuid.New().String())
+	inviteLink := fmt.Sprintf("https://app.com/conference/%s", uuid.New().String())
+
+	// ایجاد کنفرانس
+	conference := models.Conference{
+		Title:      input.Title,
+		StartTime:  startTime,
+		CreatorID:  user.ID,
+		InviteLink: inviteLink,
+		RoomID:     roomID,
+	}
+	if err := mc.db.Create(&conference).Error; err != nil {
+		log.Printf("CreateConference: Failed to create conference: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create conference"})
+		return
+	}
+
+	// افزودن اعضا
+	var members []models.User
+	mc.db.Where("id IN ?", input.UserIDs).Find(&members)
+	mc.db.Model(&conference).Association("Members").Append(members)
+
+	// پخش دعوت به اعضا
+	for _, member := range members {
+		mc.broadcaster.BroadcastToUser(member.ID, "conference_invite", gin.H{
+			"conference_id": conference.ID,
+			"invite_link":   inviteLink,
+			"room_id":       roomID,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"invite_link": inviteLink, "room_id": roomID})
 }
 
 func (mc *MessageController) UpdateMessage(c *gin.Context) {

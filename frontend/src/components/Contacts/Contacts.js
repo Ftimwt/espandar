@@ -65,11 +65,11 @@ const Contacts = ({ token, isAdmin, onLogout }) => {
       setNewContact({ name: '', phone: '' });
       setShowAddContact(false);
       fetchContacts();
-    } catch (error) {
+    }catch (error) {
       console.error('Contacts: Error adding contact:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
+          message: error.message,
+          response: error.response?.data, // اینجا می‌توانید جزئیات بیشتری از خطا ببینید
+          status: error.response?.status,
       });
       alert('خطا در افزودن مخاطب: ' + (error.response?.data?.error || 'مشکل ناشناخته'));
     }
@@ -116,11 +116,11 @@ const Contacts = ({ token, isAdmin, onLogout }) => {
     if (!showContacts) setShowAddContact(false);
   };
 
-  const handleContactClick = (event, userId) => {
+  const handleContactClick = (event, targetId) => {
     event.preventDefault();
     event.stopPropagation();
-    console.log('Contacts: Navigating to chat for user:', userId);
-    navigate(`/chat/user/${userId}`);
+    console.log('Contacts: Navigating to chat for user:', targetId);
+    navigate(`/chat/user/${targetId}`);
   };
 
   return (
@@ -285,16 +285,13 @@ const Contacts = ({ token, isAdmin, onLogout }) => {
                 {Array.isArray(contacts) && contacts.length > 0 ? (
                   <List>
                     {contacts.map((contact, index) => (
-                      <ListItem
-                      key={contact.id || `contact-${index}`}
-                      onClick={(e) => handleContactClick(e, contact.user_id)}
-                      sx={{ cursor: 'pointer' }}
-                    >
-                        <ListItemText
-                          primary={contact.name}
-                          secondary={contact.phone}
-                        />
-                      </ListItem>
+                     <ListItem
+                     key={contact.id || `contact-${index}`}
+                     onClick={(e) => handleContactClick(e, contact.target_id)} 
+                     sx={{ cursor: 'pointer' }}
+                   >
+                     <ListItemText primary={contact.name} secondary={contact.phone} />
+                   </ListItem>
                     ))}
                   </List>
                 ) : (

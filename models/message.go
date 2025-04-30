@@ -11,9 +11,9 @@ type Message struct {
 	SenderID   uint   `json:"user_id" form:"sender_id" binding:"required"`
 	Content    string `json:"content" form:"Content" binding:"omitempty"` // Content اختیاری
 	Type       string `json:"type" form:"type" binding:"required"`
-	UserID     uint   `json:"receiver_id" form:"receiver_id" binding:"required"`
-	GroupID    uint   `json:"group_id" form:"group_id"`
-	ChannelID  uint   `json:"channel_id" form:"channel_id"`
+	UserID     *uint  `json:"receiver_id" form:"receiver_id" binding:"required"`
+	GroupID    *uint  `json:"group_id" form:"group_id"`
+	ChannelID  *uint  `json:"channel_id" form:"channel_id"`
 	ChatID     uint   `json:"chat_id" form:"chat_id" binding:"required"`
 	Seen       bool   `json:"seen" form:"seen"`
 	IsReceived bool   `json:"is_received" form:"is_received"`
@@ -21,8 +21,9 @@ type Message struct {
 	User    User
 	Group   Group
 	Channel Channel
-	Tags    string `json:"tags"` // JSON-encoded array of Tags
-	Files   []File `gorm:"foreignKey:MessageID"`
+	Tags    string  `json:"tags"`
+	Files   []File  `gorm:"foreignKey:MessageID"`
+	RoomID  *string `json:"room_id"`
 }
 
 type Tag struct {

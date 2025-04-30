@@ -5,6 +5,7 @@ import (
 	"espandar/models"
 	"espandar/utils"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -124,29 +125,30 @@ func (ac *AuthController) AdminSignUp(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
-		fmt.Println("AdminSignUp: Invalid input:", err)
+		log.Println("AdminSignUp: Invalid input:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
 	}
 
 	// اعتبارسنجی شماره تلفن
 	if !utils.ValidatePhone(input.Phone) {
-		fmt.Println("AdminSignUp: Invalid phone number:", input.Phone)
+		log.Println("AdminSignUp: Invalid phone number:", input.Phone)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone number must be 11 digits starting with 09"})
 		return
 	}
 
-	// بررسی یونیک بودن شماره تلفن
+	// بررسی وجود کاربر با شماره تلفن
 	var existingUser models.User
 	if err := ac.db.Where("phone = ?", input.Phone).First(&existingUser).Error; err == nil {
-		fmt.Println("AdminSignUp: Phone number already exists:", input.Phone)
+		log.Println("AdminSignUp: Phone number already exists:", input.Phone)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone number already exists"})
 		return
 	}
 
+	// ادامه ایجاد کاربر جدید
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
-		fmt.Println("AdminSignUp: Error hashing password:", err)
+		log.Println("AdminSignUp: Error hashing password:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error hashing password"})
 		return
 	}
@@ -157,20 +159,21 @@ func (ac *AuthController) AdminSignUp(c *gin.Context) {
 		Password: string(hashedPassword),
 		Role:     "admin",
 	}
-
 	if err := ac.db.Create(&user).Error; err != nil {
-		fmt.Println("AdminSignUp: Error creating admin:", err)
+		log.Println("AdminSignUp: Error creating admin:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating admin"})
 		return
 	}
+
+	// ایجاد توکن
 	token, err := jwt.Generate(&user)
 	if err != nil {
-		fmt.Println("AdminSignUp: Error generating token:", err)
+		log.Println("AdminSignUp: Error generating token:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
 		return
 	}
 
-	fmt.Println("AdminSignUp: Admin created, token:", token)
+	log.Println("AdminSignUp: Admin created, token:", token)
 	c.JSON(http.StatusOK, gin.H{
 		"token":   token,
 		"user_id": user.ID,

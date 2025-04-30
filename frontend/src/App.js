@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-d
 import axios from 'axios';
 import Auth from './components/Auth/Auth';
 import Contacts from './components/Contacts/Contacts';
-import Chat from './components/Chat/Chat'; // اضافه کردن import Chat
+import Chat from './components/Chat/Chat';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
@@ -12,15 +12,18 @@ function App() {
 
   useEffect(() => {
     const validateToken = async () => {
-      if (!token) {
+      const storedToken = localStorage.getItem('token');
+      if (!storedToken) {
+        console.log('App: No token found in localStorage');
         setIsAuthenticated(false);
         return;
       }
+
       try {
-        await axios.get('http://localhost:8080/contacts', {
-          headers: { Authorization: `Bearer ${token}` },
+        const response = await axios.get('http://localhost:8080/contacts', {
+          headers: { Authorization: `Bearer ${storedToken}` },
         });
-        console.log('App: Token is valid');
+        console.log('App: Token is valid, response:', response.data);
         setIsAuthenticated(true);
       } catch (error) {
         console.error('App: Token validation failed:', {
@@ -36,7 +39,7 @@ function App() {
       }
     };
     validateToken();
-  }, [token]);
+  }, []);
 
   const handleUserLogin = (newToken) => {
     console.log('App: User logged in, token:', newToken);
@@ -98,14 +101,9 @@ function App() {
         <Route
           path="/chat/user/:id"
           element={
-            isAuthenticated ? (
-              <Chat />
-            ) : (
-              <Navigate to="/" />
-            )
+            isAuthenticated ? <Chat /> : <Navigate to="/" />
           }
         />
-        {/* اضافه کردن مسیر پیش‌فرض برای مدیریت مسیرهای نامعتبر */}
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>

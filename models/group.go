@@ -12,6 +12,6 @@ type Group struct {
 
 type GroupMember struct {
 	gorm.Model
-	GroupID uint `json:"group_id" gorm:"not null"`
-	UserID  uint `json:"user_id" gorm:"not null"`
+	GroupID uint `json:"group_id" gorm:"primarykey"`
+	UserID  uint `json:"user_id" gorm:"primarykey"`
 }

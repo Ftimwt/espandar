@@ -2,18 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
-  Button,
-  TextField,
-  Typography,
-  Checkbox,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+  Button, TextField, Typography, Checkbox, List, ListItem, ListItemText,
+  ListItemIcon, Dialog, DialogTitle, DialogContent, DialogActions, Snackbar,
 } from '@mui/material';
 
 const API_URL = 'http://localhost:8080';
@@ -24,6 +14,7 @@ const CreateGroupChannel = ({ open, onClose, type }) => {
   const [users, setUsers] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [error, setError] = useState('');
+  const [openSnackbar, setOpenSnackbar] = useState(false);
   const navigate = useNavigate();
   const token = localStorage.getItem('token');
 
@@ -36,34 +27,32 @@ const CreateGroupChannel = ({ open, onClose, type }) => {
         setUsers(response.data);
       } catch (err) {
         setError('خطا در دریافت کاربران');
-        console.error('Error fetching users:', err);
+        setOpenSnackbar(true);
       }
     };
-    if (open) {
-      fetchUsers();
-    }
+    if (open) fetchUsers();
   }, [open, token]);
 
   const handleToggleUser = (userId) => {
     const currentIndex = selectedUsers.indexOf(userId);
     const newSelected = [...selectedUsers];
-
     if (currentIndex === -1) {
       newSelected.push(userId);
     } else {
       newSelected.splice(currentIndex, 1);
     }
-
     setSelectedUsers(newSelected);
   };
 
   const handleCreate = async () => {
     if (!name.trim()) {
       setError('نام نمی‌تواند خالی باشد');
+      setOpenSnackbar(true);
       return;
     }
     if (selectedUsers.length === 0) {
       setError('حداقل یک عضو باید انتخاب شود');
+      setOpenSnackbar(true);
       return;
     }
 
@@ -77,14 +66,12 @@ const CreateGroupChannel = ({ open, onClose, type }) => {
       const response = await axios.post(`${API_URL}${endpoint}`, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
-      console.log(`${type} created:`, response.data);
       setError('');
       onClose();
       navigate(`/chat/${type}/${response.data[type].ID}`);
     } catch (err) {
       setError(err.response?.data?.error || `خطا در ایجاد ${type === 'group' ? 'گروه' : 'کانال'}`);
-      console.error(`Error creating ${type}:`, err);
+      setOpenSnackbar(true);
     }
   };
 
@@ -99,6 +86,8 @@ const CreateGroupChannel = ({ open, onClose, type }) => {
           fullWidth
           margin="normal"
           required
+          error={!!error && !name.trim()}
+          helperText={!!error && !name.trim() ? 'نام الزامی است' : ''}
         />
         {type === 'channel' && (
           <TextField
@@ -128,18 +117,19 @@ const CreateGroupChannel = ({ open, onClose, type }) => {
             </ListItem>
           ))}
         </List>
-        {error && (
-          <Typography color="error" variant="body2">
-            {error}
-          </Typography>
-        )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>لغو</Button>
+      <Button onClick={onClose}>لغو</Button>
         <Button onClick={handleCreate} variant="contained" color="primary">
           ایجاد
         </Button>
       </DialogActions>
+      <Snackbar
+        open={openSnackbar}
+        autoHideDuration={6000}
+        onClose={() => setOpenSnackbar(false)}
+        message={error}
+      />
     </Dialog>
   );
 };
