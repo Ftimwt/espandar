@@ -1,10 +1,6 @@
 package controllers
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,8 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"espandar/models"    // وارد کردن پکیج models
-	"espandar/websocket" // وارد کردن پکیج websocket (جایگزین با مسیر واقعی ماژول خودتون)
+	"espandar/encryption" // بسته encryption
+	"espandar/models"
+	"espandar/websocket"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -26,23 +23,25 @@ import (
 	"gorm.io/gorm"
 )
 
-// MessageController برای مدیریت پیام‌ها
 type MessageController struct {
 	db          *gorm.DB
 	broadcaster *websocket.SocketBroadcaster
+	aesCipher   *encryption.AESCipher
 }
 
-// NewMessageController برای ایجاد کنترلر جدید
 func NewMessageController(db *gorm.DB, broadcaster *websocket.SocketBroadcaster) *MessageController {
-	return &MessageController{db: db, broadcaster: broadcaster}
+	return &MessageController{
+		db:          db,
+		broadcaster: broadcaster,
+		aesCipher:   encryption.NewAESCipher(), // استفاده از AESCipher
+	}
 }
 
-// SendMessage برای ارسال پیام جدید
 func (mc *MessageController) SendMessage(c *gin.Context) {
 	user := c.MustGet("user").(*models.User)
 	receiverType := c.Param("type")
 	receiverID := c.Param("id")
-	roomID := c.Query("room_id") // برای هماهنگی با WebRTC
+	roomID := c.Query("room_id")
 
 	var receiverIDUint uint
 	if receiverID != "" {
@@ -63,33 +62,19 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// رمزنگاری AES
-	key := []byte("your_secure_key_32_bytes_long!!")
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		log.Printf("SendMessage: Encryption error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption error"})
-		return
-	}
-	aesGCM, err := cipher.NewGCM(block)
-	if err != nil {
-		log.Printf("SendMessage: GCM error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption error"})
-		return
-	}
-
 	// پردازش محتوا
 	var content string
 	if contentValues, ok := formContent.Value["content"]; ok && len(contentValues) > 0 {
 		content = contentValues[0]
 	}
-	nonce := make([]byte, aesGCM.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		log.Printf("SendMessage: Nonce generation error: %v", err)
+
+	// رمزنگاری محتوا با استفاده از AESCipher
+	encryptedContent, err := mc.aesCipher.Encrypt(content)
+	if err != nil {
+		log.Printf("SendMessage: Encryption error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption error"})
 		return
 	}
-	encryptedContent := aesGCM.Seal(nonce, nonce, []byte(content), nil)
 
 	// پردازش تگ‌ها
 	tagsJSON := formContent.Value["tags"][0]
@@ -129,11 +114,9 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 				return
 			}
 		}
-	}
-
-	// ایجاد پیام
+	} // ایجاد پیام
 	message := models.Message{
-		Content:  base64.StdEncoding.EncodeToString(encryptedContent),
+		Content:  encryptedContent, // ذخیره پیام رمزنگاری‌شده
 		SenderID: user.ID,
 		Tags:     tagsJSON,
 		RoomID:   &roomID,
@@ -190,10 +173,18 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	}
 
+	// رمزگشایی محتوا برای پاسخ و پخش
+	decryptedContent, err := mc.aesCipher.Decrypt(encryptedContent)
+	if err != nil {
+		log.Printf("SendMessage: Decryption error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "decryption error"})
+		return
+	}
+
 	// آماده‌سازی پاسخ
 	response := gin.H{
 		"ID":        message.ID,
-		"Content":   message.Content,
+		"Content":   decryptedContent, // ارسال پیام رمزگشایی‌شده به کلاینت
 		"SenderID":  message.SenderID,
 		"UserID":    message.UserID,
 		"GroupID":   message.GroupID,
@@ -229,6 +220,45 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+func (mc *MessageController) GetMessages(c *gin.Context) {
+	user := c.MustGet("user").(*models.User)
+	receiverID := c.Param("id")
+	receiverType := c.Param("type")
+	var messages []models.Message
+	query := mc.db.Where("sender_id = ? OR user_id = ?", user.ID, user.ID)
+	switch strings.ToLower(receiverType) {
+	case "user":
+		query = query.Where("user_id = ? OR (user_id = ? AND sender_id = ?)", receiverID, user.ID, receiverID)
+	case "group":
+		query = query.Where("group_id = ?", receiverID)
+	case "channel":
+		query = query.Where("channel_id = ?", receiverID)
+	default:
+		log.Printf("GetMessages: Invalid receiver type: %s", receiverType)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver type"})
+		return
+	}
+
+	if err := query.Find(&messages).Error; err != nil {
+		log.Printf("GetMessages: Error fetching messages: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
+		return
+	}
+
+	// رمزگشایی پیام‌ها
+	for i, msg := range messages {
+		decryptedContent, err := mc.aesCipher.Decrypt(msg.Content)
+		if err != nil {
+			log.Printf("GetMessages: Decryption error for message ID %d: %v", msg.ID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "decryption error"})
+			return
+		}
+		messages[i].Content = decryptedContent
+	}
+
+	c.JSON(http.StatusOK, messages)
 }
 
 // UploadFileToS3 برای آپلود فایل به S3
@@ -289,50 +319,6 @@ func (mc *MessageController) FileType(fileName string, file io.Reader) models.Fi
 	default:
 		return models.Default
 	}
-}
-
-// GetMessages برای دریافت پیام‌ها
-func (mc *MessageController) GetMessages(c *gin.Context) {
-	user := c.MustGet("user").(*models.User)
-	receiverID := c.Param("id")
-	receiverType := c.Param("type")
-
-	var messages []models.Message
-	query := mc.db.Where("sender_id = ? OR user_id = ?", user.ID, user.ID)
-	switch strings.ToLower(receiverType) {
-	case "user":
-		query = query.Where("user_id = ? OR (user_id = ? AND sender_id = ?)", receiverID, user.ID, receiverID)
-	case "group":
-		query = query.Where("group_id = ?", receiverID)
-	case "channel":
-		query = query.Where("channel_id = ?", receiverID)
-	default:
-		log.Printf("GetMessages: Invalid receiver type: %s", receiverType)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver type"})
-		return
-	}
-
-	if err := query.Find(&messages).Error; err != nil {
-		log.Printf("GetMessages: Error fetching messages: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
-		return
-	}
-
-	c.JSON(http.StatusOK, messages)
-}
-
-// GetEncryptionKey برای دریافت کلید رمزنگاری
-func (mc *MessageController) GetEncryptionKey(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"key": "your_secure_key_32_bytes_long!!"})
-} // GetFiles برای دریافت فایل‌ها
-func (mc *MessageController) GetFiles(c *gin.Context) {
-	var files []models.File
-	if err := mc.db.Find(&files).Error; err != nil {
-		log.Printf("GetFiles: Error fetching files: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching files"})
-		return
-	}
-	c.JSON(http.StatusOK, files)
 }
 
 // GetWorkflows برای دریافت جریان‌های کاری

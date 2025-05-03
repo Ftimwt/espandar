@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"espandar/encryption"
 	"espandar/jwt"
 	"espandar/models"
 	"espandar/utils"
@@ -177,6 +178,7 @@ func (ac *AuthController) AdminSignUp(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"token":   token,
 		"user_id": user.ID,
+		"role":    user.Role,
 	})
 }
 
@@ -269,6 +271,15 @@ func (ac *AuthController) AdminLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"token":   token,
 		"user_id": user.ID,
+		"role":    user.Role,
+	})
+}
+
+// GetEncryptionKey - دریافت کلید رمزنگاری AES
+func (ac *AuthController) GetEncryptionKey(c *gin.Context) {
+	aesCipher := encryption.NewAESCipher()
+	c.JSON(http.StatusOK, gin.H{
+		"key": string(aesCipher.Key),
 	})
 }
 

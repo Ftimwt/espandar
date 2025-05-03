@@ -34,7 +34,7 @@ const Auth = ({ onUserLogin, onAdminLogin }) => {
       return;
     }
 
-    const payload = { username, password, phone };
+    const payload = { username, password, phone, role: isAdmin ? 'admin' : 'user' };
 
     try {
       let response;

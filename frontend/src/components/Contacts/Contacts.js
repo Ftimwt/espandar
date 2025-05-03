@@ -59,7 +59,10 @@ const Contacts = ({ token, isAdmin, onLogout }) => {
     try {
       console.log('Contacts: Adding contact with token:', token);
       const response = await axios.post('http://localhost:8080/admin/contacts', newContact, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
       console.log('Contacts: Add contact response:', response.data);
       setNewContact({ name: '', phone: '' });

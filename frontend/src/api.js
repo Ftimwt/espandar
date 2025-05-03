@@ -17,7 +17,8 @@ axios.interceptors.request.use(
 
 export const signUp = async (userData) => {
   try {
-    const response = await axios.post(`${API_URL}/signup`, userData);
+    const url = userData.role === 'admin' ? `${API_URL}/admin/signup` : `${API_URL}/signup`;
+    const response = await axios.post(url, userData);
     if (!response.data.token || !response.data.user_id) {
       throw new Error('Invalid response: token or user_id missing');
     }

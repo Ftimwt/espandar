@@ -8,16 +8,19 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"os"
 )
 
 type AESCipher struct {
 	Key []byte
 }
 
-var fixedkey = []byte("this_is_a_32_byte_long_key_1234!")
-
 func NewAESCipher() *AESCipher {
-	return &AESCipher{Key: fixedkey}
+	key := []byte(os.Getenv("AES_KEY"))
+	if len(key) != 32 {
+		panic("AES_KEY must be 32 bytes")
+	}
+	return &AESCipher{Key: key}
 }
 
 func pad(src []byte) []byte {
