@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"espandar/database"
-	"espandar/jwt"
 	"espandar/models"
 	"espandar/webrtc"
 
@@ -132,34 +131,22 @@ func (s *SocketBroadcaster) BroadcastToRoom(roomID string, event string, data in
 // SocketHandler برای مدیریت اتصال WebSocket
 func SocketHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("SocketHandler: Handling request: %s %s", r.Method, r.URL.String())
-	log.Printf("SocketHandler: Headers: %+v", r.Header) // اعتبارسنجی توکن
-	token := r.URL.Query().Get("Authorization")
-	if token == "" {
-		log.Println("SocketHandler: No token provided")
-		http.Error(w, "No token provided", http.StatusUnauthorized)
-		return
-	}
+	log.Printf("SocketHandler: Headers: %+v", r.Header)
 
-	userID, err := jwt.ValidateJWT(token)
-	if err != nil {
-		log.Printf("SocketHandler: Invalid token: %v", err)
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
+	// دریافت کاربر از context
+	user, exists := r.Context().Value("user").(*models.User)
+	if !exists {
+		log.Println("SocketHandler: User not found in context")
+		http.Error(w, "User not authenticated", http.StatusUnauthorized)
 		return
 	}
+	userID := user.ID
 
 	// اتصال به دیتابیس
 	db := database.Database()
 	if db == nil {
 		log.Println("SocketHandler: Database connection is nil")
 		http.Error(w, "Database error", http.StatusInternalServerError)
-		return
-	}
-
-	// بررسی وجود کاربر
-	var user models.User
-	if err := db.Where("id = ?", userID).First(&user).Error; err != nil {
-		log.Printf("SocketHandler: User not found, ID: %d, error: %v", userID, err)
-		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
 
@@ -218,7 +205,6 @@ func SocketHandler(w http.ResponseWriter, r *http.Request) {
 		Username: user.Username,
 	})
 
-	// اجرای توابع read و write
 	go client.write()
 	go client.read(roomID, db)
 }

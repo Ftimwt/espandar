@@ -9,12 +9,12 @@ import {
 import { Mic, MicOff, Videocam, VideocamOff, Send, AttachFile, EmojiEmotions } from '@mui/icons-material';
 import { MentionsInput, Mention } from 'react-mentions';
 import EmojiPicker from 'emoji-picker-react';
-import CryptoJS from 'crypto-js';
 
 const API_URL = 'http://localhost:8080';
 
 const Chat = () => {
-  const { type, id } = useParams();
+  const { id } = useParams();
+  const type = 'user';
   const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
@@ -45,34 +45,24 @@ const Chat = () => {
   const token = localStorage.getItem('token');
 
   useEffect(() => {
-    if (!type || !id) {
-      setError('شناسه یا نوع چت نامعتبر است');
+    console.log('Chat: useEffect running, type:', type, 'id:', id, 'token:', token);
+    if (!id || !token) {
+      console.error('Chat: Invalid id or token', { id, token });
+      setError('شناسه یا توکن نامعتبر است');
       setOpenSnackbar(true);
       navigate('/contacts');
+      return;
     }
-  }, [type, id, navigate]);
-  
-  useEffect(() => {
-    if (!token) {
-      setError('توکن نامعتبر است');
-      setOpenSnackbar(true);
-      navigate('/login');
-    }
-  }, [token, navigate]);
-
-
-  // دریافت کاربران، پیام‌ها و پیشنهادات تگ
-  useEffect(() => {
-    if (!type || !id || !token) return;
   
     const fetchUsers = async () => {
       try {
         const response = await axios.get(`${API_URL}/users`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        console.log('Chat: fetchUsers response:', response.data);
         setUsers(response.data);
       } catch (err) {
-        console.error('Error fetching users:', err);
+        console.error('Chat: Error fetching users:', err);
         setError('خطا در دریافت کاربران');
         setOpenSnackbar(true);
       }
@@ -80,18 +70,15 @@ const Chat = () => {
   
     const fetchMessages = async () => {
       try {
-        const endpoint =
-          type === 'user'
-            ? `/messages/user/${id}`
-            : type === 'group'
-            ? `/messages/group/${id}`
-            : `/messages/channel/${id}`;
+        const endpoint = `/messages/user/${id}`; // type به صورت ثابت 'user'
+        console.log('Chat: Fetching messages from:',`${API_URL}${endpoint}`);
         const response = await axios.get(`${API_URL}${endpoint}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        console.log('Chat: fetchMessages response:', response.data);
         setMessages(response.data.map((msg) => ({ ...msg, content: msg.Content })));
       } catch (err) {
-        console.error('Error fetching messages:', err);
+        console.error('Chat: Error fetching messages:', err);
         setError('خطا در دریافت پیام‌ها');
         setOpenSnackbar(true);
       }
@@ -99,11 +86,17 @@ const Chat = () => {
   
     const fetchTagSuggestions = async () => {
       try {
+        console.log('Chat: Fetching tag suggestions');
         const [usersRes, filesRes, workflowsRes] = await Promise.all([
           axios.get(`${API_URL}/users`, { headers: { Authorization: `Bearer ${token}` } }),
           axios.get(`${API_URL}/files`, { headers: { Authorization: `Bearer ${token}` } }),
           axios.get(`${API_URL}/workflows`, { headers: { Authorization: `Bearer ${token}` } }),
         ]);
+        console.log('Chat: Tag suggestions responses:', {
+          users: usersRes.data,
+          files: filesRes.data,
+          workflows: workflowsRes.data,
+        });
   
         const users = usersRes.data
           .filter((user) => user && user.ID && user.Username)
@@ -129,11 +122,10 @@ const Chat = () => {
             type: 'workflow',
           }));
   
-        const validSuggestions = [...users, ...files, ...workflows];
-        setTagSuggestions(validSuggestions);
+        setTagSuggestions([...users, ...files, ...workflows]);
         setIsSuggestionsLoaded(true);
       } catch (err) {
-        console.error('Error fetching tag suggestions:', err);
+        console.error('Chat: Error fetching tag suggestions:', err);
         setError('خطا در دریافت پیشنهادات تگ');
         setOpenSnackbar(true);
         setIsSuggestionsLoaded(true);
@@ -144,16 +136,23 @@ const Chat = () => {
     fetchMessages();
     fetchTagSuggestions();
   
+    console.log('Chat: Connecting to WebSocket');
     socketRef.current = new WebSocket(
-      `ws://localhost:8080/ws?Authorization=${encodeURIComponent(token)}&receiver_id=${id}` 
+      `ws://localhost:8080/ws?receiver_id=${id}`,
+      [], // پروتکل‌ها
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
     );
-    socketRef.current.onopen = () => console.log('WebSocket connected');
+    socketRef.current.onopen = () => console.log('Chat: WebSocket connected');
     socketRef.current.onmessage = (event) => {
       const message = JSON.parse(event.data);
-      console.log('WebSocket message:', message);
+      console.log('Chat: WebSocket message:', message);
       switch (message.event) {
         case 'connect_success':
-          console.log('Connected to WebSocket:', message.data);
+          console.log('Chat: Connected to WebSocket:', message.data);
           break;
         case 'new_message':
           setMessages((prev) => [
@@ -161,30 +160,30 @@ const Chat = () => {
             { ...message.data, content: message.data.Content },
           ]);
           break;
-        case 'webrtc_offer':
-          handleOffer(message.data, message.from || message.to);
-          break;
-        case 'webrtc_answer':
-          handleAnswer(message.data, message.from || message.to);
-          break;
-        case 'webrtc_ice_candidate':
-          handleIceCandidate(message.data, message.from || message.to);
-          break;
-        case 'conference_invite':
-          setConferenceLink(message.data.invite_link);
-          setOpenConferenceDialog(true);
-          break;
-        default:
-          console.log('Unknown event:', message.event);
-      }
-    };
-    socketRef.current.onclose = () => console.log('WebSocket disconnected');
-  
-    return () => {
-      socketRef.current.close();
-      Object.values(peerConnectionsRef.current).forEach((pc) => pc.close());
-    };
-  }, [id, type, token]);
+        case 'webrtc_offer':handleOffer(message.data, message.from || message.to);
+        break;
+      case 'webrtc_answer':
+        handleAnswer(message.data, message.from || message.to);
+        break;
+      case 'webrtc_ice_candidate':
+        handleIceCandidate(message.data, message.from || message.to);
+        break;
+      case 'conference_invite':
+        setConferenceLink(message.data.invite_link);
+        setOpenConferenceDialog(true);
+        break;
+      default:
+        console.log('Chat: Unknown event:', message.event);
+    }
+  };
+  socketRef.current.onclose = () => console.log('Chat: WebSocket disconnected');
+
+  return () => {
+    console.log('Chat: Cleaning up WebSocket');
+    socketRef.current.close();
+    Object.values(peerConnectionsRef.current).forEach((pc) => pc.close());
+  };
+}, [id, token, navigate]);
 
   // اسکرول خودکار
   useEffect(() => {
@@ -192,16 +191,6 @@ const Chat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // رمزگشایی پیام
-  const decryptMessage = (encryptedContent) => {
-    try {
-      const bytes = CryptoJS.AES.decrypt(encryptedContent, AESKey);
-      return bytes.toString(CryptoJS.enc.Utf8);
-    } catch (err) {
-      console.error('Decryption error:', err);
-      return encryptedContent;
-    }
-  };
 
   // ارسال پیام
   const handleSendMessage = async () => {
@@ -247,11 +236,7 @@ const Chat = () => {
 
     try {
       const endpoint =
-        type === 'user'
-          ? `/messages/user/${id}`
-          : type === 'group'
-          ? `/messages/group/${id}`
-          : `/messages/channel/${id}`;
+        type === `/messages/user/${id}`;
       await axios.post(`${API_URL}${endpoint}`, formData, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
       });
@@ -522,7 +507,7 @@ return (
           <Typography>
             {msg.Content.split(' ').map((part, index) => {
               if (part.startsWith('@') || part.startsWith('#')) {
-                const tag = msg.tags?.find((t) => t.name === part.slice(1));
+                const tag = msg.Tags?.find((t) => t.name === part.slice(1));
                 if (tag) {
                   return (
                     <span
@@ -557,7 +542,7 @@ return (
     {showEmojiPicker && <EmojiPicker onEmojiClick={(emoji) => setNewMessage((prev) => prev + emoji.emoji)} />}
     {isSuggestionsLoaded && tagSuggestions.length > 0 ? (
       <MentionsInput
-        valu={newMessage}
+        value={newMessage}
         onChange={(e, newValue) => setNewMessage(newValue)}
         style={{ width: '100%', minHeight: '50px' }}
         placeholder="پیام خود را بنویسید..."

@@ -55,6 +55,7 @@ func SetupRoutes(
 		protected.DELETE("/group/:group_id", groupCtrl.DeleteGroup)
 		protected.GET("/contacts", contactCtrl.GetContacts)
 		protected.GET("./files", FileCtrl.GetFiles)
+		protected.GET("/workflows", messageCtrl.GetWorkflows)
 	}
 
 	adminProtected := r.Group("/admin")

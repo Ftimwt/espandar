@@ -88,24 +88,31 @@ func ValidateJWT(tokenString string) (uint, error) {
 	log.Println("ValidateJWT: Invalid token claims")
 	return 0, fmt.Errorf("invalid token")
 }
-
 func JWTAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(401, gin.H{"error": "authorization header is required"})
-			c.Abort()
-			return
+		tokenString := ""
+
+		// بررسی هدر Authorization
+		if authHeader != "" {
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				tokenString = parts[1]
+			} else {
+				c.JSON(401, gin.H{"error": "invalid authorization header"})
+				c.Abort()
+				return
+			}
+		} else {
+			// بررسی query parameter برای WebSocket
+			tokenString = c.Query("Authorization")
+			if tokenString == "" {
+				c.JSON(401, gin.H{"error": "authorization is required"})
+				c.Abort()
+				return
+			}
 		}
 
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(401, gin.H{"error": "invalid authorization header"})
-			c.Abort()
-			return
-		}
-
-		tokenString := parts[1]
 		userID, err := ValidateJWT(tokenString)
 		if err != nil {
 			c.JSON(401, gin.H{"error": err.Error()})

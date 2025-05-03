@@ -2,22 +2,20 @@ package controllers
 
 import (
 	"encoding/json"
+	"espandar/encryption" // بسته encryption
+	"espandar/models"
+	"espandar/websocket"
 	"fmt"
 	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"espandar/encryption" // بسته encryption
-	"espandar/models"
-	"espandar/websocket"
-
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -224,8 +222,17 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 
 func (mc *MessageController) GetMessages(c *gin.Context) {
 	user := c.MustGet("user").(*models.User)
-	receiverID := c.Param("id")
+	receiverIDStr := c.Param("id")
 	receiverType := c.Param("type")
+
+	// تبدیل receiverID به عدد
+	receiverID, err := strconv.ParseUint(receiverIDStr, 10, 32)
+	if err != nil {
+		log.Printf("GetMessages: Invalid receiver ID: %s, error: %v", receiverIDStr, err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver ID"})
+		return
+	}
+
 	var messages []models.Message
 	query := mc.db.Where("sender_id = ? OR user_id = ?", user.ID, user.ID)
 	switch strings.ToLower(receiverType) {
@@ -263,41 +270,37 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 
 // UploadFileToS3 برای آپلود فایل به S3
 func (mc *MessageController) UploadFileToS3(file *multipart.FileHeader) (string, error) {
-	// ایجاد جلسه AWS
-	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String("your-region"), // جایگزین با منطقه AWS خودتون (مثل us-east-1)
-		// Credentials از ~/.aws/credentials یا متغیرهای محیطی خوانده می‌شه
-	})
-	if err != nil {
-		log.Printf("UploadFileToS3: Failed to create AWS session: %v", err)
+	uploadDir := "./uploads"
+	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
+		log.Printf("UploadFileToLocal: Error creating upload directory: %v", err)
 		return "", err
 	}
-	svc := s3.New(sess)
 
-	// باز کردن فایل
 	fileContent, err := file.Open()
 	if err != nil {
-		log.Printf("UploadFileToS3: Error opening file %s: %v", file.Filename, err)
+		log.Printf("UploadFileToLocal: Error opening file %s: %v", file.Filename, err)
 		return "", err
 	}
 	defer fileContent.Close()
 
 	// ایجاد نام فایل یکتا
 	filename := fmt.Sprintf("%s-%s", uuid.New().String(), file.Filename)
+	filePath := filepath.Join(uploadDir, filename)
 
-	// آپلود به S3
-	_, err = svc.PutObject(&s3.PutObjectInput{
-		Bucket: aws.String("your-bucket"), // جایگزین با نام bucket خودتون
-		Key:    aws.String(filename),
-		Body:   fileContent,
-	})
+	// ذخیره فایل
+	out, err := os.Create(filePath)
 	if err != nil {
-		log.Printf("UploadFileToS3: Error uploading file %s: %v", filename, err)
+		log.Printf("UploadFileToLocal: Error creating file %s: %v", filePath, err)
+		return "", err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, fileContent); err != nil {
+		log.Printf("UploadFileToLocal: Error copying file %s: %v", filePath, err)
 		return "", err
 	}
 
-	// بازگشت آدرس فایل
-	return fmt.Sprintf("https://your-bucket.s3.amazonaws.com/%s", filename), nil
+	return filePath, nil
 }
 
 // FileType برای تعیین نوع فایل

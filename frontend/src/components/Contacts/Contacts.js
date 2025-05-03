@@ -120,12 +120,19 @@ const Contacts = ({ token, isAdmin, onLogout }) => {
   };
 
   const handleContactClick = (event, targetId) => {
-    event.preventDefault();
-    event.stopPropagation();
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    if (!targetId || isNaN(targetId)) {
+      console.error('Contacts: Invalid targetId:', targetId);
+      alert('شناسه مخاطب نامعتبر است');
+      return;
+    }
     console.log('Contacts: Navigating to chat for user:', targetId);
     navigate(`/chat/user/${targetId}`);
   };
-
+  
   return (
     <Box sx={{ p: 3, maxWidth: 600, mx: 'auto' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -166,7 +173,8 @@ const Contacts = ({ token, isAdmin, onLogout }) => {
                 ایجاد کانال
               </Button>
               {showAddContact && (
-  <Box component="form" onSubmit={(e) => { e.preventDefault(); handleAddContact(); }} sx={{ mb: 2 }}>
+  <Box component="form"
+   onSubmit={(e) => { e.preventDefault(); handleAddContact(); }} sx={{ mb: 2 }}>
     <Typography variant="h6">افزودن مخاطب</Typography>
     <TextField
       label="نام"
@@ -309,7 +317,7 @@ const Contacts = ({ token, isAdmin, onLogout }) => {
               {contacts.map((contact, index) => (
                 <ListItem
                   key={contact.id || `contact-${index}`}
-                  onClick={() => handleContactClick(contact.user_id)} // استفاده از user_id
+                  onClick={(e) => handleContactClick(e, contact.user_id)} // استفاده از user_id
                   sx={{ cursor: 'pointer' }}
                 >
                   <ListItemText

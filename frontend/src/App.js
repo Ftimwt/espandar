@@ -68,6 +68,10 @@ function App() {
     localStorage.removeItem('isAdmin');
   };
 
+  useEffect(() => {
+    console.log('App: isAuthenticated:', isAuthenticated, 'token:', token);
+  }, [isAuthenticated, token]);
+
   return (
     <Router>
       <Routes>
