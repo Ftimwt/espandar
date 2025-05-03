@@ -24,20 +24,30 @@ const Contacts = ({ token, isAdmin, onLogout }) => {
 
   const fetchContacts = useCallback(async () => {
     try {
-      if (!token) throw new Error('No token provided');
-      console.log('Contacts: Fetching contacts with token:', token);
-      const response = await getContacts(token);
-      console.log('Contacts: Response:', response);
-      setContacts(Array.isArray(response) ? response : []);
+        if (!token) throw new Error('No token provided');
+        console.log('Contacts: Fetching contacts with token:', token);
+        const response = await getContacts(token);
+        console.log('Contacts: Response:', response);
+        // بررسی پاسخ سرور
+        const validContacts = Array.isArray(response)
+            ? response.filter(contact => {
+                  const id = isAdmin ? contact.target_id : contact.user_id;
+                  return id && !isNaN(id) && id.toString().trim() !== '';
+              })
+            : [];
+        setContacts(validContacts);
+        if (response.length !== validContacts.length) {
+            console.warn('Contacts: Some contacts were filtered out due to invalid IDs');
+        }
     } catch (error) {
-      console.error('Contacts: Error fetching contacts:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-      });
-      setContacts([]);
+        console.error('Contacts: Error fetching contacts:', {
+            message: error.message,
+            response: error.response?.data,
+            status: error.response?.status,
+        });
+        setContacts([]);
     }
-  }, [token]);
+}, [token, isAdmin]);
 
   useEffect(() => {
     if (showContacts) {
@@ -121,17 +131,17 @@ const Contacts = ({ token, isAdmin, onLogout }) => {
 
   const handleContactClick = (event, targetId) => {
     if (event) {
-      event.preventDefault();
-      event.stopPropagation();
+        event.preventDefault();
+        event.stopPropagation();
     }
-    if (!targetId || isNaN(targetId)) {
-      console.error('Contacts: Invalid targetId:', targetId);
-      alert('شناسه مخاطب نامعتبر است');
-      return;
+    if (!targetId || isNaN(targetId) || targetId.toString().trim() === '') {
+        console.error('Contacts: Invalid targetId:', targetId);
+        alert('شناسه مخاطب نامعتبر است');
+        return;
     }
     console.log('Contacts: Navigating to chat for user:', targetId);
     navigate(`/chat/user/${targetId}`);
-  };
+};
   
   return (
     <Box sx={{ p: 3, maxWidth: 600, mx: 'auto' }}>

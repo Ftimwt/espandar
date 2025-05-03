@@ -46,14 +46,13 @@ const Chat = () => {
 
   useEffect(() => {
     console.log('Chat: useEffect running, type:', type, 'id:', id, 'token:', token);
-    if (!id || !token) {
-      console.error('Chat: Invalid id or token', { id, token });
-      setError('شناسه یا توکن نامعتبر است');
-      setOpenSnackbar(true);
-      navigate('/contacts');
-      return;
+    if (!id || id.trim() === '' || isNaN(parseInt(id)) || !token) {
+        console.error('Chat: Invalid id or token', { id, token });
+        setError('شناسه یا توکن نامعتبر است');
+        setOpenSnackbar(true);
+        navigate('/contacts');
+        return;
     }
-  
     const fetchUsers = async () => {
       try {
         const response = await axios.get(`${API_URL}/users`, {
@@ -70,19 +69,22 @@ const Chat = () => {
   
     const fetchMessages = async () => {
       try {
-        const endpoint = `/messages/user/${id}`; // type به صورت ثابت 'user'
-        console.log('Chat: Fetching messages from:',`${API_URL}${endpoint}`);
-        const response = await axios.get(`${API_URL}${endpoint}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        console.log('Chat: fetchMessages response:', response.data);
-        setMessages(response.data.map((msg) => ({ ...msg, content: msg.Content })));
+          if (!id || id.trim() === '' || isNaN(parseInt(id))) {
+              throw new Error('Invalid receiver ID');
+          }
+          const endpoint = `/messages/user/${id}`;
+          console.log('Chat: Fetching messages from:', `${API_URL}${endpoint}`);
+          const response = await axios.get(`${API_URL}${endpoint}`, {
+              headers: { Authorization: `Bearer ${token}` },
+          });
+          console.log('Chat: fetchMessages response:', response.data);
+          setMessages(response.data.map((msg) => ({ ...msg, content: msg.Content })));
       } catch (err) {
-        console.error('Chat: Error fetching messages:', err);
-        setError('خطا در دریافت پیام‌ها');
-        setOpenSnackbar(true);
+          console.error('Chat: Error fetching messages:', err);
+          setError('خطا در دریافت پیام‌ها');
+          setOpenSnackbar(true);
       }
-    };
+  };
   
     const fetchTagSuggestions = async () => {
       try {
@@ -137,17 +139,11 @@ const Chat = () => {
     fetchTagSuggestions();
   
     console.log('Chat: Connecting to WebSocket');
-    socketRef.current = new WebSocket(
-      `ws://localhost:8080/ws?receiver_id=${id}`,
-      [], // پروتکل‌ها
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-    socketRef.current.onopen = () => console.log('Chat: WebSocket connected');
-    socketRef.current.onmessage = (event) => {
+    socketRef.current = new WebSocket(`ws://localhost:8080/ws?receiver_id=${id}&token=${encodeURIComponent(token)}`);
+    socketRef.current.onopen = () => {
+      console.log('Chat: WebSocket connection opened');
+  };
+      socketRef.current.onmessage = (event) => {
       const message = JSON.parse(event.data);
       console.log('Chat: WebSocket message:', message);
       switch (message.event) {
@@ -176,13 +172,15 @@ const Chat = () => {
         console.log('Chat: Unknown event:', message.event);
     }
   };
-  socketRef.current.onclose = () => console.log('Chat: WebSocket disconnected');
-
-  return () => {
-    console.log('Chat: Cleaning up WebSocket');
-    socketRef.current.close();
-    Object.values(peerConnectionsRef.current).forEach((pc) => pc.close());
-  };
+  socketRef.current.onclose = () => {
+    console.log('Chat: WebSocket disconnected');
+};
+return () => {
+  console.log('Chat: Cleaning up WebSocket');
+  if (socketRef.current) {
+      socketRef.current.close();
+  }
+};
 }, [id, token, navigate]);
 
   // اسکرول خودکار
@@ -194,59 +192,65 @@ const Chat = () => {
 
   // ارسال پیام
   const handleSendMessage = async () => {
-    if (!newMessage.trim() && selectedFiles.length === 0)return;
+    if (!newMessage.trim() && selectedFiles.length === 0) return;
+    if (!id || id.trim() === '' || isNaN(parseInt(id))) {
+        setError('شناسه گیرنده نامعتبر است');
+        setOpenSnackbar(true);
+        return;
+    }
 
     const formData = new FormData();
     const tags = [];
     const userMatches = newMessage.matchAll(/@(\w+)/g);
     for (const match of userMatches) {
-      const user = tagSuggestions.find((s) => s.display === match[1]);
-      if (user) tags.push({ type: 'user', id: user.id.replace('user_', ''), name: match[1] });
+        const user = tagSuggestions.find((s) => s.display === match[1]);
+        if (user) tags.push({ type: 'user', id: user.id.replace('user_', ''), name: match[1] });
     }
     const fileMatches = newMessage.matchAll(/#(\w+)/g);
     for (const match of fileMatches) {
-      const file = tagSuggestions.find((s) => s.display === match[1]);
-      if (file) tags.push({ type: 'file', id: file.id.replace('file_', ''), name: match[1] });
+        const file = tagSuggestions.find((s) => s.display === match[1]);
+        if (file) tags.push({ type: 'file', id: file.id.replace('file_', ''), name: match[1] });
     }
     const workflowMatches = newMessage.matchAll(/#(\w+)/g);
     for (const match of workflowMatches) {
-      const workflow = tagSuggestions.find((s) => s.display === match[1]);
-      if (workflow) tags.push({ type: 'workflow', id: workflow.id.replace('workflow_', ''), name: match[1] });
+        const workflow = tagSuggestions.find((s) => s.display === match[1]);
+        if (workflow) tags.push({ type: 'workflow', id: workflow.id.replace('workflow_', ''), name: match[1] });
     }
     formData.append('tags', JSON.stringify(tags));
 
     if (newMessage.trim()) {
-      formData.append('content', newMessage);
+        formData.append('content', newMessage);
     }
     const allowedTypes = ['image/jpeg', 'image/png', 'audio/webm', 'audio/mp3', 'audio/wav', 'video/mp4'];
     const maxSize = 10 * 1024 * 1024; // 10MB
     selectedFiles.forEach((file) => {
-      if (!allowedTypes.includes(file.type)) {
-        setError('نوع فایل غیرمجاز است');
-        setOpenSnackbar(true);
-        return;
-      }
-      if (file.size > maxSize) {
-        setError('حجم فایل بیش از حد مجاز است');
-        setOpenSnackbar(true);
-        return;
-      }
-      formData.append('files', file);
+        if (!allowedTypes.includes(file.type)) {
+            setError('نوع فایل غیرمجاز است');
+            setOpenSnackbar(true);
+            return;
+        }
+        if (file.size > maxSize) {
+            setError('حجم فایل بیش از حد مجاز است');
+            setOpenSnackbar(true);
+            return;
+        }
+        formData.append('files', file);
     });
 
     try {
-      const endpoint =
-        type === `/messages/user/${id}`;
-      await axios.post(`${API_URL}${endpoint}`, formData, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
-      });
-      setNewMessage('');
-      setSelectedFiles([]);
+        const endpoint = `/message/user/${id}`; // اصلاح به /message
+        console.log('Chat: Sending message to:', `${API_URL}${endpoint}`);
+        await axios.post(`${API_URL}${endpoint}`, formData, {
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+        });
+        setNewMessage('');
+        setSelectedFiles([]);
     } catch (err) {
-      setError('خطا در ارسال پیام');
-      setOpenSnackbar(true);
+        console.error('Chat: Error sending message:', err);
+        setError('خطا در ارسال پیام');
+        setOpenSnackbar(true);
     }
-  };
+};
 
   // آپلود فایل
   const handleFileChange = (event) => {

@@ -37,20 +37,24 @@ func NewMessageController(db *gorm.DB, broadcaster *websocket.SocketBroadcaster)
 
 func (mc *MessageController) SendMessage(c *gin.Context) {
 	user := c.MustGet("user").(*models.User)
-	receiverType := c.Param("type")
-	receiverID := c.Param("id")
+	receiverType := c.Param("receiver_type")
+	receiverID := c.Param("receiver_id")
 	roomID := c.Query("room_id")
 
-	var receiverIDUint uint
-	if receiverID != "" {
-		id, err := strconv.ParseUint(receiverID, 10, 32)
-		if err != nil {
-			log.Printf("SendMessage: Invalid receiver ID: %s, error: %v", receiverID, err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver ID"})
-			return
-		}
-		receiverIDUint = uint(id)
+	if receiverID == "" {
+		log.Printf("SendMessage: Receiver ID is empty")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "receiver ID is required"})
+		return
 	}
+
+	var receiverIDUint uint
+	id, err := strconv.ParseUint(receiverID, 10, 32)
+	if err != nil {
+		log.Printf("SendMessage: Invalid receiver ID: %s, error: %v", receiverID, err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver ID"})
+		return
+	}
+	receiverIDUint = uint(id)
 
 	// دریافت داده‌های فرم
 	formContent, err := c.MultipartForm()
@@ -112,120 +116,148 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 				return
 			}
 		}
-	} // ایجاد پیام
-	message := models.Message{
-		Content:  encryptedContent, // ذخیره پیام رمزنگاری‌شده
-		SenderID: user.ID,
-		Tags:     tagsJSON,
-		RoomID:   &roomID,
 	}
 
-	// تنظیم گیرنده پیام
-	switch strings.ToLower(receiverType) {
-	case "user":
-		userIDPtr := new(uint)
-		*userIDPtr = receiverIDUint
-		message.UserID = userIDPtr
-	case "group":
-		groupIDPtr := new(uint)
-		*groupIDPtr = receiverIDUint
-		message.GroupID = groupIDPtr
-	case "channel":
-		channelIDPtr := new(uint)
-		*channelIDPtr = receiverIDUint
-		message.ChannelID = channelIDPtr
-	default:
-		log.Printf("SendMessage: Invalid receiver type: %s", receiverType)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver type"})
-		return
-	}
+	// پیدا کردن یا ایجاد Chat
+	var chat models.Chat
+	if err := mc.db.Where("user_id1 = ? AND user_id2 = ? OR user_id1 = ? AND user_id2 = ?",
+		user.ID, receiverIDUint, receiverIDUint, user.ID).First(&chat).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			chat = models.Chat{
+				UserID1: user.ID,
+				UserID2: receiverIDUint,
+			}
+			if err := mc.db.Create(&chat).Error; err != nil {
+				log.Printf("SendMessage: Error creating chat: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating chat"})
+				return
+			}
+		} else {
+			log.Printf("SendMessage: Error finding chat: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error finding chat"})
+			return
+		}
+		// ایجاد پیام
+		message := models.Message{
+			Content:  encryptedContent, // ذخیره پیام رمزنگاری‌شده
+			SenderID: user.ID,
+			Tags:     tagsJSON,
+			RoomID:   &roomID,
+			ChatID:   chat.ID,
+		}
 
-	// آپلود فایل‌ها به S3
-	files := formContent.File["files"]
-	for _, fileHeader := range files {
-		file, err := fileHeader.Open()
+		// تنظیم گیرنده پیام
+		switch strings.ToLower(receiverType) {
+		case "user":
+			userIDPtr := new(uint)
+			*userIDPtr = receiverIDUint
+			message.UserID = userIDPtr
+		case "group":
+			groupIDPtr := new(uint)
+			*groupIDPtr = receiverIDUint
+			message.GroupID = groupIDPtr
+		case "channel":
+			channelIDPtr := new(uint)
+			*channelIDPtr = receiverIDUint
+			message.ChannelID = channelIDPtr
+		default:
+			log.Printf("SendMessage: Invalid receiver type: %s", receiverType)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver type"})
+			return
+		}
+
+		// آپلود فایل‌ها به S3
+		files := formContent.File["files"]
+		for _, fileHeader := range files {
+			file, err := fileHeader.Open()
+			if err != nil {
+				log.Printf("SendMessage: Error reading file %s: %v", fileHeader.Filename, err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "error reading file"})
+				return
+			}
+			defer file.Close()
+
+			filePath, err := mc.UploadFileToS3(fileHeader)
+			if err != nil {
+				log.Printf("SendMessage: Error uploading file %s: %v", fileHeader.Filename, err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "error uploading file"})
+				return
+			}
+			newFile := models.File{
+				FilePath: filePath,
+				Type:     mc.FileType(fileHeader.Filename, file),
+			}
+			message.Files = append(message.Files, newFile)
+		}
+
+		// ذخیره پیام در دیتابیس
+		if err := mc.db.Create(&message).Error; err != nil {
+			log.Printf("SendMessage: Error saving message: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error saving message"})
+			return
+		}
+
+		// رمزگشایی محتوا برای پاسخ و پخش
+		decryptedContent, err := mc.aesCipher.Decrypt(encryptedContent)
 		if err != nil {
-			log.Printf("SendMessage: Error reading file %s: %v", fileHeader.Filename, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error reading file"})
+			log.Printf("SendMessage: Decryption error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "decryption error"})
 			return
 		}
-		defer file.Close()
 
-		filePath, err := mc.UploadFileToS3(fileHeader)
-		if err != nil {
-			log.Printf("SendMessage: Error uploading file %s: %v", fileHeader.Filename, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error uploading file"})
-			return
+		// آماده‌سازی پاسخ
+		response := gin.H{
+			"ID":        message.ID,
+			"Content":   decryptedContent, // ارسال پیام رمزگشایی‌شده به کلاینت
+			"SenderID":  message.SenderID,
+			"UserID":    message.UserID,
+			"GroupID":   message.GroupID,
+			"ChannelID": message.ChannelID,
+			"Files":     message.Files,
+			"Tags":      tags,
+			"RoomID":    message.RoomID,
+			"CreatedAt": message.CreatedAt,
 		}
-		newFile := models.File{
-			FilePath: filePath,
-			Type:     mc.FileType(fileHeader.Filename, file),
+
+		// پخش پیام به گیرندگان
+		switch strings.ToLower(receiverType) {
+		case "user":
+			var receiverUser models.User
+			if err := mc.db.Where("id = ?", receiverIDUint).First(&receiverUser).Error; err != nil {
+				log.Printf("SendMessage: Receiver not found, ID: %d, error: %v", receiverIDUint, err)
+				c.JSON(http.StatusBadRequest, gin.H{"error": "receiver not found"})
+				return
+			}
+			mc.broadcaster.BroadcastToUser(receiverUser.ID, "new_message", response)
+		case "group":
+			var members []models.GroupMember
+			mc.db.Where("group_id = ?", receiverIDUint).Find(&members)
+			for _, member := range members {
+				mc.broadcaster.BroadcastToUser(member.UserID, "new_message", response)
+			}
+		case "channel":
+			var channel models.Channel
+			mc.db.Where("id = ?", receiverIDUint).Preload("Members").First(&channel)
+			for _, member := range channel.Members {
+				mc.broadcaster.BroadcastToUser(member.ID, "new_message", response)
+			}
 		}
-		message.Files = append(message.Files, newFile)
-	}
 
-	// ذخیره پیام در دیتابیس
-	if err := mc.db.Create(&message).Error; err != nil {
-		log.Printf("SendMessage: Error saving message: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error saving message"})
-		return
+		c.JSON(http.StatusOK, response)
 	}
-
-	// رمزگشایی محتوا برای پاسخ و پخش
-	decryptedContent, err := mc.aesCipher.Decrypt(encryptedContent)
-	if err != nil {
-		log.Printf("SendMessage: Decryption error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "decryption error"})
-		return
-	}
-
-	// آماده‌سازی پاسخ
-	response := gin.H{
-		"ID":        message.ID,
-		"Content":   decryptedContent, // ارسال پیام رمزگشایی‌شده به کلاینت
-		"SenderID":  message.SenderID,
-		"UserID":    message.UserID,
-		"GroupID":   message.GroupID,
-		"ChannelID": message.ChannelID,
-		"Files":     message.Files,
-		"Tags":      tags,
-		"RoomID":    message.RoomID,
-		"CreatedAt": message.CreatedAt,
-	}
-
-	// پخش پیام به گیرندگان
-	switch strings.ToLower(receiverType) {
-	case "user":
-		var receiverUser models.User
-		if err := mc.db.Where("id = ?", receiverIDUint).First(&receiverUser).Error; err != nil {
-			log.Printf("SendMessage: Receiver not found, ID: %d, error: %v", receiverIDUint, err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "receiver not found"})
-			return
-		}
-		mc.broadcaster.BroadcastToUser(receiverUser.ID, "new_message", response)
-	case "group":
-		var members []models.GroupMember
-		mc.db.Where("group_id = ?", receiverIDUint).Find(&members)
-		for _, member := range members {
-			mc.broadcaster.BroadcastToUser(member.UserID, "new_message", response)
-		}
-	case "channel":
-		var channel models.Channel
-		mc.db.Where("id = ?", receiverIDUint).Preload("Members").First(&channel)
-		for _, member := range channel.Members {
-			mc.broadcaster.BroadcastToUser(member.ID, "new_message", response)
-		}
-	}
-
-	c.JSON(http.StatusOK, response)
 }
 
 func (mc *MessageController) GetMessages(c *gin.Context) {
 	user := c.MustGet("user").(*models.User)
-	receiverIDStr := c.Param("id")
-	receiverType := c.Param("type")
+	receiverType := c.Param("receiver_type")
+	receiverIDStr := c.Param("receiver_id")
 
-	// تبدیل receiverID به عدد
+	if receiverIDStr == "" {
+		log.Printf("GetMessages: Receiver ID is empty")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "receiver ID is required"})
+		return
+	}
+
 	receiverID, err := strconv.ParseUint(receiverIDStr, 10, 32)
 	if err != nil {
 		log.Printf("GetMessages: Invalid receiver ID: %s, error: %v", receiverIDStr, err)
