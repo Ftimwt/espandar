@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 
 	"espandar/database"
@@ -45,7 +46,7 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
 		log.Printf("CheckOrigin: Origin=%s", origin)
-		return origin == "http://localhost:3000" // تنظیم برای کلاینت React
+		return strings.HasPrefix(origin, "http://localhost:") // تنظیم برای کلاینت React
 	},
 }
 
@@ -130,8 +131,15 @@ func (s *SocketBroadcaster) BroadcastToRoom(roomID string, event string, data in
 
 // SocketHandler برای مدیریت اتصال WebSocket
 func SocketHandler(w http.ResponseWriter, r *http.Request) {
+	// لاگ اطلاعات درخواست
 	log.Printf("SocketHandler: Handling request: %s %s", r.Method, r.URL.String())
+	log.Printf("SocketHandler: Query params: %+v", r.URL.Query())
 	log.Printf("SocketHandler: Headers: %+v", r.Header)
+	log.Printf("SocketHandler: Origin: %s", r.Header.Get("Origin"))
+
+	// بررسی Authorization از query
+	authToken := r.URL.Query().Get("Authorization")
+	log.Printf("SocketHandler: Authorization from query: %s", authToken)
 
 	// دریافت کاربر از context
 	user, exists := r.Context().Value("user").(*models.User)
@@ -141,6 +149,7 @@ func SocketHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID := user.ID
+	log.Printf("SocketHandler: Authenticated user: ID=%d, Username=%s", userID, user.Username)
 
 	// اتصال به دیتابیس
 	db := database.Database()
@@ -149,6 +158,10 @@ func SocketHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
+	log.Println("SocketHandler: Database connection established")
+
+	// بررسی تنظیمات upgrader
+	log.Printf("SocketHandler: Upgrader settings: %+v", upgrader)
 
 	// ارتقا به WebSocket
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -157,10 +170,13 @@ func SocketHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not upgrade to WebSocket", http.StatusInternalServerError)
 		return
 	}
+	log.Printf("SocketHandler: WebSocket connection upgraded successfully for user %d", userID)
 
 	// دریافت receiver_id یا استفاده از conference
 	receiverID := r.URL.Query().Get("receiver_id")
+	log.Printf("SocketHandler: ReceiverID: %s", receiverID)
 	roomID := createRoomID(userID, receiverID)
+	log.Printf("SocketHandler: RoomID created: %s", roomID)
 
 	// ایجاد کلاینت
 	client := &Client{
@@ -169,6 +185,7 @@ func SocketHandler(w http.ResponseWriter, r *http.Request) {
 		send:   make(chan []byte, 256),
 		roomID: roomID,
 	}
+	log.Printf("SocketHandler: Client created for user %d in room %s", userID, roomID)
 
 	// ثبت کلاینت در broadcaster
 	broadcaster.mu.Lock()
@@ -178,21 +195,28 @@ func SocketHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	broadcaster.rooms[roomID] = append(broadcaster.rooms[roomID], client)
 	broadcaster.mu.Unlock()
-
-	log.Printf("SocketHandler: User %d connected to room %s", userID, roomID)
+	log.Printf("SocketHandler: Client registered in broadcaster for user %d, room %s", userID, roomID)
 
 	// ارسال پیام خوش‌آمدگویی
-	welcomeMsg, _ := json.Marshal(Message{
+	welcomeMsg, err := json.Marshal(Message{
 		Event: "connect_success",
 		Data:  map[string]interface{}{"user_id": userID, "room_id": roomID},
 	})
-	client.send <- welcomeMsg
+	if err != nil {
+		log.Printf("SocketHandler: Error marshaling welcome message: %v", err)
+	} else {
+		client.send <- welcomeMsg
+		log.Printf("SocketHandler: Welcome message sent to user %d", userID)
+	}
 
 	// مدیریت اتاق WebRTC
 	room, exists := webrtc.Rooms[roomID]
 	if !exists {
 		room = webrtc.NewRoom()
 		webrtc.Rooms[roomID] = room
+		log.Printf("SocketHandler: New WebRTC room created: %s", roomID)
+	} else {
+		log.Printf("SocketHandler: Using existing WebRTC room: %s", roomID)
 	}
 
 	sender := &WebSocketMessageSender{
@@ -204,9 +228,12 @@ func SocketHandler(w http.ResponseWriter, r *http.Request) {
 		MemberID: strconv.FormatUint(uint64(userID), 10),
 		Username: user.Username,
 	})
+	log.Printf("SocketHandler: User %d connected to WebRTC room %s", userID, roomID)
 
+	// شروع گوروتین‌ها برای خواندن و نوشتن
 	go client.write()
 	go client.read(roomID, db)
+	log.Printf("SocketHandler: Started read/write goroutines for user %d", userID)
 }
 
 // WebSocketMessageSender برای ارسال پیام‌ها

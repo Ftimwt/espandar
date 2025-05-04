@@ -41,8 +41,8 @@ const Conference = () => {
 
     // اتصال WebSocket
     socketRef.current = new WebSocket(`ws://localhost:8080/ws?Authorization=${encodeURIComponent(token)}`);
-    socketRef.current.onopen = () => console.log('WebSocket connected for conference');
-    socketRef.current.onmessage = (event) => {
+    socketRef.current.onopen = () => console.log('Conference: WebSocket connected with token:', token);
+        socketRef.current.onmessage = (event) => {
       const message = JSON.parse(event.data);
       switch (message.event) {
         case 'connect_success':
@@ -63,6 +63,8 @@ const Conference = () => {
           break;
       }
     };
+    socketRef.current.onerror = (error) => console.error('Conference: WebSocket error:', error);
+
     socketRef.current.onclose = () => console.log('WebSocket disconnected');
 
     return () => {

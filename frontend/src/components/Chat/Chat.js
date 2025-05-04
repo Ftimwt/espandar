@@ -9,6 +9,9 @@ import {
 import { Mic, MicOff, Videocam, VideocamOff, Send, AttachFile, EmojiEmotions } from '@mui/icons-material';
 import { MentionsInput, Mention } from 'react-mentions';
 import EmojiPicker from 'emoji-picker-react';
+import CryptoJS from 'crypto-js';
+
+const AES_KEY='this_is_a_32_byte_long_key_1234!';
 
 const API_URL = 'http://localhost:8080';
 
@@ -44,6 +47,31 @@ const Chat = () => {
   const userId = localStorage.getItem('userId');
   const token = localStorage.getItem('token');
 
+  // تابع رمزگشایی پیام‌ها
+  const decryptMessage = (encryptedContent) => {
+    try {
+        const bytes = CryptoJS.AES.decrypt(encryptedContent, AES_KEY);
+        const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+        return decrypted || encryptedContent; // اگه رمزگشایی نشد، محتوای اصلی رو برگردون
+    } catch (err) {
+        console.error('Chat: Decryption error:', err);
+        return encryptedContent;
+    }
+};
+
+// انتخاب endpoint مناسب
+const getEndpoint = () => {
+    if (type === 'group') return `/messages/group/${id}`;
+    if (type === 'channel') return `/messages/channel/${id}`;
+    return `/messages/user/${id}`;
+};
+
+const sendEndpoint = () => {
+    if (type === 'group') return `/message/group/${id}`;
+    if (type === 'channel') return `/message/channel/${id}`;
+    return `/message/user/${id}`;
+};
+
   useEffect(() => {
     console.log('Chat: useEffect running, type:', type, 'id:', id, 'token:', token);
     if (!id || id.trim() === '' || isNaN(parseInt(id)) || !token) {
@@ -72,13 +100,16 @@ const Chat = () => {
           if (!id || id.trim() === '' || isNaN(parseInt(id))) {
               throw new Error('Invalid receiver ID');
           }
-          const endpoint = `/messages/user/${id}`;
+          const endpoint = getEndpoint();
           console.log('Chat: Fetching messages from:', `${API_URL}${endpoint}`);
           const response = await axios.get(`${API_URL}${endpoint}`, {
               headers: { Authorization: `Bearer ${token}` },
           });
           console.log('Chat: fetchMessages response:', response.data);
-          setMessages(response.data.map((msg) => ({ ...msg, content: msg.Content })));
+          setMessages(response.data.map((msg) => ({
+              ...msg,
+              content: decryptMessage(msg.Content),
+          })));
       } catch (err) {
           console.error('Chat: Error fetching messages:', err);
           setError('خطا در دریافت پیام‌ها');
@@ -139,7 +170,7 @@ const Chat = () => {
     fetchTagSuggestions();
   
     console.log('Chat: Connecting to WebSocket');
-    socketRef.current = new WebSocket(`ws://localhost:8080/ws?receiver_id=${id}&token=${encodeURIComponent(token)}`);
+    socketRef.current = new WebSocket(`ws://localhost:8080/ws?receiver_id=${id}&Authorization=Bearer%20${encodeURIComponent(token)}`);
     socketRef.current.onopen = () => {
       console.log('Chat: WebSocket connection opened');
   };
@@ -172,6 +203,10 @@ const Chat = () => {
         console.log('Chat: Unknown event:', message.event);
     }
   };
+  socketRef.current.onerror = (error) => {
+    console.error('Chat: WebSocket error:', error);
+};
+
   socketRef.current.onclose = () => {
     console.log('Chat: WebSocket disconnected');
 };
