@@ -57,9 +57,7 @@ func SetupRoutes(
 		protected.GET("/contacts", contactCtrl.GetContacts)
 		protected.GET("./files", fileCtrl.GetFiles)
 		protected.GET("/workflows", messageCtrl.GetWorkflows)
-		protected.GET("/ws", func(c *gin.Context) {
-			websocket.SocketHandler(c.Writer, c.Request)
-		})
+		protected.GET("/ws", websocket.SocketHandler)
 	}
 
 	adminProtected := r.Group("/admin")

@@ -5,13 +5,13 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 
 	"espandar/database"
 	"espandar/models"
 	"espandar/webrtc"
 
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"gorm.io/gorm"
 )
@@ -44,9 +44,7 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		log.Printf("CheckOrigin: Origin=%s", origin)
-		return strings.HasPrefix(origin, "http://localhost:") // تنظیم برای کلاینت React
+		return true
 	},
 }
 
@@ -130,50 +128,53 @@ func (s *SocketBroadcaster) BroadcastToRoom(roomID string, event string, data in
 }
 
 // SocketHandler برای مدیریت اتصال WebSocket
-func SocketHandler(w http.ResponseWriter, r *http.Request) {
+func SocketHandler(c *gin.Context) {
 	// لاگ اطلاعات درخواست
-	log.Printf("SocketHandler: Handling request: %s %s", r.Method, r.URL.String())
-	log.Printf("SocketHandler: Query params: %+v", r.URL.Query())
-	log.Printf("SocketHandler: Headers: %+v", r.Header)
-	log.Printf("SocketHandler: Origin: %s", r.Header.Get("Origin"))
+	log.Printf("SocketHandler: Handling request: %s %s", c.Request.Method, c.Request.URL.String())
+	log.Printf("SocketHandler: Query params: %+v", c.Request.URL.Query())
+	log.Printf("SocketHandler: Headers: %+v", c.Request.Header)
+	log.Printf("SocketHandler: Origin: %s", c.Request.Header.Get("Origin"))
 
 	// بررسی Authorization از query
-	authToken := r.URL.Query().Get("Authorization")
+	authToken := c.Query("Authorization")
 	log.Printf("SocketHandler: Authorization from query: %s", authToken)
 
-	// دریافت کاربر از context
-	user, exists := r.Context().Value("user").(*models.User)
+	// دریافت کاربر از gin.Context
+	user, exists := c.Get("user")
 	if !exists {
-		log.Println("SocketHandler: User not found in context")
-		http.Error(w, "User not authenticated", http.StatusUnauthorized)
+		log.Println("SocketHandler: User not found in gin.Context")
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-	userID := user.ID
-	log.Printf("SocketHandler: Authenticated user: ID=%d, Username=%s", userID, user.Username)
+	userModel, ok := user.(*models.User)
+	if !ok {
+		log.Println("SocketHandler: Invalid user type in gin.Context")
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid user type"})
+		return
+	}
+	userID := userModel.ID
+	log.Printf("SocketHandler: Authenticated user: ID=%d, Username=%s", userID, userModel.Username)
 
 	// اتصال به دیتابیس
 	db := database.Database()
 	if db == nil {
 		log.Println("SocketHandler: Database connection is nil")
-		http.Error(w, "Database error", http.StatusInternalServerError)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 	log.Println("SocketHandler: Database connection established")
 
-	// بررسی تنظیمات upgrader
-	log.Printf("SocketHandler: Upgrader settings: %+v", upgrader)
-
 	// ارتقا به WebSocket
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("SocketHandler: Upgrade error: %v", err)
-		http.Error(w, "Could not upgrade to WebSocket", http.StatusInternalServerError)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Could not upgrade to WebSocket"})
 		return
 	}
 	log.Printf("SocketHandler: WebSocket connection upgraded successfully for user %d", userID)
 
 	// دریافت receiver_id یا استفاده از conference
-	receiverID := r.URL.Query().Get("receiver_id")
+	receiverID := c.Query("receiver_id")
 	log.Printf("SocketHandler: ReceiverID: %s", receiverID)
 	roomID := createRoomID(userID, receiverID)
 	log.Printf("SocketHandler: RoomID created: %s", roomID)
@@ -223,10 +224,9 @@ func SocketHandler(w http.ResponseWriter, r *http.Request) {
 		userID: userID,
 		client: client,
 	}
-
 	room.ConnectRoom(sender, webrtc.UserConnData{
 		MemberID: strconv.FormatUint(uint64(userID), 10),
-		Username: user.Username,
+		Username: userModel.Username,
 	})
 	log.Printf("SocketHandler: User %d connected to WebRTC room %s", userID, roomID)
 
