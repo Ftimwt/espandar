@@ -44,7 +44,9 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true
+		origin := r.Header.Get("Origin")
+		log.Printf("SocketHandler: Checking Origin: %s", origin)
+		return origin == "http://localhost:3000"
 	},
 }
 
@@ -109,7 +111,9 @@ func (s *SocketBroadcaster) BroadcastToRoom(roomID string, event string, data in
 		return
 	}
 
-	msg, err := json.Marshal(Message{Event: event, Data: data})
+	msg, err := json.Marshal(Message{
+		Event: event,
+		Data:  data})
 	if err != nil {
 		log.Printf("BroadcastToRoom: Error marshaling message for room %s: %v", roomID, err)
 		return
@@ -202,6 +206,7 @@ func SocketHandler(c *gin.Context) {
 	welcomeMsg, err := json.Marshal(Message{
 		Event: "connect_success",
 		Data:  map[string]interface{}{"user_id": userID, "room_id": roomID},
+		To:    "",
 	})
 	if err != nil {
 		log.Printf("SocketHandler: Error marshaling welcome message: %v", err)
@@ -275,17 +280,28 @@ func (c *Client) write() {
 		c.conn.Close()
 		log.Printf("write: User %d disconnected from room %s", c.userID, c.roomID)
 	}()
+
 	for message := range c.send {
-		if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
-			log.Printf("write: Error sending to user %d: %v", c.userID, err)
+		if c.conn == nil {
+			log.Printf("write: Connection is nil for user %d", c.userID)
 			return
 		}
+		err := c.conn.WriteMessage(websocket.TextMessage, message)
+		if err != nil {
+			log.Printf("write: Error sending to user %d: %v", c.userID, err)
+			if websocket.IsUnexpectedCloseError(err) {
+				return
+			}
+			continue
+		}
+		log.Printf("write: Sent message to user %d", c.userID)
 	}
 }
 
 // read برای دریافت و پردازش پیام‌ها
 func (c *Client) read(roomID string, db *gorm.DB) {
 	defer func() {
+		// Cleanup مشابه کد فعلی
 		broadcaster.mu.Lock()
 		delete(broadcaster.clients, c.userID)
 		for i, client := range broadcaster.rooms[roomID] {
@@ -314,6 +330,8 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("read: Unexpected close error for user %d: %v", c.userID, err)
+			} else {
+				log.Printf("read: Read error for user %d: %v", c.userID, err)
 			}
 			break
 		}
@@ -324,9 +342,13 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 			continue
 		}
 
+		if message.Event == "" {
+			log.Printf("read: Empty event from user %d", c.userID)
+			continue
+		}
+
 		log.Printf("read: Received message from user %d in room %s: %s", c.userID, roomID, message.Event)
 
-		// پردازش رویدادهای WebRTC
 		switch message.Event {
 		case "webrtc_offer", "webrtc_answer", "webrtc_ice_candidate":
 			if message.To != "" {
@@ -337,11 +359,9 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 				}
 				broadcaster.BroadcastToUser(uint(toUserID), message.Event, message.Data)
 			} else {
-				// ارسال به همه در اتاق (به جز فرستنده)
 				broadcaster.BroadcastToRoom(roomID, message.Event, message.Data, c.userID)
 			}
 		case "conference_invite":
-			// پردازش دعوت به کنفرانس
 			var conference models.Conference
 			if err := db.Where("room_id = ?", roomID).First(&conference).Error; err == nil {
 				for _, member := range conference.Members {
@@ -350,6 +370,39 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 			} else {
 				log.Printf("read: Conference not found for room %s: %v", roomID, err)
 			}
+		case "new_message":
+			// ذخیره پیام در دیتابیس و پخش به اتاق
+			var msgData models.Message
+			switch data := message.Data.(type) {
+			case []byte:
+				if err := json.Unmarshal(data, &msgData); err != nil {
+					log.Printf("read: Error unmarshaling message data: %v", err)
+					continue
+				}
+			case string:
+				if err := json.Unmarshal([]byte(data), &msgData); err != nil {
+					log.Printf("read: Error unmarshaling message data: %v", err)
+					continue
+				}
+			default:
+				// اگر نوع دیگری باشد، دوباره به JSON تبدیل کن
+				dataBytes, err := json.Marshal(data)
+				if err != nil {
+					log.Printf("read: Error marshaling message.Data to JSON: %v", err)
+					continue
+				}
+				if err := json.Unmarshal(dataBytes, &msgData); err != nil {
+					log.Printf("read: Error unmarshaling message data: %v", err)
+					continue
+				}
+			}
+			msgData.SenderID = c.userID
+			msgData.RoomID = &roomID
+			if err := db.Create(&msgData).Error; err != nil {
+				log.Printf("read: Error saving message to database: %v", err)
+				continue
+			}
+			broadcaster.BroadcastToRoom(roomID, "new_message", message.Data, 0)
 		default:
 			log.Printf("read: Unknown event from user %d: %s", c.userID, message.Event)
 		}

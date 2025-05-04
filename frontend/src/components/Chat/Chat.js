@@ -46,6 +46,7 @@
    const socketRef = useRef(null);
    const userId = localStorage.getItem('userId');
    const token = localStorage.getItem('token');
+   const isConnectingRef = useRef(false);
  
    // تابع رمزگشایی پیام‌ها
    const decryptMessage = (encryptedContent) => {
@@ -73,78 +74,89 @@
    };
  
    // اتصال به WebSocket
-   const connectWebSocket = () => {
-    if (socketRef.current) {
-      socketRef.current.close();
-    }
-    const wsUrl = `ws://localhost:8080/ws?receiver_id=${id}&Authorization=${encodeURIComponent(token)}`;
-    console.log('Chat: Connecting to WebSocket with URL:', wsUrl);
-    socketRef.current = new WebSocket(wsUrl);
-  
-    socketRef.current.onopen = () => {
-      console.log('Chat: WebSocket connection opened');
-    };
-  
-    socketRef.current.onmessage = (event) => {
-      console.log('Chat: WebSocket raw message:', event.data);
-      try {
-        const message = JSON.parse(event.data);
-        console.log('Chat: WebSocket parsed message:', message);
-        switch (message.Event) {
-          case 'connect_success':
-            console.log('Chat: Connected to WebSocket:', message.Data);
-            break;
-          case 'new_message':
-            setMessages((prev) => [
-              ...prev,
-              { ...message.Data, Content: decryptMessage(message.Data.Content) },
-            ]);
-            break;
-          case 'webrtc_offer':
-            handleOffer(message.Data, message.From || message.To);
-            break;
-          case 'webrtc_answer':
-            handleAnswer(message.Data, message.From || message.To);
-            break;
-          case 'webrtc_ice_candidate':
-            handleIceCandidate(message.Data, message.From || message.To);
-            break;
-          case 'conference_invite':
-            setConferenceLink(message.Data.invite_link);
-            setOpenConferenceDialog(true);
-            break;
-          default:
-            console.log('Chat: Unknown event:', message.Event);
-        }
-      } catch (err) {
-        console.error('Chat: Error parsing WebSocket message:', err);
-      }
-    };
-  
-    socketRef.current.onclose = (event) => {
-      console.log('Chat: WebSocket disconnected, code:', event.code, 'reason:', event.reason);
-      if (event.code === 1006) {
-        console.log('Chat: Connection refused, checking server status...');
-      }
-      console.log('Chat: Retrying in 5 seconds...');
-      setTimeout(connectWebSocket, 5000);
-    };
-  
-    socketRef.current.onerror = (err) => {
-      console.error('Chat: WebSocket error:', err);
-    };
+const connectWebSocket = () => {
+  if (isConnectingRef.current || socketRef.current?.readyState === WebSocket.OPEN) {
+    console.log('Chat: WebSocket already connecting or open');
+    return;
+  }
+
+  isConnectingRef.current = true;
+  if (socketRef.current) {
+    socketRef.current.close();
+  }
+
+  const wsUrl = `ws://localhost:8080/ws?receiver_id=${id}&Authorization=${encodeURIComponent(token)}`;
+  console.log('Chat: Connecting to WebSocket with URL:', wsUrl);
+  socketRef.current = new WebSocket(wsUrl);
+
+  socketRef.current.onopen = () => {
+    console.log('Chat: WebSocket connection opened');
+    isConnectingRef.current = false;
   };
+
+  socketRef.current.onmessage = (event) => {
+    console.log('Chat: WebSocket raw message:', event.data);
+    try {
+      const message = JSON.parse(event.data);
+      console.log('Chat: WebSocket parsed message:', message);
+      // اصلاح برای سازگاری با event با حرف کوچک
+      const eventName = message.Event || message.event;
+      switch (eventName) {
+        case 'connect_success':
+          console.log('Chat: Connected to WebSocket:', message.data || message.Data);
+          break;
+        case 'new_message':
+          setMessages((prev) => [
+            ...prev,
+            { ...message.Data, Content: decryptMessage(message.Data.Content) },
+          ]);
+          break;
+        case 'webrtc_offer':
+          handleOffer(message.Data, message.From || message.To);
+          break;
+        case 'webrtc_answer':
+          handleAnswer(message.Data, message.From || message.To);
+          break;
+        case 'webrtc_ice_candidate':
+          handleIceCandidate(message.Data, message.From || message.To);
+          break;
+        case 'conference_invite':
+          setConferenceLink(message.Data.invite_link);
+          setOpenConferenceDialog(true);
+          break;
+        default:
+          console.log('Chat: Unknown event:', eventName);
+      }
+    } catch (err) {
+      console.error('Chat: Error parsing WebSocket message:', err);
+    }
+  };
+
+  socketRef.current.onclose = (event) => {
+    console.log('Chat: WebSocket disconnected, code:', event.code, 'reason:', event.reason);
+    isConnectingRef.current = false;
+    if (event.code === 1006) {
+      console.log('Chat: Connection refused, checking server status...');
+    }
+    console.log('Chat: Retrying in 5 seconds...');
+    setTimeout(connectWebSocket, 5000);
+  };
+
+  socketRef.current.onerror = (err) => {
+    console.error('Chat: WebSocket error:', err);
+    isConnectingRef.current = false;
+  };
+};
    
-     useEffect(() => {
-       console.log('Chat: useEffect running, type:', type, 'id:', id, 'token:', token);
-       if (!id || id.trim() === '' || isNaN(parseInt(id)) || !token) {
-         console.error('Chat: Invalid id or token', { id, token });
-         setError('شناسه یا توکن نامعتبر است');
-         setOpenSnackbar(true);
-         navigate('/contacts');
-         return;
-       }
-   
+useEffect(() => {
+  console.log('Chat: useEffect running, type:', type, 'id:', id, 'token:', token);
+  if (!id || id.trim() === '' || isNaN(parseInt(id)) || !token) {
+    console.error('Chat: Invalid id or token', { id, token });
+    setError('شناسه یا توکن نامعتبر است');
+    setOpenSnackbar(true);
+    navigate('/contacts');
+    return;
+  }
        const fetchUsers = async () => {
          try {
            const response = await axios.get(`${API_URL}/users`, {
@@ -236,6 +248,7 @@
          console.log('Chat: Cleaning up WebSocket');
          if (socketRef.current) {
            socketRef.current.close();
+           socketRef.current = null;
          }
        };
      }, [id, token, navigate]);
@@ -280,7 +293,7 @@
     }
     const allowedTypes = ['image/jpeg', 'image/png', 'audio/webm', 'audio/mp3', 'audio/wav', 'video/mp4'];
     const maxSize = 10 * 1024 * 1024; // 10MB
-    selectedFiles.forEach((file) => {
+    for (const file of selectedFiles) {
         if (!allowedTypes.includes(file.type)) {
             setError('نوع فایل غیرمجاز است');
             setOpenSnackbar(true);
@@ -292,19 +305,56 @@
             return;
         }
         formData.append('files', file);
-    });
+    }
 
     try {
-        const endpoint = `/message/user/${id}`; // اصلاح به /message
+        const endpoint = `/message/user/${id}`;
         console.log('Chat: Sending message to:', `${API_URL}${endpoint}`);
-        await axios.post(`${API_URL}${endpoint}`, formData, {
+        const response = await axios.post(`${API_URL}${endpoint}`, formData, {
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
         });
+        console.log('Chat: Message sent successfully, response:', response.data);
+
+        // ایجاد داده پیام برای اضافه کردن به لیست محلی و WebSocket
+        const messageData = {
+            ID: response.data.ID || Date.now(), // اگر سرور ID برنگردونه، از timestamp استفاده کن
+            SenderID: parseInt(userId),
+            Content: newMessage,
+            Tags: tags,
+            Files: response.data.Files || selectedFiles.map((f) => ({
+                Type: f.type.split('/')[0], // مثلاً 'image' یا 'audio'
+                FilePath: response.data.FilePaths?.[f.name] || URL.createObjectURL(f),
+            })),
+            CreatedAt: new Date().toISOString(),
+        };
+
+        // اضافه کردن پیام به لیست محلی
+        setMessages((prev) => [...prev, {
+            ...messageData,
+            Content: decryptMessage(messageData.Content),
+        }]);
+
+        // ارسال پیام به WebSocket
+        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            socketRef.current.send(JSON.stringify({
+                Event: "new_message",
+                Data: messageData,
+                To: id,
+            }));
+            console.log('Chat: Message sent to WebSocket:', messageData);
+        } else {
+            console.warn('Chat: WebSocket is not open, message not sent to WebSocket');
+        }
+
         setNewMessage('');
         setSelectedFiles([]);
     } catch (err) {
-        console.error('Chat: Error sending message:', err);
-        setError('خطا در ارسال پیام');
+        console.error('Chat: Error sending message:', {
+            message: err.message,
+            status: err.response?.status,
+            data: err.response?.data,
+        });
+        setError('خطا در ارسال پیام: ' + (err.response?.data?.error || err.message));
         setOpenSnackbar(true);
     }
 };

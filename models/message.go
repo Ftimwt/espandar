@@ -27,9 +27,9 @@ type Message struct {
 }
 
 type Tag struct {
-	Type string `json:"type"` // user
-	ID   uint   `json:"id"`   // contact_id
-	Name string `json:"name"` // contact name
+	Type string `json:"type"`
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
 }
 
 type Chat struct {
