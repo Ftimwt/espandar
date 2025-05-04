@@ -4,7 +4,6 @@ import (
 	"espandar/controllers"
 	"espandar/database"
 	"espandar/jwt"
-	"espandar/middlewares"
 	"espandar/routes"
 	"espandar/websocket"
 	"fmt"
@@ -51,11 +50,6 @@ func main() {
 	fileController := controllers.NewFileController(db)
 
 	routes.SetupRoutes(r, db, authController, messageController, channelController, groupController, contactController, userController, fileController)
-
-	// مسیر WebSocket با middleware احراز هویت
-	r.GET("/ws", middlewares.AuthMiddleware(db), func(c *gin.Context) {
-		websocket.SocketHandler(c.Writer, c.Request)
-	})
 
 	log.Fatal(r.Run(":8080"))
 }

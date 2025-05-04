@@ -115,17 +115,21 @@ func JWTAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 		} else {
 			// بررسی query parameter برای WebSocket
 			tokenString = c.Query("Authorization")
-			log.Printf("JWTAuthMiddleware: Token from query: %s", tokenString)
+			log.Printf("JWTAuthMiddleware: Raw token from query: %s", tokenString)
 			if tokenString == "" {
 				log.Println("JWTAuthMiddleware: No authorization provided")
 				c.JSON(401, gin.H{"error": "authorization is required"})
 				c.Abort()
 				return
 			}
-			// اگه توکن توی query با "Bearer " شروع می‌شه، اونو جدا کن
+			// جدا کردن Bearer (اعم از فاصله یا %20)
+			tokenString = strings.ReplaceAll(tokenString, "%20", " ")
 			if strings.HasPrefix(tokenString, "Bearer ") {
 				tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 				log.Printf("JWTAuthMiddleware: Token after trimming Bearer: %s", tokenString[:10]+"...")
+			} else {
+				// فرض کنیم کل query فقط توکنه
+				log.Printf("JWTAuthMiddleware: Assuming raw token: %s", tokenString[:10]+"...")
 			}
 		}
 

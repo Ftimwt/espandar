@@ -1,222 +1,244 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import {
-  Box, Paper, TextField, Button, IconButton, Typography, Snackbar,
-  Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemText,
-  Checkbox, ListItemIcon,
-} from '@mui/material';
-import { Mic, MicOff, Videocam, VideocamOff, Send, AttachFile, EmojiEmotions } from '@mui/icons-material';
-import { MentionsInput, Mention } from 'react-mentions';
-import EmojiPicker from 'emoji-picker-react';
-import CryptoJS from 'crypto-js';
-
-const AES_KEY='this_is_a_32_byte_long_key_1234!';
-
-const API_URL = 'http://localhost:8080';
-
-const Chat = () => {
-  const { id } = useParams();
-  const type = 'user';
-  const navigate = useNavigate();
-  const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [selectedFiles, setSelectedFiles] = useState([]);
-  const [error, setError] = useState('');
-  const [openSnackbar, setOpenSnackbar] = useState(false);
-  const [tagSuggestions, setTagSuggestions] = useState([]);
-  const [isSuggestionsLoaded, setIsSuggestionsLoaded] = useState(false);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
-  const [inCall, setInCall] = useState(false);
-  const [openConferenceDialog, setOpenConferenceDialog] = useState(false);
-  const [conferenceLink, setConferenceLink] = useState('');
-  const [conferenceMembers, setConferenceMembers] = useState([]);
-  const [selectedUsers, setSelectedUsers] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [remoteStreams, setRemoteStreams] = useState({});
-  const messagesEndRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
-  const localVideoRef = useRef(null);
-  const peerConnectionsRef = useRef({});
-  const socketRef = useRef(null);
-  const userId = localStorage.getItem('userId');
-  const token = localStorage.getItem('token');
-
-  // تابع رمزگشایی پیام‌ها
-  const decryptMessage = (encryptedContent) => {
-    try {
-        const bytes = CryptoJS.AES.decrypt(encryptedContent, AES_KEY);
-        const decrypted = bytes.toString(CryptoJS.enc.Utf8);
-        return decrypted || encryptedContent; // اگه رمزگشایی نشد، محتوای اصلی رو برگردون
-    } catch (err) {
-        console.error('Chat: Decryption error:', err);
-        return encryptedContent;
+ 
+ import React, { useState, useEffect, useRef } from 'react';
+ import { useParams, useNavigate } from 'react-router-dom';
+ import axios from 'axios';
+ import {
+   Box, Paper, TextField, Button, IconButton, Typography, Snackbar,
+   Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemText,
+   Checkbox, ListItemIcon,
+ } from '@mui/material';
+ import { Mic, MicOff, Videocam, VideocamOff, Send, AttachFile, EmojiEmotions } from '@mui/icons-material';
+ import { MentionsInput, Mention } from 'react-mentions';
+ import EmojiPicker from 'emoji-picker-react';
+ import CryptoJS from 'crypto-js';
+ 
+ const AES_KEY = 'this_is_a_32_byte_long_key_1234!';
+ const API_URL = 'http://localhost:8080';
+ 
+ const Chat = () => {
+   const { id } = useParams();
+   const type = 'user';
+   const navigate = useNavigate();
+   const [messages, setMessages] = useState([]);
+   const [newMessage, setNewMessage] = useState('');
+   const [selectedFiles, setSelectedFiles] = useState([]);
+   const [error, setError] = useState('');
+   const [openSnackbar, setOpenSnackbar] = useState(false);
+   const [tagSuggestions, setTagSuggestions] = useState([]);
+   const [isSuggestionsLoaded, setIsSuggestionsLoaded] = useState(false);
+   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+   const [isRecording, setIsRecording] = useState(false);
+   const [isMuted, setIsMuted] = useState(false);
+   const [isVideoOff, setIsVideoOff] = useState(false);
+   const [inCall, setInCall] = useState(false);
+   const [openConferenceDialog, setOpenConferenceDialog] = useState(false);
+   const [conferenceLink, setConferenceLink] = useState('');
+   const [conferenceMembers, setConferenceMembers] = useState([]);
+   const [selectedUsers, setSelectedUsers] = useState([]);
+   const [users, setUsers] = useState([]);
+   const [remoteStreams, setRemoteStreams] = useState({});
+   const messagesEndRef = useRef(null);
+   const fileInputRef = useRef(null);
+   const mediaRecorderRef = useRef(null);
+   const audioChunksRef = useRef([]);
+   const localVideoRef = useRef(null);
+   const peerConnectionsRef = useRef({});
+   const socketRef = useRef(null);
+   const userId = localStorage.getItem('userId');
+   const token = localStorage.getItem('token');
+ 
+   // تابع رمزگشایی پیام‌ها
+   const decryptMessage = (encryptedContent) => {
+     try {
+       const bytes = CryptoJS.AES.decrypt(encryptedContent, AES_KEY);
+       const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+       return decrypted || encryptedContent;
+     } catch (err) {
+       console.error('Chat: Decryption error:', err);
+       return encryptedContent;
+     }
+   };
+ 
+   // انتخاب endpoint مناسب
+   const getEndpoint = () => {
+     if (type === 'group') return `/messages/group/${id}`;
+     if (type === 'channel') return `/messages/channel/${id}`;
+     return `/messages/user/${id}`;
+   };
+ 
+   const sendEndpoint = () => {
+     if (type === 'group') return `/message/group/${id}`;
+     if (type === 'channel') return `/message/channel/${id}`;
+     return `/message/user/${id}`;
+   };
+ 
+   // اتصال به WebSocket
+   const connectWebSocket = () => {
+    if (socketRef.current) {
+      socketRef.current.close();
     }
-};
-
-// انتخاب endpoint مناسب
-const getEndpoint = () => {
-    if (type === 'group') return `/messages/group/${id}`;
-    if (type === 'channel') return `/messages/channel/${id}`;
-    return `/messages/user/${id}`;
-};
-
-const sendEndpoint = () => {
-    if (type === 'group') return `/message/group/${id}`;
-    if (type === 'channel') return `/message/channel/${id}`;
-    return `/message/user/${id}`;
-};
-
-  useEffect(() => {
-    console.log('Chat: useEffect running, type:', type, 'id:', id, 'token:', token);
-    if (!id || id.trim() === '' || isNaN(parseInt(id)) || !token) {
-        console.error('Chat: Invalid id or token', { id, token });
-        setError('شناسه یا توکن نامعتبر است');
-        setOpenSnackbar(true);
-        navigate('/contacts');
-        return;
-    }
-    const fetchUsers = async () => {
-      try {
-        const response = await axios.get(`${API_URL}/users`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        console.log('Chat: fetchUsers response:', response.data);
-        setUsers(response.data);
-      } catch (err) {
-        console.error('Chat: Error fetching users:', err);
-        setError('خطا در دریافت کاربران');
-        setOpenSnackbar(true);
-      }
-    };
+    const wsUrl = `ws://localhost:8080/ws?receiver_id=${id}&Authorization=${encodeURIComponent(token)}`;
+    console.log('Chat: Connecting to WebSocket with URL:', wsUrl);
+    socketRef.current = new WebSocket(wsUrl);
   
-    const fetchMessages = async () => {
-      try {
-          if (!id || id.trim() === '' || isNaN(parseInt(id))) {
-              throw new Error('Invalid receiver ID');
-          }
-          const endpoint = getEndpoint();
-          console.log('Chat: Fetching messages from:', `${API_URL}${endpoint}`);
-          const response = await axios.get(`${API_URL}${endpoint}`, {
-              headers: { Authorization: `Bearer ${token}` },
-          });
-          console.log('Chat: fetchMessages response:', response.data);
-          setMessages(response.data.map((msg) => ({
-              ...msg,
-              content: decryptMessage(msg.Content),
-          })));
-      } catch (err) {
-          console.error('Chat: Error fetching messages:', err);
-          setError('خطا در دریافت پیام‌ها');
-          setOpenSnackbar(true);
-      }
-  };
-  
-    const fetchTagSuggestions = async () => {
-      try {
-        console.log('Chat: Fetching tag suggestions');
-        const [usersRes, filesRes, workflowsRes] = await Promise.all([
-          axios.get(`${API_URL}/users`, { headers: { Authorization: `Bearer ${token}` } }),
-          axios.get(`${API_URL}/files`, { headers: { Authorization: `Bearer ${token}` } }),
-          axios.get(`${API_URL}/workflows`, { headers: { Authorization: `Bearer ${token}` } }),
-        ]);
-        console.log('Chat: Tag suggestions responses:', {
-          users: usersRes.data,
-          files: filesRes.data,
-          workflows: workflowsRes.data,
-        });
-  
-        const users = usersRes.data
-          .filter((user) => user && user.ID && user.Username)
-          .map((user) => ({
-            id: `user_${user.ID}`,
-            display: user.Username,
-            type: 'user',
-          }));
-  
-        const files = filesRes.data
-          .filter((file) => file && file.ID && file.FilePath)
-          .map((file) => ({
-            id: `file_${file.ID}`,
-            display: file.FilePath.split('/').pop() || 'unnamed_file',
-            type: 'file',
-          }));
-  
-        const workflows = workflowsRes.data
-          .filter((wf) => wf && wf.ID && wf.Title)
-          .map((wf) => ({
-            id: `workflow_${wf.ID}`,
-            display: wf.Title,
-            type: 'workflow',
-          }));
-  
-        setTagSuggestions([...users, ...files, ...workflows]);
-        setIsSuggestionsLoaded(true);
-      } catch (err) {
-        console.error('Chat: Error fetching tag suggestions:', err);
-        setError('خطا در دریافت پیشنهادات تگ');
-        setOpenSnackbar(true);
-        setIsSuggestionsLoaded(true);
-      }
-    };
-  
-    fetchUsers();
-    fetchMessages();
-    fetchTagSuggestions();
-  
-    console.log('Chat: Connecting to WebSocket');
-    socketRef.current = new WebSocket(`ws://localhost:8080/ws?receiver_id=${id}&Authorization=Bearer%20${encodeURIComponent(token)}`);
     socketRef.current.onopen = () => {
       console.log('Chat: WebSocket connection opened');
+    };
+  
+    socketRef.current.onmessage = (event) => {
+      console.log('Chat: WebSocket raw message:', event.data);
+      try {
+        const message = JSON.parse(event.data);
+        console.log('Chat: WebSocket parsed message:', message);
+        switch (message.Event) {
+          case 'connect_success':
+            console.log('Chat: Connected to WebSocket:', message.Data);
+            break;
+          case 'new_message':
+            setMessages((prev) => [
+              ...prev,
+              { ...message.Data, Content: decryptMessage(message.Data.Content) },
+            ]);
+            break;
+          case 'webrtc_offer':
+            handleOffer(message.Data, message.From || message.To);
+            break;
+          case 'webrtc_answer':
+            handleAnswer(message.Data, message.From || message.To);
+            break;
+          case 'webrtc_ice_candidate':
+            handleIceCandidate(message.Data, message.From || message.To);
+            break;
+          case 'conference_invite':
+            setConferenceLink(message.Data.invite_link);
+            setOpenConferenceDialog(true);
+            break;
+          default:
+            console.log('Chat: Unknown event:', message.Event);
+        }
+      } catch (err) {
+        console.error('Chat: Error parsing WebSocket message:', err);
+      }
+    };
+  
+    socketRef.current.onclose = (event) => {
+      console.log('Chat: WebSocket disconnected, code:', event.code, 'reason:', event.reason);
+      if (event.code === 1006) {
+        console.log('Chat: Connection refused, checking server status...');
+      }
+      console.log('Chat: Retrying in 5 seconds...');
+      setTimeout(connectWebSocket, 5000);
+    };
+  
+    socketRef.current.onerror = (err) => {
+      console.error('Chat: WebSocket error:', err);
+    };
   };
-      socketRef.current.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      console.log('Chat: WebSocket message:', message);
-      switch (message.event) {
-        case 'connect_success':
-          console.log('Chat: Connected to WebSocket:', message.data);
-          break;
-        case 'new_message':
-          setMessages((prev) => [
-            ...prev,
-            { ...message.data, content: message.data.Content },
-          ]);
-          break;
-        case 'webrtc_offer':handleOffer(message.data, message.from || message.to);
-        break;
-      case 'webrtc_answer':
-        handleAnswer(message.data, message.from || message.to);
-        break;
-      case 'webrtc_ice_candidate':
-        handleIceCandidate(message.data, message.from || message.to);
-        break;
-      case 'conference_invite':
-        setConferenceLink(message.data.invite_link);
-        setOpenConferenceDialog(true);
-        break;
-      default:
-        console.log('Chat: Unknown event:', message.event);
-    }
-  };
-  socketRef.current.onerror = (error) => {
-    console.error('Chat: WebSocket error:', error);
-};
-
-  socketRef.current.onclose = () => {
-    console.log('Chat: WebSocket disconnected');
-};
-return () => {
-  console.log('Chat: Cleaning up WebSocket');
-  if (socketRef.current) {
-      socketRef.current.close();
-  }
-};
-}, [id, token, navigate]);
+   
+     useEffect(() => {
+       console.log('Chat: useEffect running, type:', type, 'id:', id, 'token:', token);
+       if (!id || id.trim() === '' || isNaN(parseInt(id)) || !token) {
+         console.error('Chat: Invalid id or token', { id, token });
+         setError('شناسه یا توکن نامعتبر است');
+         setOpenSnackbar(true);
+         navigate('/contacts');
+         return;
+       }
+   
+       const fetchUsers = async () => {
+         try {
+           const response = await axios.get(`${API_URL}/users`, {
+             headers: { Authorization: `Bearer ${token}` },
+           });
+           console.log('Chat: fetchUsers response:', response.data);
+           setUsers(response.data);
+         } catch (err) {
+           console.error('Chat: Error fetching users:', err);
+           setError('خطا در دریافت کاربران');
+           setOpenSnackbar(true);
+         }
+       };
+   
+       const fetchMessages = async () => {
+         try {
+           if (!id || id.trim() === '' || isNaN(parseInt(id))) {
+             throw new Error('Invalid receiver ID');
+           }
+           const endpoint = getEndpoint();
+           console.log('Chat: Fetching messages from:', `${API_URL}${endpoint}`);
+           const response = await axios.get(`${API_URL}${endpoint}`, {
+             headers: { Authorization: `Bearer ${token}` },
+           });
+           console.log('Chat: fetchMessages response:', response.data);
+           setMessages(response.data.map((msg) => ({
+             ...msg,
+             Content: decryptMessage(msg.Content), // اصلاح رمزگشایی
+           })));
+         } catch (err) {
+           console.error('Chat: Error fetching messages:', err);
+           setError('خطا در دریافت پیام‌ها');
+           setOpenSnackbar(true);
+         }
+       };
+   
+       const fetchTagSuggestions = async () => {
+         try {
+           console.log('Chat: Fetching tag suggestions');
+           const [usersRes, filesRes, workflowsRes] = await Promise.all([
+             axios.get(`${API_URL}/users`, { headers: { Authorization: `Bearer ${token}` } }),
+             axios.get(`${API_URL}/files`, { headers: { Authorization: `Bearer ${token}` } }),
+             axios.get(`${API_URL}/workflows`, { headers: { Authorization: `Bearer ${token}` } }),
+           ]);
+           console.log('Chat: Tag suggestions responses:', {
+             users: usersRes.data,
+             files: filesRes.data,
+             workflows: workflowsRes.data,
+           });
+   
+           const users = usersRes.data
+             .filter((user) => user && user.ID && user.Username)
+             .map((user) => ({
+               id: `user_${user.ID}`,
+               display: user.Username,
+               type: 'user',
+             }));const files = filesRes.data
+             .filter((file) => file && file.ID && file.FilePath)
+             .map((file) => ({
+               id: `file_${file.ID}`,
+               display: file.FilePath.split('/').pop() || 'unnamed_file',
+               type: 'file',
+             }));
+   
+           const workflows = workflowsRes.data
+             .filter((wf) => wf && wf.ID && wf.Title)
+             .map((wf) => ({
+               id: `workflow_${wf.ID}`,
+               display: wf.Title,
+               type: 'workflow',
+             }));
+   
+           setTagSuggestions([...users, ...files, ...workflows]);
+           setIsSuggestionsLoaded(true);
+         } catch (err) {
+           console.error('Chat: Error fetching tag suggestions:', err);
+           setError('خطا در دریافت پیشنهادات تگ');
+           setOpenSnackbar(true);
+           setIsSuggestionsLoaded(true);
+         }
+       };
+   
+       fetchUsers();
+       fetchMessages();
+       fetchTagSuggestions();
+       connectWebSocket(); // فراخوانی تابع WebSocket
+   
+       return () => {
+         console.log('Chat: Cleaning up WebSocket');
+         if (socketRef.current) {
+           socketRef.current.close();
+         }
+       };
+     }, [id, token, navigate]);
 
   // اسکرول خودکار
   useEffect(() => {
@@ -568,15 +590,15 @@ return (
           </Typography>
           {msg.Files?.map((file) => (
             <Box key={file.ID}>
-            {file.Type === 'picture' && <img src={file.FilePath} alt="attachment" style={{ maxWidth: '200px' }} />}
-            {file.Type === 'voice' && <audio controls src={file.FilePath} />}
-            {file.Type === 'video' && <video controls src={file.FilePath} style={{ maxWidth: '200px' }} />}
-          </Box>
-        ))}
-      </Paper>
-    ))}
-    <div ref={messagesEndRef} />
-  </Box>
+              {file.Type === 'picture' && <img src={file.FilePath} alt="attachment" style={{ maxWidth: '200px' }} />}
+              {file.Type === 'voice' && <audio controls src={file.FilePath} />}
+              {file.Type === 'video' && <video controls src={file.FilePath} style={{ maxWidth: '200px' }} />}
+            </Box>
+          ))}
+        </Paper>
+      ))}
+      <div ref={messagesEndRef} />
+    </Box>
   <Box sx={{ p: 2, borderTop: '1px solid #ccc' }}>
     {showEmojiPicker && <EmojiPicker onEmojiClick={(emoji) => setNewMessage((prev) => prev + emoji.emoji)} />}
     {isSuggestionsLoaded && tagSuggestions.length > 0 ? (

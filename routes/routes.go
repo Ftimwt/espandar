@@ -3,6 +3,7 @@ package routes
 import (
 	"espandar/controllers"
 	"espandar/jwt"
+	"espandar/websocket"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -17,7 +18,7 @@ func SetupRoutes(
 	groupCtrl *controllers.GroupController,
 	contactCtrl *controllers.ContactController,
 	userCtrl *controllers.UserController,
-	FileCtrl *controllers.FileController,
+	fileCtrl *controllers.FileController,
 ) {
 	r.Static("/static", "./static")
 
@@ -54,8 +55,11 @@ func SetupRoutes(
 		protected.GET("/group/:id", groupCtrl.GetGroup)
 		protected.DELETE("/group/:group_id", groupCtrl.DeleteGroup)
 		protected.GET("/contacts", contactCtrl.GetContacts)
-		protected.GET("./files", FileCtrl.GetFiles)
+		protected.GET("./files", fileCtrl.GetFiles)
 		protected.GET("/workflows", messageCtrl.GetWorkflows)
+		protected.GET("/ws", func(c *gin.Context) {
+			websocket.SocketHandler(c.Writer, c.Request)
+		})
 	}
 
 	adminProtected := r.Group("/admin")
