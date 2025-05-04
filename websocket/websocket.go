@@ -371,33 +371,58 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 				log.Printf("read: Conference not found for room %s: %v", roomID, err)
 			}
 		case "new_message":
-			// ذخیره پیام در دیتابیس و پخش به اتاق
 			var msgData models.Message
+			var rawData map[string]interface{}
+			var dataBytes []byte
 			switch data := message.Data.(type) {
 			case []byte:
-				if err := json.Unmarshal(data, &msgData); err != nil {
-					log.Printf("read: Error unmarshaling message data: %v", err)
-					continue
-				}
+				dataBytes = data
 			case string:
-				if err := json.Unmarshal([]byte(data), &msgData); err != nil {
-					log.Printf("read: Error unmarshaling message data: %v", err)
-					continue
-				}
+				dataBytes = []byte(data)
 			default:
-				// اگر نوع دیگری باشد، دوباره به JSON تبدیل کن
-				dataBytes, err := json.Marshal(data)
+				var err error
+				dataBytes, err = json.Marshal(data)
 				if err != nil {
-					log.Printf("read: Error marshaling message.Data to JSON: %v", err)
-					continue
-				}
-				if err := json.Unmarshal(dataBytes, &msgData); err != nil {
-					log.Printf("read: Error unmarshaling message data: %v", err)
+					log.Printf("read: Error marshaling message.Data: %v", err)
 					continue
 				}
 			}
+			if err := json.Unmarshal(dataBytes, &rawData); err != nil {
+				log.Printf("read: Error unmarshaling raw message data: %v", err)
+				continue
+			}
+			// تبدیل Tags به string
+			if tags, ok := rawData["Tags"].([]interface{}); ok {
+				tagData, err := json.Marshal(tags)
+				if err != nil {
+					log.Printf("read: Error marshaling tags: %v", err)
+					continue
+				}
+				msgData.Tags = string(tagData)
+			}
+			// پر کردن بقیه فیلدها
 			msgData.SenderID = c.userID
 			msgData.RoomID = &roomID
+			if content, ok := rawData["Content"].(string); ok {
+				msgData.Content = content
+			}
+			if receiverID, ok := rawData["ReceiverID"].(float64); ok {
+				userID := uint(receiverID)
+				msgData.UserID = &userID
+			}
+			if files, ok := rawData["Files"].([]interface{}); ok {
+				fileData, err := json.Marshal(files)
+				if err != nil {
+					log.Printf("read: Error marshaling files: %v", err)
+					continue
+				}
+				var fileStructs []models.File
+				if err := json.Unmarshal(fileData, &fileStructs); err != nil {
+					log.Printf("read: Error unmarshaling files: %v", err)
+					continue
+				}
+				msgData.Files = fileStructs
+			}
 			if err := db.Create(&msgData).Error; err != nil {
 				log.Printf("read: Error saving message to database: %v", err)
 				continue

@@ -269,28 +269,38 @@ useEffect(() => {
         return;
     }
 
+    const userId = localStorage.getItem('userId');
+    if (!userId || isNaN(parseInt(userId))) {
+        setError('لطفاً دوباره وارد شوید');
+        setOpenSnackbar(true);
+        return;
+    }
+
     const formData = new FormData();
     const tags = [];
     const userMatches = newMessage.matchAll(/@(\w+)/g);
     for (const match of userMatches) {
         const user = tagSuggestions.find((s) => s.display === match[1]);
-        if (user) tags.push({ type: 'user', id: user.id.replace('user_', ''), name: match[1] });
+        if (user) tags.push({ type: 'user', id: parseInt(user.id.replace('user_', '')), name: match[1] });
     }
     const fileMatches = newMessage.matchAll(/#(\w+)/g);
     for (const match of fileMatches) {
         const file = tagSuggestions.find((s) => s.display === match[1]);
-        if (file) tags.push({ type: 'file', id: file.id.replace('file_', ''), name: match[1] });
+        if (file) tags.push({ type: 'file', id: parseInt(file.id.replace('file_', '')), name: match[1] });
     }
     const workflowMatches = newMessage.matchAll(/#(\w+)/g);
     for (const match of workflowMatches) {
         const workflow = tagSuggestions.find((s) => s.display === match[1]);
-        if (workflow) tags.push({ type: 'workflow', id: workflow.id.replace('workflow_', ''), name: match[1] });
+        if (workflow) tags.push({ type: 'workflow', id: parseInt(workflow.id.replace('workflow_', '')), name: match[1] });
     }
     formData.append('tags', JSON.stringify(tags));
 
     if (newMessage.trim()) {
         formData.append('content', newMessage);
     }
+    formData.append('type', selectedFiles.length > 0 ? (selectedFiles[0].type.startsWith('image') ? 'picture' : selectedFiles[0].type.startsWith('audio') ? 'voice' : 'video') : 'text');
+    formData.append('chat_id', id); // فرض بر اینه که id همون chat_id هست
+
     const allowedTypes = ['image/jpeg', 'image/png', 'audio/webm', 'audio/mp3', 'audio/wav', 'video/mp4'];
     const maxSize = 10 * 1024 * 1024; // 10MB
     for (const file of selectedFiles) {
@@ -315,26 +325,25 @@ useEffect(() => {
         });
         console.log('Chat: Message sent successfully, response:', response.data);
 
-        // ایجاد داده پیام برای اضافه کردن به لیست محلی و WebSocket
         const messageData = {
-            ID: response.data.ID || Date.now(), // اگر سرور ID برنگردونه، از timestamp استفاده کن
-            SenderID: parseInt(userId),
+            ID: response.data.ID || Date.now(),
+            SenderID: parseInt(userId, 10),
             Content: newMessage,
+            Type: response.data.Type,
             Tags: tags,
             Files: response.data.Files || selectedFiles.map((f) => ({
-                Type: f.type.split('/')[0], // مثلاً 'image' یا 'audio'
+                Type: f.type.startsWith('image') ? 'picture' : f.type.startsWith('audio') ? 'voice' : f.type.startsWith('video') ? 'video' : 'default',
                 FilePath: response.data.FilePaths?.[f.name] || URL.createObjectURL(f),
             })),
-            CreatedAt: new Date().toISOString(),
+            CreatedAt: response.data.CreatedAt || new Date().toISOString(),
+            ChatID: response.data.ChatID,
         };
 
-        // اضافه کردن پیام به لیست محلی
         setMessages((prev) => [...prev, {
             ...messageData,
             Content: decryptMessage(messageData.Content),
         }]);
 
-        // ارسال پیام به WebSocket
         if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
             socketRef.current.send(JSON.stringify({
                 Event: "new_message",
@@ -344,9 +353,7 @@ useEffect(() => {
             console.log('Chat: Message sent to WebSocket:', messageData);
         } else {
             console.warn('Chat: WebSocket is not open, message not sent to WebSocket');
-        }
-
-        setNewMessage('');
+        }setNewMessage('');
         setSelectedFiles([]);
     } catch (err) {
         console.error('Chat: Error sending message:', {
