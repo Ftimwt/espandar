@@ -68,6 +68,8 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	var content string
 	if contentValues, ok := formContent.Value["content"]; ok && len(contentValues) > 0 {
 		content = contentValues[0]
+	} else {
+		content = "فایل ارسالی" // مقدار پیش‌فرض
 	}
 
 	// پردازش نوع پیام
@@ -79,23 +81,27 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		if len(formContent.File["files"]) > 0 {
 			fileHeader := formContent.File["files"][0]
 			contentType := fileHeader.Header.Get("Content-Type")
+			ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
 			switch {
 			case strings.HasPrefix(contentType, "image/"):
 				messageType = "picture"
-			case strings.HasPrefix(contentType, "audio/"):
+			case strings.HasPrefix(contentType, "audio/") || ext == ".webm" || ext == ".mp3" || ext == ".wav":
 				messageType = "voice"
-			case strings.HasPrefix(contentType, "video/"):
+			case strings.HasPrefix(contentType, "video/") && ext != ".webm":
 				messageType = "video"
 			}
 		}
 	}
 
 	// رمزنگاری محتوا
-	encryptedContent, err := mc.aesCipher.Encrypt(content)
-	if err != nil {
-		log.Printf("SendMessage: Encryption error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption error"})
-		return
+	var encryptedContent string
+	if content != "" {
+		encryptedContent, err = mc.aesCipher.Encrypt(content)
+		if err != nil {
+			log.Printf("SendMessage: Encryption error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption error"})
+			return
+		}
 	}
 
 	// پردازش تگ‌ها
@@ -192,26 +198,27 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// آپلود فایل‌ها به S3
+	// آپلود فایل‌ها به سرور
 	files := formContent.File["files"]
 	for _, fileHeader := range files {
 		file, err := fileHeader.Open()
 		if err != nil {
 			log.Printf("SendMessage: Error reading file %s: %v", fileHeader.Filename, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error reading file"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("error reading file %s: %v", fileHeader.Filename, err)})
 			return
 		}
 		defer file.Close()
 
-		filePath, err := mc.UploadFileToS3(fileHeader)
+		filePath, err := mc.UploadFileToLocal(fileHeader)
 		if err != nil {
 			log.Printf("SendMessage: Error uploading file %s: %v", fileHeader.Filename, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error uploading file"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("error uploading file %s: %v", fileHeader.Filename, err)})
 			return
 		}
 		newFile := models.File{
-			FilePath: filePath,
-			Type:     mc.FileType(fileHeader.Filename, file),
+			FilePath:  filePath,
+			Type:      mc.FileType(fileHeader.Filename, file),
+			MessageID: 0, // MessageID بعداً تنظیم می‌شه
 		}
 		message.Files = append(message.Files, newFile)
 	}
@@ -219,27 +226,31 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	// ذخیره پیام در دیتابیس
 	if err := mc.db.Create(&message).Error; err != nil {
 		log.Printf("SendMessage: Error saving message: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error saving message"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("error saving message: %v", err)})
 		return
 	}
 
-	// ذخیره فایل‌ها
+	// ذخیره فایل‌ها در دیتابیس
 	for i := range message.Files {
 		message.Files[i].MessageID = message.ID
+		message.Files[i].ID = 0 // اطمینان از تولید خودکار ID
 		if err := mc.db.Create(&message.Files[i]).Error; err != nil {
 			log.Printf("SendMessage: Error saving file: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error saving file"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("error saving file: %v", err)})
+			return
+		}
+	}
+	// رمزگشایی محتوا برای پاسخ
+	decryptedContent := content // اگر محتوا رمزنگاری نشده، مستقیماً استفاده می‌شه
+	if encryptedContent != "" {
+		decryptedContent, err = mc.aesCipher.Decrypt(encryptedContent)
+		if err != nil {
+			log.Printf("SendMessage: Decryption error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "decryption error"})
 			return
 		}
 	}
 
-	// رمزگشایی محتوا برای پاسخ
-	decryptedContent, err := mc.aesCipher.Decrypt(encryptedContent)
-	if err != nil {
-		log.Printf("SendMessage: Decryption error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "decryption error"})
-		return
-	}
 	// آماده‌سازی پاسخ
 	response := gin.H{
 		"ID":        message.ID,
@@ -256,7 +267,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		"CreatedAt": message.CreatedAt,
 	}
 
-	// پخش پیام
+	// پخش پیام از طریق WebSocket
 	switch strings.ToLower(receiverType) {
 	case "user":
 		var receiverUser models.User
@@ -281,6 +292,65 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// UploadFileToLocal برای ذخیره فایل روی سرور
+func (mc *MessageController) UploadFileToLocal(file *multipart.FileHeader) (string, error) {
+	uploadDir := "./Uploads"
+	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
+		log.Printf("UploadFileToLocal: Error creating upload directory %s: %v", uploadDir, err)
+		return "", fmt.Errorf("failed to create upload directory: %w", err)
+	}
+
+	fileContent, err := file.Open()
+	if err != nil {
+		log.Printf("UploadFileToLocal: Error opening file %s: %v", file.Filename, err)
+		return "", fmt.Errorf("failed to open file %s: %w", file.Filename, err)
+	}
+	defer fileContent.Close()
+
+	// ایجاد نام فایل یکتا
+	filename := fmt.Sprintf("%s-%s", uuid.New().String(), file.Filename)
+	filePath := filepath.Join(uploadDir, filename)
+
+	// ذخیره فایل
+	out, err := os.Create(filePath)
+	if err != nil {
+		log.Printf("UploadFileToLocal: Error creating file %s: %v", filePath, err)
+		return "", fmt.Errorf("failed to create file %s: %w", filePath, err)
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, fileContent); err != nil {
+		log.Printf("UploadFileToLocal: Error copying file %s: %v", filePath, err)
+		return "", fmt.Errorf("failed to copy file %s: %w", filePath, err)
+	}
+
+	// برگرداندن مسیر قابل دسترسی برای کلاینت
+	return fmt.Sprintf("/Uploads/%s", filename), nil
+}
+
+// FileType برای تعیین نوع فایل
+func (mc *MessageController) FileType(fileName string, file io.Reader) models.FileType {
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err != nil && err != io.EOF {
+		log.Printf("FileType: Error reading file %s: %v", fileName, err)
+		return models.Default
+	}
+	mimeType := http.DetectContentType(buffer[:n])
+	// بررسی پسوند فایل برای دقت بیشتر
+	ext := strings.ToLower(filepath.Ext(fileName))
+	switch {
+	case strings.HasPrefix(mimeType, "image/"):
+		return models.Picture
+	case strings.HasPrefix(mimeType, "audio/") || ext == ".webm" || ext == ".mp3" || ext == ".wav":
+		return models.Voice
+	case strings.HasPrefix(mimeType, "video/") && ext != ".webm":
+		return models.Video
+	default:
+		return models.Default
+	}
 }
 
 func (mc *MessageController) GetMessages(c *gin.Context) {
@@ -334,62 +404,6 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, messages)
-}
-
-// UploadFileToS3 برای آپلود فایل به S3
-func (mc *MessageController) UploadFileToS3(file *multipart.FileHeader) (string, error) {
-	uploadDir := "./uploads"
-	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
-		log.Printf("UploadFileToLocal: Error creating upload directory: %v", err)
-		return "", err
-	}
-
-	fileContent, err := file.Open()
-	if err != nil {
-		log.Printf("UploadFileToLocal: Error opening file %s: %v", file.Filename, err)
-		return "", err
-	}
-	defer fileContent.Close()
-
-	// ایجاد نام فایل یکتا
-	filename := fmt.Sprintf("%s-%s", uuid.New().String(), file.Filename)
-	filePath := filepath.Join(uploadDir, filename)
-
-	// ذخیره فایل
-	out, err := os.Create(filePath)
-	if err != nil {
-		log.Printf("UploadFileToLocal: Error creating file %s: %v", filePath, err)
-		return "", err
-	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, fileContent); err != nil {
-		log.Printf("UploadFileToLocal: Error copying file %s: %v", filePath, err)
-		return "", err
-	}
-
-	return filePath, nil
-}
-
-// FileType برای تعیین نوع فایل
-func (mc *MessageController) FileType(fileName string, file io.Reader) models.FileType {
-	buffer := make([]byte, 512)
-	_, err := file.Read(buffer)
-	if err != nil && err != io.EOF {
-		log.Printf("FileType: Error reading file %s: %v", fileName, err)
-		return models.Default
-	}
-	mimeType := http.DetectContentType(buffer)
-	switch mimeType {
-	case "image/jpeg", "image/png":
-		return models.Picture
-	case "audio/mpeg", "audio/wav", "audio/webm":
-		return models.Voice
-	case "video/mp4":
-		return models.Video
-	default:
-		return models.Default
-	}
 }
 
 // GetWorkflows برای دریافت جریان‌های کاری

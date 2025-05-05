@@ -34,7 +34,7 @@ const Auth = ({ onUserLogin, onAdminLogin }) => {
             return;
         }
 
-        const payload = { username, password, phone, isAdmin };
+        const payload = { username, password, phone, role: isAdmin? 'admin' : 'user' };
 
         try {
             let response;
@@ -55,9 +55,9 @@ const Auth = ({ onUserLogin, onAdminLogin }) => {
 
             // ذخیره توکن و userId
             const { token, user_id } = response;
-            localStorage.setItem('token', token);
-            localStorage.setItem('userId', user_id.toString());
-            localStorage.setItem('isAdmin', isAdmin.toString());
+            localStorage.setItem('token', response.token);
+            localStorage.setItem('userId', response.user_id.toString());
+            localStorage.setItem('role', response.role); // اضافه کردن role 
 
             // فراخوانی callback مناسب
             if (isAdmin) {

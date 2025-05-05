@@ -13,7 +13,7 @@ const (
 
 type File struct {
 	gorm.Model
-	FilePath  string   `gorm:"unique" json:"file_path"`
-	Type      FileType `json:"type"`
-	MessageID uint     `json:"message_id"`
+	FilePath  string   `gorm:"type:varchar(255)" json:"file_path"`
+	Type      FileType `gorm:"type:varchar(20)" json:"type"`
+	MessageID uint     `gorm:"index" json:"message_id"`
 }
