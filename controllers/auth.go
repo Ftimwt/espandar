@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"espandar/dto"
 	"espandar/encryption"
 	"espandar/jwt"
 	"espandar/models"
@@ -183,80 +184,60 @@ func (ac *AuthController) AdminSignUp(c *gin.Context) {
 }
 
 func (ac *AuthController) Login(c *gin.Context) {
-	var input struct {
-		Phone    string `json:"phone"`
-		Password string `json:"password"`
-	}
-
+	var input dto.LoginRequest
 	if err := c.ShouldBindJSON(&input); err != nil {
 		fmt.Println("Login: Invalid input:", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
-		return
-	}
-
-	// اعتبارسنجی شماره تلفن
-	if !utils.ValidatePhone(input.Phone) {
-		fmt.Println("Login: Invalid phone number:", input.Phone)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone number must be 11 digits starting with 09"})
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "Invalid input"})
 		return
 	}
 
 	var user models.User
-	if err := ac.db.Where("phone = ?", input.Phone).First(&user).Error; err != nil {
-		fmt.Println("Login: User not found for phone:", input.Phone)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid phone number or password"})
+	invalidCredential := dto.ErrorResponse{Error: "Invalid username or password"}
+	if err := ac.db.Where("username = ?", input.Username).First(&user).Error; err != nil {
+		fmt.Println("Login: User not found for username:", input.Username)
+		c.JSON(http.StatusUnauthorized, invalidCredential)
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
-		fmt.Println("Login: Invalid password for phone:", input.Phone)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid phone number or password"})
+		fmt.Println("Login: Invalid password for username:", input.Username)
+		c.JSON(http.StatusUnauthorized, invalidCredential)
 		return
 	}
 
 	token, err := jwt.Generate(&user)
 	if err != nil {
 		fmt.Println("Login: Error generating token:", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "Error generating token"})
 		return
 	}
 
 	fmt.Println("Login: User logged in, token:", token)
-	c.JSON(http.StatusOK, gin.H{
-		"token":   token,
-		"user_id": user.ID,
+	c.JSON(http.StatusOK, dto.LoginResponse{
+		Token:  token,
+		UserID: user.ID,
 	})
 }
 
 func (ac *AuthController) AdminLogin(c *gin.Context) {
-	var input struct {
-		Phone    string `json:"phone"`
-		Password string `json:"password"`
-	}
+	var input dto.LoginRequest
 
 	if err := c.ShouldBindJSON(&input); err != nil {
 		fmt.Println("AdminLogin: Invalid input:", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
-		return
-	}
-
-	// اعتبارسنجی شماره تلفن
-	if !utils.ValidatePhone(input.Phone) {
-		fmt.Println("AdminLogin: Invalid phone number:", input.Phone)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone number must be 11 digits starting with 09"})
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "Invalid response"})
 		return
 	}
 
 	var user models.User
-	if err := ac.db.Where("phone = ? AND role = ?", input.Phone, "admin").First(&user).Error; err != nil {
-		fmt.Println("AdminLogin: Admin not found for phone:", input.Phone)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid phone number or password"})
+	if err := ac.db.Where("username = ? AND role = ?", input.Username, "admin").First(&user).Error; err != nil {
+		fmt.Println("AdminLogin: Admin not found for username:", input.Username)
+		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Error: "Invalid username or password"})
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
-		fmt.Println("AdminLogin: Invalid password for phone:", input.Phone)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid phone number or password"})
+		fmt.Println("AdminLogin: Invalid password for Username:", input.Username)
+		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Error: "Invalid phone number or password"})
 		return
 	}
 
@@ -268,10 +249,10 @@ func (ac *AuthController) AdminLogin(c *gin.Context) {
 	}
 
 	fmt.Println("AdminLogin: Admin logged in, token:", token)
-	c.JSON(http.StatusOK, gin.H{
-		"token":   token,
-		"user_id": user.ID,
-		"role":    user.Role,
+	c.JSON(http.StatusOK, dto.LoginAdminResponse{
+		Token:  token,
+		UserID: user.ID,
+		Role:   user.Role,
 	})
 }
 
