@@ -270,7 +270,9 @@ useEffect(() => {
     }
 
     const userId = localStorage.getItem('userId');
+    console.log('Chat: userId from localStorage:', userId);
     if (!userId || isNaN(parseInt(userId))) {
+        console.error('Chat: Invalid userId:', userId);
         setError('لطفاً دوباره وارد شوید');
         setOpenSnackbar(true);
         return;
@@ -299,7 +301,7 @@ useEffect(() => {
         formData.append('content', newMessage);
     }
     formData.append('type', selectedFiles.length > 0 ? (selectedFiles[0].type.startsWith('image') ? 'picture' : selectedFiles[0].type.startsWith('audio') ? 'voice' : 'video') : 'text');
-    formData.append('chat_id', id); // فرض بر اینه که id همون chat_id هست
+    formData.append('chat_id', id);
 
     const allowedTypes = ['image/jpeg', 'image/png', 'audio/webm', 'audio/mp3', 'audio/wav', 'video/mp4'];
     const maxSize = 10 * 1024 * 1024; // 10MB
@@ -328,6 +330,7 @@ useEffect(() => {
         const messageData = {
             ID: response.data.ID || Date.now(),
             SenderID: parseInt(userId, 10),
+            ReceiverID: parseInt(id, 10),
             Content: newMessage,
             Type: response.data.Type,
             Tags: tags,
@@ -345,25 +348,26 @@ useEffect(() => {
         }]);
 
         if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-            socketRef.current.send(JSON.stringify({
-                Event: "new_message",
-                Data: messageData,
-                To: id,
-            }));
-            console.log('Chat: Message sent to WebSocket:', messageData);
-        } else {
-            console.warn('Chat: WebSocket is not open, message not sent to WebSocket');
-        }setNewMessage('');
-        setSelectedFiles([]);
-    } catch (err) {
-        console.error('Chat: Error sending message:', {
-            message: err.message,
-            status: err.response?.status,
-            data: err.response?.data,
-        });
-        setError('خطا در ارسال پیام: ' + (err.response?.data?.error || err.message));
-        setOpenSnackbar(true);
-    }
+            socketRef.current.send(JSON.stringify({Event: "new_message",
+              Data: messageData,
+              To: id,
+          }));
+          console.log('Chat: Message sent to WebSocket:', messageData);
+      } else {
+          console.warn('Chat: WebSocket is not open, message not sent to WebSocket');
+      }
+
+      setNewMessage('');
+      setSelectedFiles([]);
+  } catch (err) {
+      console.error('Chat: Error sending message:', {
+          message: err.message,
+          status: err.response?.status,
+          data: err.response?.data,
+      });
+      setError('خطا در ارسال پیام: ' + (err.response?.data?.error || err.message));
+      setOpenSnackbar(true);
+  }
 };
 
   // آپلود فایل

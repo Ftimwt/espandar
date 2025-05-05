@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -400,7 +401,7 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 				}
 				msgData.Tags = string(tagData)
 			}
-			// پر کردن بقیه فیلدها
+			// پر کردن فیلدها
 			msgData.SenderID = c.userID
 			msgData.RoomID = &roomID
 			if content, ok := rawData["Content"].(string); ok {
@@ -409,6 +410,9 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 			if receiverID, ok := rawData["ReceiverID"].(float64); ok {
 				userID := uint(receiverID)
 				msgData.UserID = &userID
+			}
+			if typeVal, ok := rawData["Type"].(string); ok {
+				msgData.Type = typeVal
 			}
 			if files, ok := rawData["Files"].([]interface{}); ok {
 				fileData, err := json.Marshal(files)
@@ -423,9 +427,40 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 				}
 				msgData.Files = fileStructs
 			}
+			// تنظیم ChatID
+			var chat models.Chat
+			err := db.Where("(user_id1 = ? AND user_id2 = ?) OR (user_id1 = ? AND user_id2 = ?)",
+				c.userID, *msgData.UserID, *msgData.UserID, c.userID).
+				First(&chat).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					chat = models.Chat{
+						UserID1: c.userID,
+						UserID2: *msgData.UserID,
+					}
+					if err := db.Create(&chat).Error; err != nil {
+						log.Printf("read: Error creating chat: %v", err)
+						continue
+					}
+				} else {
+					log.Printf("read: Error finding chat: %v", err)
+					continue
+				}
+			}
+			msgData.ChatID = chat.ID
+
+			// ذخیره پیام
 			if err := db.Create(&msgData).Error; err != nil {
 				log.Printf("read: Error saving message to database: %v", err)
 				continue
+			}
+			// ذخیره فایل‌ها
+			for i := range msgData.Files {
+				msgData.Files[i].MessageID = msgData.ID
+				if err := db.Create(&msgData.Files[i]).Error; err != nil {
+					log.Printf("read: Error saving file: %v", err)
+					continue
+				}
 			}
 			broadcaster.BroadcastToRoom(roomID, "new_message", message.Data, 0)
 		default:

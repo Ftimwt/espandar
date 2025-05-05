@@ -41,23 +41,25 @@ function App() {
     validateToken();
   }, []);
 
-  const handleUserLogin = (newToken) => {
-    console.log('App: User logged in, token:', newToken);
+  const handleUserLogin = (newToken, userId) => {
+    console.log('App: User logged in, token:', newToken, 'userId:', userId);
     setToken(newToken);
     setIsAdmin(false);
     setIsAuthenticated(true);
     localStorage.setItem('token', newToken);
     localStorage.setItem('isAdmin', 'false');
-  };
+    localStorage.setItem('userId', userId.toString());
+};
 
-  const handleAdminLogin = (newToken) => {
-    console.log('App: Admin logged in, token:', newToken);
+const handleAdminLogin = (newToken, userId) => {
+    console.log('App: Admin logged in, token:', newToken, 'userId:', userId);
     setToken(newToken);
     setIsAdmin(true);
     setIsAuthenticated(true);
     localStorage.setItem('token', newToken);
     localStorage.setItem('isAdmin', 'true');
-  };
+    localStorage.setItem('userId', userId.toString());
+};
 
   const handleLogout = () => {
     console.log('App: Logging out');
