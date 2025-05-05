@@ -41,13 +41,7 @@ export const login = async (userData) => {
   throw new Error('Invalid response: token or user_id missing');
   }
   console.log('login response:', response.data);
-  const { token, user_id } = response.data;
-  if (userData.isAdmin) { // فرض می‌کنیم isAdmin در userData هست
-  handleAdminLogin(token, user_id);
-  } else {
-  handleUserLogin(token, user_id);
-  }
-  return response.data;
+  return  response.data;
   } catch (error) {
   console.error('login error:', {
   message: error.message,
@@ -131,9 +125,19 @@ export const getContacts = async (token) => {
 };
 
 export const addContact = async (token, contact) => {
-  console.log('addContact: Sending request with token:', token);
-  const response = await axios.post(`${API_URL}/admin/contacts`, contact, {
-      headers: { Authorization: `Bearer ${token}` },
-  });
-  return response.data;
+  try {
+      console.log('addContact: Sending request with token:', token, 'contact:', contact);
+      const response = await axios.post(`${API_URL}/admin/contacts`, contact, {
+          headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log('addContact: Response:', response.data);
+      return response.data;
+  } catch (error) {
+      console.error('addContact: Error:', {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+      });
+      throw error; // خطا رو پرتاب کن تا کامپوننت بتونه مدیریتش کنه
+  }
 };
