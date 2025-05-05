@@ -36,21 +36,27 @@ export const signUp = async (userData) => {
 
 export const login = async (userData) => {
   try {
-    const response = await axios.post(`${API_URL}/login`, userData);
-    if (!response.data.token || !response.data.user_id) {
-      throw new Error('Invalid response: token or user_id missing');
-    }
-    console.log('login response:', response.data);
-    return response.data;
-  } catch (error) {
-    console.error('login error:', {
-      message: error.message,
-      response: error.response?.data,
-      status: error.response?.status,
-    });
-    throw error;
+  const response = await axios.post(`${API_URL}/login`, userData);
+  if (!response.data.token || !response.data.user_id) {
+  throw new Error('Invalid response: token or user_id missing');
   }
-};
+  console.log('login response:', response.data);
+  const { token, user_id } = response.data;
+  if (userData.isAdmin) { // فرض می‌کنیم isAdmin در userData هست
+  handleAdminLogin(token, user_id);
+  } else {
+  handleUserLogin(token, user_id);
+  }
+  return response.data;
+  } catch (error) {
+  console.error('login error:', {
+  message: error.message,
+  response: error.response?.data,
+  status: error.response?.status,
+  });
+  throw error;
+  }
+  };
 
 export const getProfile = async (token) => {
  const response = await axios.get(`${API_URL}/profile`, {
