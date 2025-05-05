@@ -1,5 +1,8 @@
  
  import React, { useState, useEffect, useRef } from 'react';
+import { TextField, Button, Box, IconButton } from '@mui/material';
+import EmojiPicker from 'emoji-picker-react';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
  import { useParams, useNavigate } from 'react-router-dom';
  import axios from 'axios';
  import {
@@ -290,9 +293,7 @@ useEffect(() => {
     }
   
     const userId = localStorage.getItem('userId');
-    console.log('Chat: userId from localStorage:', userId);
     if (!userId || isNaN(parseInt(userId))) {
-      console.error('Chat: Invalid userId:', userId);
       setError('لطفاً دوباره وارد شوید');
       setOpenSnackbar(true);
       return;
@@ -318,6 +319,7 @@ useEffect(() => {
     formData.append('tags', JSON.stringify(tags));
   
     // همیشه content رو اضافه کن
+    console.log('Chat: Sending content:', newMessage.trim() || 'فایل ارسالی');
     formData.append('content', newMessage.trim() || 'فایل ارسالی');
   
     formData.append('type', selectedFiles.length > 0 ? (selectedFiles[0].type.startsWith('image') ? 'picture' : selectedFiles[0].type.startsWith('audio') || selectedFiles[0].type === 'audio/webm' ? 'voice' : 'video') : 'text');
@@ -341,7 +343,6 @@ useEffect(() => {
   
     try {
       const endpoint = `/message/user/${id}`;
-      console.log('Chat: Sending message to:', `${API_URL}${endpoint}`);
       const response = await axios.post(`${API_URL}${endpoint}`, formData, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
       });
@@ -357,10 +358,9 @@ useEffect(() => {
         Files: response.data.Files || [],
         CreatedAt: response.data.CreatedAt || new Date().toISOString(),
         ChatID: response.data.ChatID,
-        IsSeen: response.data.is_seen || false, // اضافه کردن IsSeen
+        Seen: response.data.seen || false,
+        IsReceived: response.data.is_received || false,
       };
-  
-      console.log('Chat: Files in response:', messageData.Files);
   
       if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
         socketRef.current.send(
@@ -370,23 +370,21 @@ useEffect(() => {
             To: id,
           })
         );
-        console.log('Chat: Message sent to WebSocket:', messageData);
-      } else {
-        console.warn('Chat: WebSocket is not open, message not sent to WebSocket');
       }
   
       setMessages((prevMessages) => [...prevMessages, messageData]);
       setNewMessage('');
       setSelectedFiles([]);
     } catch (err) {
-      console.error('Chat: Error sending message:', {
-        message: err.message,
-        status: err.response?.status,
-        data: err.response?.data,
-      });
+      console.error('Chat: Error sending message:', err);
       setError('خطا در ارسال پیام: ' + (err.response?.data?.error || err.message));
       setOpenSnackbar(true);
     }
+  };
+
+  const handleEmojiClick = (emojiObject) => {
+    setNewMessage((prev) => prev + emojiObject.emoji);
+    setShowEmojiPicker(false);
   };
 
   // آپلود فایل
@@ -746,7 +744,8 @@ return (
           multiline
         />
       )}
-      <Box sx={{ display: 'flex', gap: 1, mt: 1 }}><IconButton onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
+      <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+        <IconButton onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
           <EmojiEmotions />
         </IconButton>
         <IconButton onClick={() => fileInputRef.current.click()}>

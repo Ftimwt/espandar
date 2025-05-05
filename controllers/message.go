@@ -253,18 +253,20 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 
 	// آماده‌سازی پاسخ
 	response := gin.H{
-		"ID":        message.ID,
-		"Content":   decryptedContent,
-		"SenderID":  message.SenderID,
-		"UserID":    message.UserID,
-		"GroupID":   message.GroupID,
-		"ChannelID": message.ChannelID,
-		"Type":      message.Type,
-		"Files":     message.Files,
-		"Tags":      tags,
-		"RoomID":    message.RoomID,
-		"ChatID":    message.ChatID,
-		"CreatedAt": message.CreatedAt,
+		"ID":          message.ID,
+		"Content":     decryptedContent,
+		"SenderID":    message.SenderID,
+		"UserID":      message.UserID,
+		"GroupID":     message.GroupID,
+		"ChannelID":   message.ChannelID,
+		"Type":        message.Type,
+		"Files":       message.Files,
+		"Tags":        tags,
+		"RoomID":      message.RoomID,
+		"ChatID":      message.ChatID,
+		"CreatedAt":   message.CreatedAt,
+		"seen":        message.Seen,       // اضافه کردن Seen
+		"is_received": message.IsReceived, // اضافه کردن IsReceived
 	}
 
 	// پخش پیام از طریق WebSocket
