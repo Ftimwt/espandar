@@ -374,11 +374,7 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 	}
 
 	var messages []models.Message
-<<<<<<< HEAD
-	query := mc.db
-=======
 	query := mc.db.Preload("Files").Where("sender_id = ? OR user_id = ?", user.ID, user.ID)
->>>>>>> dfbb287fbc068933296be84be8598b9d31455f60
 	switch strings.ToLower(receiverType) {
 	case "user":
 		// پیدا کردن ChatID
@@ -449,10 +445,6 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 		}
 	}
 
-<<<<<<< HEAD
-	log.Printf("GetMessages: Returning %d messages for user %d and receiver %d", len(messages), user.ID, receiverID)
-	c.JSON(http.StatusOK, messages)
-=======
 	c.JSON(http.StatusOK, response)
 }
 
@@ -495,7 +487,6 @@ func (mc *MessageController) MarkMessageAsSeen(c *gin.Context) {
 		"seen":        message.Seen,
 		"is_received": message.IsReceived,
 	})
->>>>>>> dfbb287fbc068933296be84be8598b9d31455f60
 }
 
 func (mc *MessageController) MarkMessageAsSeen(c *gin.Context) {
