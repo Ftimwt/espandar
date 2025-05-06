@@ -233,7 +233,8 @@ const Auth = ({ onUserLogin, onAdminLogin }) => {
           </Button>
         </Box>
       </Box>
-      );
+    </Box>
+  );
 };
 
-      export default Auth;
+export default Auth;

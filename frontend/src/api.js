@@ -140,6 +140,20 @@ export const addContact = async (token, contact) => {
  */
 export const createChannel = async (token, channel) => {
     console.log('createChannel: Sending request with token:', token);
-    const response = await axios.post(`${API_URL}/channel`, channel, {})
+    const response = await axios.post(`${API_URL}/channel`, channel, {});
     return response.data;
+}
+
+export const getChannels = async (token) => {
+    try {
+        console.log("getChannels: sending request with token:", token);
+        const response = await axios.get(`${API_URL}/channels?perpage=20&page=1`, {});
+        return response.data;
+    } catch (error) {
+        console.error('Error in getChannels:', {
+            message: error.message,
+            response: error.response?.error,
+            status: error.response?.status,
+        });
+    }
 }

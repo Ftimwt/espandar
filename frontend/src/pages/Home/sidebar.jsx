@@ -3,9 +3,11 @@ import PersonIcon from "@mui/icons-material/Person";
 import MenuItem from "@mui/material/MenuItem";
 import { useContacts } from "../../hooks/users";
 import { useState } from "react";
+import { useChannels } from "../../hooks/channels";
 
 const HomeSidebar = (props) => {
     const { contacts } = useContacts();
+    const { channels } = useChannels();
     const { palette } = useTheme();
     const [selected, setSelected] = useState(-1);
 
@@ -36,6 +38,19 @@ const HomeSidebar = (props) => {
             ))}
             <Divider />
             <ListItem>کانال های شما</ListItem>
+            {channels?.map((channel) => (
+                <MenuItem
+                    value={channel.id}
+                    key={`channel_${channel.id}`}
+                    onClick={() => setSelected(channel.id)}
+                    selected={channel.id === selected}
+                >
+                    <Stack direction="row" gap={1}>
+                        <PersonIcon />
+                        {channel.name}
+                    </Stack>
+                </MenuItem>
+            ))}
         </List>
     );
 };
