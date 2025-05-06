@@ -53,9 +53,10 @@ func (r *Room) ConnectRoom(sender MessageSender, userData UserConnData) {
 	})
 
 	peerConnection.OnTrack(func(tr *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
-		log.Printf("ConnectRoom: New track received for user: %s", userData.MemberID)
+		log.Printf("OnTrack: New track for user %s, kind: %s, id: %s", userData.MemberID, tr.Kind().String(), tr.ID())
 		trackLocal := r.AddTrack(tr, userData.MemberID)
 		if trackLocal == nil {
+			log.Printf("OnTrack: Failed to create local track for user %s", userData.MemberID)
 			return
 		}
 		defer r.RemoveTrack(trackLocal)

@@ -1,8 +1,5 @@
- 
  import React, { useState, useEffect, useRef } from 'react';
-import { TextField, Button, Box, IconButton } from '@mui/material';
-import EmojiPicker from 'emoji-picker-react';
-import AttachFileIcon from '@mui/icons-material/AttachFile';
+ import AttachFileIcon from '@mui/icons-material/AttachFile';
  import { useParams, useNavigate } from 'react-router-dom';
  import axios from 'axios';
  import {
@@ -50,6 +47,7 @@ import AttachFileIcon from '@mui/icons-material/AttachFile';
    const userId = localStorage.getItem('userId');
    const token = localStorage.getItem('token');
    const isConnectingRef = useRef(false);
+   const processedMessageIds = useRef(new Set());
  
    // تابع رمزگشایی پیام‌ها
    const decryptMessage = (encryptedContent) => {
@@ -73,96 +71,100 @@ import AttachFileIcon from '@mui/icons-material/AttachFile';
    const sendEndpoint = () => {
      if (type === 'group') return `/message/group/${id}`;
      if (type === 'channel') return `/message/channel/${id}`;
-     return `/message/user/${id}`;
+     return `/messages/user/${id}`;
    };
  
    // اتصال به WebSocket
-const connectWebSocket = () => {
-  if (isConnectingRef.current || socketRef.current?.readyState === WebSocket.OPEN) {
-    console.log('Chat: WebSocket already connecting or open');
-    return;
-  }
-
-  isConnectingRef.current = true;
-  if (socketRef.current) {
-    socketRef.current.close();
-  }
-
-  const wsUrl = `ws://localhost:8080/ws?receiver_id=${id}&Authorization=${encodeURIComponent(token)}`;
-  console.log('Chat: Connecting to WebSocket with URL:', wsUrl);
-  socketRef.current = new WebSocket(wsUrl);
-
-  socketRef.current.onopen = () => {
-    console.log('Chat: WebSocket connection opened');
-    isConnectingRef.current = false;
-  };
-
-  socketRef.current.onmessage = (event) => {
-    console.log('Chat: WebSocket raw message:', event.data);
-    try {
-      const message = JSON.parse(event.data);
-      console.log('Chat: WebSocket parsed message:', message);
-      const eventName = message.Event || message.event;
-      const messageData = message.Data || message.data;
+   const connectWebSocket = () => {
+    if (isConnectingRef.current || socketRef.current?.readyState === WebSocket.OPEN) {
+      console.log('Chat: WebSocket already connecting or open');
+      return;
+    }
   
-      switch (eventName) {
-        case 'connect_success':
-          console.log('Chat: Connected to WebSocket:', messageData);
-          break;
-        case 'new_message':
-          console.log('Chat: Processing new_message, data:', messageData);
-          if (messageData && typeof messageData.Content === 'string') {
-            setMessages((prev) => {
-              // چک کن اگه پیام با همین ID قبلاً اضافه شده، اضافه نکن
-              if (prev.some((msg) => msg.ID === messageData.ID)) {
-                console.log('Chat: Duplicate message ignored:', messageData.ID);
-                return prev;
+    isConnectingRef.current = true;
+    if (socketRef.current) {
+      socketRef.current.close();
+    }
+  
+    const wsUrl = `ws://localhost:8080/ws?receiver_id=${id}&Authorization=${encodeURIComponent(token)}`;
+    console.log('Chat: Connecting to WebSocket with URL:', wsUrl);
+    socketRef.current = new WebSocket(wsUrl);
+  
+    socketRef.current.onopen = () => {
+      console.log('Chat: WebSocket connection opened');
+      isConnectingRef.current = false;
+    };
+  
+    socketRef.current.onmessage = (event) => {
+      console.log('Chat: WebSocket raw message:', event.data);
+      try {
+        const message = JSON.parse(event.data);
+        console.log('Chat: WebSocket parsed message:', message);
+        const eventName = message.Event || message.event;
+        const messageData = message.Data || message.data;
+        console.log('Chat: Message to:', message.To, 'from:', message.From);
+        switch (eventName) {
+          case 'connect_success':
+            console.log('Chat: Connected to WebSocket:', messageData);
+            break;
+            case 'new_message':
+              console.log('Chat: Processing new_message, data:', messageData);
+              if (messageData && typeof messageData.Content === 'string') {
+                if (processedMessageIds.current.has(messageData.ID)) {
+                  console.log('Chat: Duplicate message ignored:', messageData.ID);
+                  return;
+                }
+                processedMessageIds.current.add(messageData.ID);
+                // ارسال تأیید دریافت به سرور
+                axios
+                  .patch(
+                    `${API_URL}/messages/${messageData.ID}/received`,
+                    { is_received: true },
+                    { headers: { Authorization: `Bearer ${token}` } }
+                  )
+                  .then(() => console.log('Chat: is_received updated for message:', messageData.ID))
+                  .catch((err) => console.error('Error updating is_received:', err));
+                  
+                setMessages((prev) => [
+                  ...prev,
+                  { ...messageData, Content: decryptMessage(messageData.Content) },
+                ]);
+              } else {
+                console.warn('Chat: Invalid new_message received:', message);
               }
-              return [
-                ...prev,
-                { ...messageData, Content: decryptMessage(messageData.Content) },
-              ];
-            });
-          } else {
-            console.warn('Chat: Invalid new_message received:', message);
-          }
-          break;
-        case 'webrtc_offer':
-          handleOffer(messageData, message.From || message.To);
-          break;
-        case 'webrtc_answer':
-          handleAnswer(messageData, message.From || message.To);
-          break;
-        case 'webrtc_ice_candidate':
-          handleIceCandidate(messageData, message.From || message.To);
-          break;
-        case 'conference_invite':
-          setConferenceLink(messageData?.invite_link || '');
-          setOpenConferenceDialog(true);
-          break;
-        default:
-          console.log('Chat: Unknown event:', eventName);
+              break;
+          case 'webrtc_offer':
+            handleOffer(messageData, message.From || message.To);
+            break;
+          case 'webrtc_answer':
+            handleAnswer(messageData, message.From || message.To);
+            break;
+          case 'webrtc_ice_candidate':
+            handleIceCandidate(messageData, message.From || message.To);
+            break;
+          case 'conference_invite':
+            setConferenceLink(messageData?.invite_link || '');
+            setOpenConferenceDialog(true);
+            break;
+          default:
+            console.log('Chat: Unknown event:', eventName);
+        }
+      } catch (err) {
+        console.error('Chat: Error parsing WebSocket message:', err);
       }
-    } catch (err) {
-      console.error('Chat: Error parsing WebSocket message:', err);
-    }
+    };
+  
+    socketRef.current.onclose = (event) => {
+      console.log('Chat: WebSocket disconnected, code:', event.code, 'reason:', event.reason);
+      isConnectingRef.current = false;
+      setTimeout(connectWebSocket, 5000);
+    };
+  
+    socketRef.current.onerror = (err) => {
+      console.error('Chat: WebSocket error:', err);
+      isConnectingRef.current = false;
+    };
   };
-
-  socketRef.current.onclose = (event) => {
-    console.log('Chat: WebSocket disconnected, code:', event.code, 'reason:', event.reason);
-    isConnectingRef.current = false;
-    if (event.code === 1006) {
-      console.log('Chat: Connection refused, checking server status...');
-    }
-    console.log('Chat: Retrying in 5 seconds...');
-    setTimeout(connectWebSocket, 5000);
-  };
-
-  socketRef.current.onerror = (err) => {
-    console.error('Chat: WebSocket error:', err);
-    isConnectingRef.current = false;
-  };
-};
    
 useEffect(() => {
   console.log('Chat: useEffect running, type:', type, 'id:', id, 'token:', token);
@@ -318,10 +320,8 @@ useEffect(() => {
     }
     formData.append('tags', JSON.stringify(tags));
   
-    // همیشه content رو اضافه کن
     console.log('Chat: Sending content:', newMessage.trim() || 'فایل ارسالی');
     formData.append('content', newMessage.trim() || 'فایل ارسالی');
-  
     formData.append('type', selectedFiles.length > 0 ? (selectedFiles[0].type.startsWith('image') ? 'picture' : selectedFiles[0].type.startsWith('audio') || selectedFiles[0].type === 'audio/webm' ? 'voice' : 'video') : 'text');
     formData.append('chat_id', id);
   
@@ -340,47 +340,41 @@ useEffect(() => {
       }
       formData.append('files', file);
     }
-  
+
     try {
-      const endpoint = `/message/user/${id}`;
+      console.log('Chat: Sending message, id:', id);
+      const endpoint = sendEndpoint();
+      console.log('Chat: Sending message to:', `${API_URL}${endpoint}`);
       const response = await axios.post(`${API_URL}${endpoint}`, formData, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
       });
       console.log('Chat: Server response:', JSON.stringify(response.data, null, 2));
-  
-      const messageData = {
-        ID: response.data.ID || Date.now(),
-        SenderID: parseInt(userId, 10),
-        ReceiverID: parseInt(id, 10),
-        Content: response.data.Content || newMessage || 'فایل ارسالی',
-        Type: response.data.Type,
-        Tags: response.data.Tags || tags,
-        Files: response.data.Files || [],
-        CreatedAt: response.data.CreatedAt || new Date().toISOString(),
-        ChatID: response.data.ChatID,
-        Seen: response.data.seen || false,
-        IsReceived: response.data.is_received || false,
-      };
-  
-      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-        socketRef.current.send(
-          JSON.stringify({
-            Event: 'new_message',
-            Data: messageData,
-            To: id,
-          })
-        );
+
+
+        setMessages((prev) => [
+      ...prev,
+      { ...response.data, Content: decryptMessage(response.data.Content) },
+    ]);
+    
+        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+          console.log('Chat: Sending WebSocket message with to:', id);
+          socketRef.current.send(
+            JSON.stringify({
+              event: 'new_message',
+              data: response.data,
+              to: id.toString(), // استفاده از to به جای To و تبدیل به string
+            })
+          );
+        }
+    
+        setNewMessage('');
+        setSelectedFiles([]);
+      } catch (err) {
+        console.error('Chat: Error sending message:', err);
+        setError('خطا در ارسال پیام: ' + (err.response?.data?.error || err.message));
+        setOpenSnackbar(true);
       }
-  
-      setMessages((prevMessages) => [...prevMessages, messageData]);
-      setNewMessage('');
-      setSelectedFiles([]);
-    } catch (err) {
-      console.error('Chat: Error sending message:', err);
-      setError('خطا در ارسال پیام: ' + (err.response?.data?.error || err.message));
-      setOpenSnackbar(true);
-    }
-  };
+    };
 
   const handleEmojiClick = (emojiObject) => {
     setNewMessage((prev) => prev + emojiObject.emoji);
@@ -418,10 +412,38 @@ useEffect(() => {
     setIsRecording(false);
   };
 
+  useEffect(() => {
+    if (inCall && localVideoRef.current) {
+      console.log('localVideoRef is ready:', localVideoRef.current);
+    } else if (inCall) {
+      console.warn('localVideoRef is not ready');
+    }
+  }, [inCall]);
+  
+  useEffect(() => {
+    if (inCall && localVideoRef.current && !localVideoRef.current.srcObject) {
+      navigator.mediaDevices
+        .getUserMedia({ video: true, audio: true })
+        .then((stream) => {
+          localVideoRef.current.srcObject = stream;
+        })
+        .catch((err) => {
+          console.error('Error setting local stream:', err);
+          setError(`خطا در دسترسی به دوربین/میکروفون: ${err.message}`);
+          setOpenSnackbar(true);
+        });
+    }
+  }, [inCall]);
+
   // تماس صوتی/تصویری
   const startVideoCall = async () => {
     try {
+      setInCall(true);
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      console.log('localVideoRef.current:', localVideoRef.current);
+      if (!localVideoRef.current) {
+         throw new Error('localVideoRef is null');
+    }
       localVideoRef.current.srcObject = stream;
       const pc = new RTCPeerConnection({
         iceServers: [
@@ -432,26 +454,34 @@ useEffect(() => {
       peerConnectionsRef.current[id] = pc;
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
       pc.ontrack = (event) => {
+        console.log('Received remote stream for user:', id, event.streams[0]);
         setRemoteStreams((prev) => ({ ...prev, [id]: event.streams[0] }));
       };
-      pc.onicecandidate = (event) => {if (event.candidate) {
-        socketRef.current.send(JSON.stringify({
-          event: 'webrtc_ice_candidate',
-          data: event.candidate,
-          to: id,
-        }));
-      }
-    };
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log('Sending ICE candidate to:', id);
+          socketRef.current.send(
+            JSON.stringify({
+              event: 'webrtc_ice_candidate',
+              data: event.candidate,
+              to: id.toString(),
+            })
+          );
+        }
+      };
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    socketRef.current.send(JSON.stringify({
+    socketRef.current.send(
+      JSON.stringify({
       event: 'webrtc_offer',
       data: offer,
-      to: id,
+      to: id.toString(),
     }));
     setInCall(true);
   } catch (err) {
-    setError('دسترسی به دوربین یا میکروفون ممکن نیست');
+    console.error('startVideoCall Error:', err.name, err.message);
+    setError(`خطا در دسترسی: ${err.name} - ${err.message}`);
+    setInCall(false);
     setOpenSnackbar(true);
   }
 };
@@ -466,6 +496,10 @@ const handleOffer = async (offer, from) => {
     });
     peerConnectionsRef.current[from] = pc;
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    if (!localVideoRef.current) {
+      console.error('handleOffer: localVideoRef.current is null');
+      throw new Error('Video element not found');
+    }
     localVideoRef.current.srcObject = stream;
     stream.getTracks().forEach((track) => pc.addTrack(track, stream));
     pc.ontrack = (event) => {
@@ -473,24 +507,29 @@ const handleOffer = async (offer, from) => {
     };
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        socketRef.current.send(JSON.stringify({
-          event: 'webrtc_ice_candidate',
-          data: event.candidate,
-          to: from,
-        }));
+        socketRef.current.send(
+          JSON.stringify({
+            event: 'webrtc_ice_candidate',
+            data: event.candidate,
+            to: from,
+          })
+        );
       }
     };
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    socketRef.current.send(JSON.stringify({
-      event: 'webrtc_answer',
-      data: answer,
-      to: from,
-    }));
+    socketRef.current.send(
+      JSON.stringify({
+        event: 'webrtc_answer',
+        data: answer,
+        to: from,
+      })
+    );
     setInCall(true);
   } catch (err) {
-    setError('خطا در پردازش پیشنهاد تماس');
+    console.error('handleOffer Error:', err.name, err.message);
+    setError(`خطا در پردازش پیشنهاد: ${err.name} - ${err.message}`);
     setOpenSnackbar(true);
   }
 };
@@ -583,10 +622,13 @@ const startConference = async () => {
 const startMultiUserCall = async (conferenceId) => {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    if (!localVideoRef.current) {
+      console.error('startMultiUserCall: localVideoRef.current is null');
+      throw new Error('Video element not found');
+    }
     localVideoRef.current.srcObject = stream;
     peerConnectionsRef.current = {};
     setRemoteStreams({});
-
     conferenceMembers.forEach((member) => {
       const pc = new RTCPeerConnection({
         iceServers: [
@@ -625,246 +667,307 @@ const startMultiUserCall = async (conferenceId) => {
     });
     setInCall(true);
   } catch (err) {
-    setError('خطا در شروع کنفرانس');
+    console.error('startMultiUserCall Error:', err.name, err.message);
+    setError(`خطا در شروع کنفرانس: ${err.name} - ${err.message}`);
     setOpenSnackbar(true);
   }
 };
 
 return (
-  <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-    {/* بخش نمایش پیام‌ها */}
-    <Box sx={{ flexGrow: 1, overflowY: 'auto', p: 2 }}>
-      {Array.isArray(messages) && messages.length > 0 ? (
-        messages.map((msg, index) => (
-          <Paper
-            key={`${msg.ID}-${index}`} // کلید پیش‌فرض اگه ID وجود نداشته باشه
-            sx={{
-              p: 2,
-              mb: 2,
-              maxWidth: '70%',
-              alignSelf:
-                msg.SenderID && msg.SenderID === parseInt(userId) ? 'flex-end' : 'flex-start',
-            }}
-          >
-            <Typography>
-              {typeof msg.Content === 'string' && msg.Content ? (
-                msg.Content.split(' ').map((part, partIndex) => {
-                  if (part.startsWith('@') || part.startsWith('#')) {
-                    const tag = Array.isArray(msg.Tags)
-                      ? msg.Tags.find((t) => t?.name === part.slice(1))
-                      : null;
-                    if (tag) {
-                      return (
-                        <span
-                          key={partIndex}
-                          style={{ color: 'blue', cursor: 'pointer' }}
-                          onClick={() => {
-                            if (tag.type === 'user') navigate(`/profile/${tag.id}`);
-                            else if (tag.type === 'file') window.open(tag.name, '_blank');
-                            else if (tag.type === 'workflow') navigate(`/workflow/${tag.id}`);
-                          }}
-                        >
-                          {part}{' '}
-                        </span>
-                      );
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <video
+    ref={localVideoRef}
+    autoPlay
+    muted
+    style={{
+      width: '300px',
+      border: '1px solid #ccc',
+      display: inCall ? 'block' : 'none',
+    }}
+  />
+      <Box sx={{ flexGrow: 1, overflowY: 'auto', p: 2 }}>
+        {Array.isArray(messages) && messages.length > 0 ? (
+          messages.map((msg, index) => (
+            <Paper
+              key={`${msg.ID}-${index}`}
+              sx={{
+                p: 2,
+                mb: 2,
+                maxWidth: '70%',
+                alignSelf: msg.SenderID === parseInt(userId) ? 'flex-end' : 'flex-start',
+              }}
+            >
+              <Typography>
+                {typeof msg.Content === 'string' && msg.Content ? (
+                  msg.Content.split(' ').map((part, partIndex) => {
+                    if (part.startsWith('@') || part.startsWith('#')) {
+                      const tag = Array.isArray(msg.Tags)
+                        ? msg.Tags.find((t) => t?.name === part.slice(1))
+                        : null;
+                      if (tag) {
+                        return (
+                          <span
+                            key={partIndex}
+                            style={{ color: 'blue', cursor: 'pointer' }}
+                            onClick={() => {
+                              if (tag.type === 'user') navigate(`/profile/${tag.id}`);
+                              else if (tag.type === 'file') window.open(tag.name, '_blank');
+                              else if (tag.type === 'workflow') navigate(`/workflow/${tag.id}`);
+                            }}
+                          >
+                            {part}{' '}
+                          </span>
+                        );
+                      }
                     }
-                  }
-                  return part + ' ';
-                })
-              ) : (
-                'پیام بدون محتوا'
-              )}
-            </Typography>
-            {Array.isArray(msg.Files) && msg.Files.length > 0 ? (
-  msg.Files.map((file) => {
-    console.log('Rendering file:', file); // لاگ برای دیباگ
-    const isVoice = file.Type === 'voice' || file.file_path.endsWith('.webm') || file.file_path.endsWith('.mp3') || file.file_path.endsWith('.wav');
-    const isPicture = file.Type === 'picture' || file.file_path.match(/\.(jpg|jpeg|png|gif)$/i);
-    const isVideo = file.Type === 'video' && !isVoice;
-    return (
-      <Box key={file.ID || `${msg.ID}-file-${file.FilePath}`}>
-        {isPicture && file.file_path && (
-          <img
-            src={`${API_URL}${file.file_path}`}
-            alt="attachment"
-            style={{ maxWidth: '200px' }}
-          />
-        )}
-        {isVoice && file.file_path && (
-          <audio controls src={`${API_URL}${file.file_path}`} />
-        )}
-        {isVideo && file.file_path && (
-          <video controls src={`${API_URL}${file.file_path}`} style={{ maxWidth: '200px' }} />
-        )}
-      </Box>
-    );
-  })
-) : null}
-          </Paper>
-        ))
-      ) : (
-        <Typography>پیامی برای نمایش وجود ندارد</Typography>
-      )}
-      <div ref={messagesEndRef} />
-    </Box>
-
-    {/* بخش ورودی پیام و دکمه‌ها */}
-    <Box sx={{ p: 2, borderTop: '1px solid #ccc' }}>
-      {showEmojiPicker && (
-        <EmojiPicker
-          onEmojiClick={(emoji) => setNewMessage((prev) => prev + emoji.emoji)}
-        />
-      )}
-      {isSuggestionsLoaded && tagSuggestions.length > 0 ? (
-        <MentionsInput
-          value={newMessage}
-          onChange={(e, newValue) => setNewMessage(newValue)}
-          style={{ width: '100%', minHeight: '50px' }}
-          placeholder="پیام خود را بنویسید..."
-        >
-          <Mention
-            trigger="@"
-            data={tagSuggestions}
-            markup="@[display](id)"
-            appendSpaceOnAdd
-          />
-          <Mention
-            trigger="#"
-            data={tagSuggestions}
-            markup="#[display](id)"
-            appendSpaceOnAdd
-          />
-        </MentionsInput>
-      ) : (
-        <TextField
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="پیام خود را بنویسید..."
-          fullWidth
-          multiline
-        />
-      )}
-      <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-        <IconButton onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
-          <EmojiEmotions />
-        </IconButton>
-        <IconButton onClick={() => fileInputRef.current.click()}>
-          <AttachFile />
-        </IconButton>
-        <input
-          type="file"
-          multiple
-          ref={fileInputRef}
-          style={{ display: 'none' }}
-          onChange={handleFileChange}
-        />
-        {isRecording ? (
-          <IconButton onClick={stopRecording}>
-            <MicOff color="error" />
-          </IconButton>
+                    return <span key={partIndex}>{part} </span>;
+                  })
+                ) : (
+                  'پیام بدون محتوا'
+                )}
+              </Typography>
+              {Array.isArray(msg.Files) && msg.Files.length > 0 && msg.Files.map((file) => {
+                const isVoice =
+                  file.Type === 'voice' ||
+                  file.file_path?.endsWith('.webm') ||
+                  file.file_path?.endsWith('.mp3') ||
+                  file.file_path?.endsWith('.wav');
+                const isPicture =
+                  file.Type === 'picture' || file.file_path?.match(/\.(jpg|jpeg|png|gif)$/i);
+                const isVideo = file.Type === 'video' && !isVoice;
+                return (
+                  <Box key={file.ID || `${msg.ID}-file-${file.FilePath}`}>
+                    {isPicture && file.file_path && (
+                      <img
+                        src={`${API_URL}${file.file_path}`}
+                        alt="attachment"
+                        style={{ maxWidth: '200px' }}
+                      />
+                    )}
+                    {isVoice && file.file_path && (
+                      <audio controls src={`${API_URL}${file.file_path}`} />
+                    )}
+                    {isVideo && file.file_path && (
+                      <video
+                        controls
+                        src={`${API_URL}${file.file_path}`}
+                        style={{ maxWidth: '200px' }}
+                      />
+                    )}
+                  </Box>
+                );
+              })}
+            </Paper>
+          ))
         ) : (
-          <IconButton onClick={startRecording}>
-            <Mic />
-          </IconButton>
+          <Typography>پیامی برای نمایش وجود ندارد</Typography>
         )}
-        <Button variant="contained" onClick={handleSendMessage} endIcon={<Send />}>
-          ارسال
-        </Button>
-        {type === 'user' && (
-          <>
-            <Button variant="contained" onClick={startVideoCall} disabled={inCall}>
-            شروع تماس
+        <div ref={messagesEndRef} />
+      </Box>
+
+  {/* بخش ورودی پیام و دکمه‌ها */}
+  <Box sx={{ p: 2, borderTop: '1px solid #ccc' }}>
+    {showEmojiPicker && (
+      <EmojiPicker
+        onEmojiClick={(emoji) => setNewMessage((prev) => prev + emoji.emoji)}
+      />
+    )}
+    {isSuggestionsLoaded && tagSuggestions.length > 0 ? (
+      <MentionsInput
+        value={newMessage}
+        onChange={(e, newValue) => setNewMessage(newValue)}
+        style={{ width: '100%', minHeight: '50px' }}
+        placeholder="پیام خود را بنویسید..."
+      >
+        <Mention
+          trigger="@"
+          data={tagSuggestions}
+          markup="@[display](id)"
+          appendSpaceOnAdd
+        />
+        <Mention
+          trigger="#"
+          data={tagSuggestions}
+          markup="#[display](id)"
+          appendSpaceOnAdd
+        />
+      </MentionsInput>
+    ) : (
+      <TextField
+        value={newMessage}
+        onChange={(e) => setNewMessage(e.target.value)}
+        placeholder="پیام خود را بنویسید..."
+        fullWidth
+        multiline
+      />
+    )}
+    <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+      <IconButton onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
+            <EmojiEmotions />
+          </IconButton>
+          <IconButton onClick={() => fileInputRef.current.click()}>
+            <AttachFile />
+          </IconButton>
+          <input
+            type="file"
+            multiple
+            ref={fileInputRef}
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
+          {isRecording ? (
+            <IconButton onClick={stopRecording}>
+              <MicOff color="error" />
+            </IconButton>
+          ) : (
+            <IconButton onClick={startRecording}>
+              <Mic />
+            </IconButton>
+          )}
+          <Button variant="contained" onClick={handleSendMessage} endIcon={<Send />}>
+            ارسال
           </Button>
-          {inCall && (
+          {type === 'user' && (
             <>
-              <Button onClick={toggleMute} startIcon={isMuted ? <MicOff /> : <Mic />}>
-                {isMuted ? 'فعال کردن صدا' : 'قطع صدا'}
+              <Button variant="contained" onClick={startVideoCall} disabled={inCall}>
+                شروع تماس
               </Button>
-              <Button onClick={toggleVideo} startIcon={isVideoOff ? <VideocamOff /> : <Videocam />}>
-                {isVideoOff ? 'فعال کردن ویدیو' : 'قطع ویدیو'}
-              </Button>
-              <Button variant="contained" color="error" onClick={endVideoCall}>
-                پایان تماس
-              </Button>
+              {inCall && (
+                <>
+                  <Button onClick={toggleMute} startIcon={isMuted ? <MicOff /> : <Mic />}>
+                    {isMuted ? 'فعال کردن صدا' : 'قطع صدا'}
+                  </Button>
+                  <Button
+                    onClick={toggleVideo}
+                    startIcon={isVideoOff ? <VideocamOff /> : <Videocam />}
+                  >
+                    {isVideoOff ? 'فعال کردن ویدیو' : 'قطع ویدیو'}
+                  </Button>
+                  <Button variant="contained" color="error" onClick={endVideoCall}>
+                    پایان تماس
+                  </Button>
+                </>
+              )}
             </>
           )}
-        </>
-      )}
-      <Button variant="contained" onClick={() => setOpenConferenceDialog(true)}>
-        ایجاد کنفرانس
-      </Button>
-    </Box>
-  </Box>
-  {inCall && (
-    <Dialog open={inCall} onClose={endVideoCall} maxWidth="lg" fullWidth>
-      <DialogContent>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-          <video ref={localVideoRef} autoPlay muted style={{ width: '300px', border: '1px solid #ccc' }} />
-          {Object.entries(remoteStreams).map(([userId, stream]) => (
-            <video
-              key={userId}autoPlay
-              ref={(el) => el && (el.srcObject = stream)}
-              style={{ width: '300px', border: '1px solid #ccc' }}
-            />
-          ))}
+          <Button
+            variant="contained"
+            onClick={() => setOpenConferenceDialog(true)}
+          >
+            ایجاد کنفرانس
+          </Button>
         </Box>
-      </DialogContent>
-    </Dialog>
-  )}
-  <Dialog open={openConferenceDialog} onClose={() => setOpenConferenceDialog(false)} maxWidth="sm" fullWidth>
-    <DialogTitle>ایجاد کنفرانس</DialogTitle>
-    <DialogContent>
-      <Typography variant="subtitle1" gutterBottom>
-        انتخاب اعضای کنفرانس
-      </Typography>
-      <List dense>
-        {users.map((user) => (
-          <ListItem key={user.ID} button onClick={() => handleToggleUser(user.ID)}>
-            <ListItemIcon>
-              <Checkbox
-                edge="start"
-                checked={selectedUsers.includes(user.ID)}
-                disableRipple
-              />
-            </ListItemIcon>
-            <ListItemText primary={user.Username} />
-          </ListItem>
-        ))}
-      </List>
-      {conferenceLink && (
-        <Typography>
-          لینک دعوت: <a href={conferenceLink}>{conferenceLink}</a>
+      </Box>
+
+      {/* دیالوگ تماس تصویری */}
+      <Dialog open={inCall} onClose={endVideoCall} maxWidth="lg" fullWidth>
+  <DialogContent>
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+      {/* ویدیوی محلی */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <video
+          ref={localVideoRef}
+          autoPlay
+          muted
+          style={{
+            width: '300px',
+            border: '1px solid #ccc',
+            display: inCall ? 'block' : 'none',
+          }}
+        />
+        <Typography variant="caption" sx={{ mt: 1 }}>
+          شما
         </Typography>
-      )}
-      {conferenceMembers.length > 0 && (
-        <Box>
-          <Typography variant="subtitle1">اعضای کنفرانس:</Typography>
-          <List>
-            {conferenceMembers.map((member) => (
-              <ListItem key={member.ID}>
-                <ListItemText primary={member.Username} />
+        {/* دکمه‌های تماس زیر ویدیوی محلی */}
+        <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
+          <Button
+            variant="contained"
+            onClick={startVideoCall}
+            disabled={inCall}
+            startIcon={<Videocam />}
+          >
+            شروع تماس
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => handleOffer(/* پارامترهای لازم */)}
+            disabled={!inCall}
+            startIcon={<Videocam />}
+          >
+            جواب تماس
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={endVideoCall}
+            disabled={!inCall}
+            startIcon={<VideocamOff />}
+          >
+            قطع تماس
+          </Button>
+          <Button
+            onClick={toggleVideo}
+            disabled={!inCall}
+            startIcon={isVideoOff ? <VideocamOff /> : <Videocam />}
+          >
+            {isVideoOff ? 'فعال کردن ویدیو' : 'قطع ویدیو'}
+          </Button>
+          <Button
+            onClick={toggleMute}
+            disabled={!inCall}
+            startIcon={isMuted ? <MicOff /> : <Mic />}
+          >
+            {isMuted ? 'فعال کردن صدا' : 'قطع صدا'}
+          </Button>
+        </Box>
+      </Box>
+
+      {/* ویدیوهای ریموت */}
+      {Object.entries(remoteStreams).map(([userId, stream]) => (
+        <Box key={userId} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <video
+            autoPlay
+            ref={(el) => el && (el.srcObject = stream)}
+            style={{ width: '300px', border: '1px solid #ccc' }}
+          />
+          <Typography variant="caption" sx={{ mt: 1 }}>
+            کاربر {userId}
+          </Typography>
+        </Box>
+      ))}
+    </Box>
+  </DialogContent>
+</Dialog>
+
+      {/* دیالوگ ایجاد کنفرانس */}
+      <Dialog
+        open={openConferenceDialog}
+        onClose={() => setOpenConferenceDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>ایجاد کنفرانس</DialogTitle>
+        <DialogContent>
+          <Typography variant="subtitle1" gutterBottom>
+            انتخاب اعضای کنفرانس
+          </Typography>
+          <List dense>
+            {users.map((user) => (
+              <ListItem key={user.ID} button onClick={() => handleToggleUser(user.ID)}>
+                <ListItemIcon>
+                  <Checkbox
+                    edge="start"
+                    checked={selectedUsers.includes(user.ID)}
+                    disableRipple
+                  />
+                </ListItemIcon>
+                <ListItemText primary={user.Username} />
               </ListItem>
             ))}
           </List>
-        </Box>
-      )}
-    </DialogContent>
-    <DialogActions>
-      <Button onClick={startConference}>ایجاد</Button>
-      {conferenceLink && (
-        <Button onClick={() => startMultiUserCall('conference_id')}>شروع کنفرانس</Button>
-      )}
-      <Button onClick={() => setOpenConferenceDialog(false)}>بستن</Button>
-    </DialogActions>
-  </Dialog>
-  <Snackbar
-    open={openSnackbar}
-    autoHideDuration={6000}
-    onClose={() => setOpenSnackbar(false)}
-    message={error}
-  />
-</Box>
-);
+        </DialogContent>
+      </Dialog>
+    </Box>
+  );
 };
-
 export default Chat;

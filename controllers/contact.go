@@ -128,43 +128,48 @@ func (c *ContactController) GetContacts(ctx *gin.Context) {
 
 	var contacts []models.Contact
 	if userModel.Role == "admin" {
+		// برای ادمین: مخاطبینی که خودش اضافه کرده
 		if err := c.db.Where("user_id = ?", userModel.ID).Find(&contacts).Error; err != nil {
 			fmt.Println("GetContacts: Error fetching contacts for admin:", err)
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Could not fetch contacts"})
 			return
 		}
 	} else {
+		// برای غیرادمین: مخاطبینی که target_id کاربر فعلیه
+		if err := c.db.Where("target_id = ?", userModel.ID).Find(&contacts).Error; err != nil {
+			fmt.Println("GetContacts: Error fetching contacts for user:", err)
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Could not fetch contacts"})
+			return
+		}
+		// اضافه کردن ادمین‌ها به‌عنوان مخاطب
 		var adminUsers []models.User
 		if err := c.db.Where("role = ?", "admin").Find(&adminUsers).Error; err != nil {
 			fmt.Println("GetContacts: Error fetching admin users:", err)
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Could not fetch admin users"})
 			return
 		}
-
-		var adminIDs []uint
 		for _, admin := range adminUsers {
-			adminIDs = append(adminIDs, admin.ID)
-		}
-
-		if len(adminIDs) == 0 {
-			fmt.Println("GetContacts: No admin users found, returning empty contacts")
-			ctx.JSON(http.StatusOK, contacts)
-			return
-		}
-		if err := c.db.Where("user_id IN ?", adminIDs).Find(&contacts).Error; err != nil {
-			fmt.Println("GetContacts: Error fetching contacts for user:", err)
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Could not fetch contacts"})
-			return
+			if admin.ID != userModel.ID {
+				contacts = append(contacts, models.Contact{
+					ID:       0,            // ID صفر چون این یه مخاطب مجازی است
+					UserID:   userModel.ID, // برای غیرادمین، user_id خودشونه
+					TargetID: admin.ID,     // ادمین به‌عنوان مخاطب
+					Name:     admin.Username,
+					Phone:    admin.Phone,
+				})
+			}
 		}
 	}
 
-	// برگرداندن TargetID به جای UserID برای چت
+	// تنظیم UserID برای چت (استفاده از TargetID)
 	for i, contact := range contacts {
-		contacts[i].UserID = contact.TargetID // برای استفاده در handleContactClick
+		contacts[i].UserID = contact.TargetID
 		var targetUser models.User
 		if err := c.db.Where("id = ?", contact.TargetID).First(&targetUser).Error; err == nil {
 			contacts[i].Name = targetUser.Username
 			contacts[i].Phone = targetUser.Phone
+		} else {
+			fmt.Println("GetContacts: Error fetching target user for TargetID:", contact.TargetID)
 		}
 	}
 

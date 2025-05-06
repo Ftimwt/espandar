@@ -374,21 +374,36 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 	}
 
 	var messages []models.Message
-	query := mc.db.Where("sender_id = ? OR user_id = ?", user.ID, user.ID)
+	query := mc.db
 	switch strings.ToLower(receiverType) {
 	case "user":
-		query = query.Where("user_id = ? OR (user_id = ? AND sender_id = ?)", receiverID, user.ID, receiverID)
+		// پیدا کردن ChatID
+		var chat models.Chat
+		if err := mc.db.Where(
+			"(user_id1 = ? AND user_id2 = ?) OR (user_id1 = ? AND user_id2 = ?)",
+			user.ID, receiverID, receiverID, user.ID,
+		).First(&chat).Error; err != nil {
+			log.Printf("GetMessages: No chat found for user %d and receiver %d: %v", user.ID, receiverID, err)
+			c.JSON(http.StatusOK, []models.Message{}) // چت وجود نداره، لیست خالی
+			return
+		}
+
+		// گرفتن پیام‌ها با ChatID و فیلتر دوطرفه
+		query = query.Where("chat_id = ?", chat.ID).Where(
+			"(sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)",
+			user.ID, receiverID, receiverID, user.ID,
+		)
 	case "group":
-		query = query.Where("group_id = ?", receiverID)
+		query = query.Where("receiver_type = ? AND group_id = ?", "group", receiverID)
 	case "channel":
-		query = query.Where("channel_id = ?", receiverID)
+		query = query.Where("receiver_type = ? AND channel_id = ?", "channel", receiverID)
 	default:
 		log.Printf("GetMessages: Invalid receiver type: %s", receiverType)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver type"})
 		return
 	}
 
-	if err := query.Find(&messages).Error; err != nil {
+	if err := query.Order("created_at ASC").Find(&messages).Error; err != nil {
 		log.Printf("GetMessages: Error fetching messages: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error fetching messages"})
 		return
@@ -405,7 +420,33 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 		messages[i].Content = decryptedContent
 	}
 
+	log.Printf("GetMessages: Returning %d messages for user %d and receiver %d", len(messages), user.ID, receiverID)
 	c.JSON(http.StatusOK, messages)
+}
+
+func (mc *MessageController) MarkMessageAsSeen(c *gin.Context) {
+	messageID := c.Param("message_id")
+	var message models.Message
+	if err := mc.db.Where("id = ?", messageID).First(&message).Error; err != nil {
+		log.Printf("MarkMessageAsSeen: Message not found, ID: %s, error: %v", messageID, err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "message not found"})
+		return
+	}
+
+	message.Seen = true
+	if err := mc.db.Save(&message).Error; err != nil {
+		log.Printf("MarkMessageAsSeen: Error updating message, ID: %s, error: %v", messageID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error updating message"})
+		return
+	}
+
+	// اطلاع‌رسانی به فرستنده از طریق WebSocket
+	mc.broadcaster.BroadcastToUser(message.SenderID, "message_seen", gin.H{
+		"message_id": message.ID,
+		"seen":       true,
+	})
+
+	c.JSON(http.StatusOK, gin.H{"status": "message marked as seen"})
 }
 
 // GetWorkflows برای دریافت جریان‌های کاری
