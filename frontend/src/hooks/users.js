@@ -1,7 +1,11 @@
-import {useEffect, useState} from "react";
-import {getContacts} from "../api";
-import {toast} from "react-toastify";
+import { useEffect, useState } from "react";
+import { getContacts } from "../api";
+import { toast } from "react-toastify";
 
+/**
+ * 
+ * @returns {{contacts: {name: string, id: number}[]}}
+ */
 export const useContacts = () => {
     const [contacts, setContacts] = useState([]);
 
@@ -12,5 +16,5 @@ export const useContacts = () => {
         });
     }, []);
 
-    return {contacts};
+    return { contacts };
 }
