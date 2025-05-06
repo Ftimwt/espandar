@@ -374,7 +374,11 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 	}
 
 	var messages []models.Message
+<<<<<<< HEAD
 	query := mc.db
+=======
+	query := mc.db.Preload("Files").Where("sender_id = ? OR user_id = ?", user.ID, user.ID)
+>>>>>>> dfbb287fbc068933296be84be8598b9d31455f60
 	switch strings.ToLower(receiverType) {
 	case "user":
 		// پیدا کردن ChatID
@@ -409,19 +413,89 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 		return
 	}
 
-	// رمزگشایی پیام‌ها
+	// رمزگشایی پیام‌ها و آماده‌سازی پاسخ
+	response := make([]gin.H, len(messages))
 	for i, msg := range messages {
-		decryptedContent, err := mc.aesCipher.Decrypt(msg.Content)
-		if err != nil {
-			log.Printf("GetMessages: Decryption error for message ID %d: %v", msg.ID, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "decryption error"})
-			return
+		decryptedContent := ""
+		if msg.Content != "" {
+			decryptedContent, err = mc.aesCipher.Decrypt(msg.Content)
+			if err != nil {
+				log.Printf("GetMessages: Decryption error for message ID %d: %v", msg.ID, err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "decryption error"})
+				return
+			}
 		}
-		messages[i].Content = decryptedContent
+		var tags []models.Tag
+		if msg.Tags != "" {
+			if err := json.Unmarshal([]byte(msg.Tags), &tags); err != nil {
+				log.Printf("GetMessages: Error parsing tags for message ID %d: %v", msg.ID, err)
+			}
+		}
+		response[i] = gin.H{
+			"ID":          msg.ID,
+			"Content":     decryptedContent,
+			"SenderID":    msg.SenderID,
+			"UserID":      msg.UserID,
+			"GroupID":     msg.GroupID,
+			"ChannelID":   msg.ChannelID,
+			"Type":        msg.Type,
+			"Files":       msg.Files,
+			"Tags":        tags,
+			"RoomID":      msg.RoomID,
+			"ChatID":      msg.ChatID,
+			"CreatedAt":   msg.CreatedAt,
+			"seen":        msg.Seen,
+			"is_received": msg.IsReceived,
+		}
 	}
 
+<<<<<<< HEAD
 	log.Printf("GetMessages: Returning %d messages for user %d and receiver %d", len(messages), user.ID, receiverID)
 	c.JSON(http.StatusOK, messages)
+=======
+	c.JSON(http.StatusOK, response)
+}
+
+func (mc *MessageController) MarkMessageAsSeen(c *gin.Context) {
+	messageID := c.Param("message_id")
+	user := c.MustGet("user").(*models.User)
+
+	var message models.Message
+	if err := mc.db.Where("id = ?", messageID).First(&message).Error; err != nil {
+		log.Printf("MarkMessageAsSeen: Message not found, ID: %s, error: %v", messageID, err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "message not found"})
+		return
+	}
+
+	// فقط گیرنده می‌تونه پیام رو سین کنه
+	if message.UserID == nil || *message.UserID != user.ID {
+		log.Printf("MarkMessageAsSeen: Unauthorized user %d for message %s", user.ID, messageID)
+		c.JSON(http.StatusForbidden, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	message.IsReceived = true
+	message.Seen = true
+	if err := mc.db.Save(&message).Error; err != nil {
+		log.Printf("MarkMessageAsSeen: Error updating message, ID: %s, error: %v", messageID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error updating message"})
+		return
+	}
+
+	// اطلاع‌رسانی به فرستنده
+	mc.broadcaster.BroadcastToUser(message.SenderID, "message_seen", gin.H{
+		"message_id":  message.ID,
+		"seen":        true,
+		"is_received": true,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":      "message marked as seen",
+		"message_id":  message.ID,
+		"seen":        message.Seen,
+		"is_received": message.IsReceived,
+	})
+>>>>>>> dfbb287fbc068933296be84be8598b9d31455f60
 }
 
 func (mc *MessageController) MarkMessageAsSeen(c *gin.Context) {
