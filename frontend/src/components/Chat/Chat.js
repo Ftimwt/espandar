@@ -1,5 +1,8 @@
  
  import React, { useState, useEffect, useRef } from 'react';
+import { TextField, Button, Box, IconButton } from '@mui/material';
+import EmojiPicker from 'emoji-picker-react';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
  import { useParams, useNavigate } from 'react-router-dom';
  import axios from 'axios';
  import {
@@ -99,29 +102,42 @@ const connectWebSocket = () => {
     try {
       const message = JSON.parse(event.data);
       console.log('Chat: WebSocket parsed message:', message);
-      // اصلاح برای سازگاری با event با حرف کوچک
       const eventName = message.Event || message.event;
+      const messageData = message.Data || message.data;
+  
       switch (eventName) {
         case 'connect_success':
-          console.log('Chat: Connected to WebSocket:', message.data || message.Data);
+          console.log('Chat: Connected to WebSocket:', messageData);
           break;
         case 'new_message':
-          setMessages((prev) => [
-            ...prev,
-            { ...message.Data, Content: decryptMessage(message.Data.Content) },
-          ]);
+          console.log('Chat: Processing new_message, data:', messageData);
+          if (messageData && typeof messageData.Content === 'string') {
+            setMessages((prev) => {
+              // چک کن اگه پیام با همین ID قبلاً اضافه شده، اضافه نکن
+              if (prev.some((msg) => msg.ID === messageData.ID)) {
+                console.log('Chat: Duplicate message ignored:', messageData.ID);
+                return prev;
+              }
+              return [
+                ...prev,
+                { ...messageData, Content: decryptMessage(messageData.Content) },
+              ];
+            });
+          } else {
+            console.warn('Chat: Invalid new_message received:', message);
+          }
           break;
         case 'webrtc_offer':
-          handleOffer(message.Data, message.From || message.To);
+          handleOffer(messageData, message.From || message.To);
           break;
         case 'webrtc_answer':
-          handleAnswer(message.Data, message.From || message.To);
+          handleAnswer(messageData, message.From || message.To);
           break;
         case 'webrtc_ice_candidate':
-          handleIceCandidate(message.Data, message.From || message.To);
+          handleIceCandidate(messageData, message.From || message.To);
           break;
         case 'conference_invite':
-          setConferenceLink(message.Data.invite_link);
+          setConferenceLink(messageData?.invite_link || '');
           setOpenConferenceDialog(true);
           break;
         default:
@@ -172,26 +188,33 @@ useEffect(() => {
        };
    
        const fetchMessages = async () => {
-         try {
-           if (!id || id.trim() === '' || isNaN(parseInt(id))) {
-             throw new Error('Invalid receiver ID');
-           }
-           const endpoint = getEndpoint();
-           console.log('Chat: Fetching messages from:', `${API_URL}${endpoint}`);
-           const response = await axios.get(`${API_URL}${endpoint}`, {
-             headers: { Authorization: `Bearer ${token}` },
-           });
-           console.log('Chat: fetchMessages response:', response.data);
-           setMessages(response.data.map((msg) => ({
-             ...msg,
-             Content: decryptMessage(msg.Content), // اصلاح رمزگشایی
-           })));
-         } catch (err) {
-           console.error('Chat: Error fetching messages:', err);
-           setError('خطا در دریافت پیام‌ها');
-           setOpenSnackbar(true);
-         }
-       };
+        try {
+          if (!id || id.trim() === '' || isNaN(parseInt(id))) {
+            throw new Error('Invalid receiver ID');
+          }
+          const endpoint = getEndpoint();
+          console.log('Chat: Fetching messages from:', `${API_URL}${endpoint}`);
+          const response = await axios.get(`${API_URL}${endpoint}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          console.log('Chat: fetchMessages response:', response.data);
+          if (!Array.isArray(response.data)) {
+            console.warn('Chat: fetchMessages response is not an array:', response.data);
+            setMessages([]);
+            return;
+          }
+          setMessages(
+            response.data.map((msg) => ({
+              ...msg,
+              Content: msg.Content ? decryptMessage(msg.Content) : 'پیام بدون محتوا',
+            }))
+          );
+        } catch (err) {
+          console.error('Chat: Error fetching messages:', err);
+          setError('خطا در دریافت پیام‌ها');
+          setOpenSnackbar(true);
+        }
+      };
    
        const fetchTagSuggestions = async () => {
          try {
@@ -264,107 +287,105 @@ useEffect(() => {
   const handleSendMessage = async () => {
     if (!newMessage.trim() && selectedFiles.length === 0) return;
     if (!id || id.trim() === '' || isNaN(parseInt(id))) {
-        setError('شناسه گیرنده نامعتبر است');
-        setOpenSnackbar(true);
-        return;
+      setError('شناسه گیرنده نامعتبر است');
+      setOpenSnackbar(true);
+      return;
     }
-
+  
     const userId = localStorage.getItem('userId');
     if (!userId || isNaN(parseInt(userId))) {
-        setError('لطفاً دوباره وارد شوید');
-        setOpenSnackbar(true);
-        return;
+      setError('لطفاً دوباره وارد شوید');
+      setOpenSnackbar(true);
+      return;
     }
-
+  
     const formData = new FormData();
     const tags = [];
     const userMatches = newMessage.matchAll(/@(\w+)/g);
     for (const match of userMatches) {
-        const user = tagSuggestions.find((s) => s.display === match[1]);
-        if (user) tags.push({ type: 'user', id: parseInt(user.id.replace('user_', '')), name: match[1] });
+      const user = tagSuggestions.find((s) => s.display === match[1]);
+      if (user) tags.push({ type: 'user', id: parseInt(user.id.replace('user_', '')), name: match[1] });
     }
     const fileMatches = newMessage.matchAll(/#(\w+)/g);
     for (const match of fileMatches) {
-        const file = tagSuggestions.find((s) => s.display === match[1]);
-        if (file) tags.push({ type: 'file', id: parseInt(file.id.replace('file_', '')), name: match[1] });
+      const file = tagSuggestions.find((s) => s.display === match[1]);
+      if (file) tags.push({ type: 'file', id: parseInt(file.id.replace('file_', '')), name: match[1] });
     }
     const workflowMatches = newMessage.matchAll(/#(\w+)/g);
     for (const match of workflowMatches) {
-        const workflow = tagSuggestions.find((s) => s.display === match[1]);
-        if (workflow) tags.push({ type: 'workflow', id: parseInt(workflow.id.replace('workflow_', '')), name: match[1] });
+      const workflow = tagSuggestions.find((s) => s.display === match[1]);
+      if (workflow) tags.push({ type: 'workflow', id: parseInt(workflow.id.replace('workflow_', '')), name: match[1] });
     }
     formData.append('tags', JSON.stringify(tags));
-
-    if (newMessage.trim()) {
-        formData.append('content', newMessage);
-    }
-    formData.append('type', selectedFiles.length > 0 ? (selectedFiles[0].type.startsWith('image') ? 'picture' : selectedFiles[0].type.startsWith('audio') ? 'voice' : 'video') : 'text');
-    formData.append('chat_id', id); // فرض بر اینه که id همون chat_id هست
-
+  
+    // همیشه content رو اضافه کن
+    console.log('Chat: Sending content:', newMessage.trim() || 'فایل ارسالی');
+    formData.append('content', newMessage.trim() || 'فایل ارسالی');
+  
+    formData.append('type', selectedFiles.length > 0 ? (selectedFiles[0].type.startsWith('image') ? 'picture' : selectedFiles[0].type.startsWith('audio') || selectedFiles[0].type === 'audio/webm' ? 'voice' : 'video') : 'text');
+    formData.append('chat_id', id);
+  
     const allowedTypes = ['image/jpeg', 'image/png', 'audio/webm', 'audio/mp3', 'audio/wav', 'video/mp4'];
     const maxSize = 10 * 1024 * 1024; // 10MB
     for (const file of selectedFiles) {
-        if (!allowedTypes.includes(file.type)) {
-            setError('نوع فایل غیرمجاز است');
-            setOpenSnackbar(true);
-            return;
-        }
-        if (file.size > maxSize) {
-            setError('حجم فایل بیش از حد مجاز است');
-            setOpenSnackbar(true);
-            return;
-        }
-        formData.append('files', file);
-    }
-
-    try {
-        const endpoint = `/message/user/${id}`;
-        console.log('Chat: Sending message to:', `${API_URL}${endpoint}`);
-        const response = await axios.post(`${API_URL}${endpoint}`, formData, {
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
-        });
-        console.log('Chat: Message sent successfully, response:', response.data);
-
-        const messageData = {
-            ID: response.data.ID || Date.now(),
-            SenderID: parseInt(userId, 10),
-            Content: newMessage,
-            Type: response.data.Type,
-            Tags: tags,
-            Files: response.data.Files || selectedFiles.map((f) => ({
-                Type: f.type.startsWith('image') ? 'picture' : f.type.startsWith('audio') ? 'voice' : f.type.startsWith('video') ? 'video' : 'default',
-                FilePath: response.data.FilePaths?.[f.name] || URL.createObjectURL(f),
-            })),
-            CreatedAt: response.data.CreatedAt || new Date().toISOString(),
-            ChatID: response.data.ChatID,
-        };
-
-        setMessages((prev) => [...prev, {
-            ...messageData,
-            Content: decryptMessage(messageData.Content),
-        }]);
-
-        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-            socketRef.current.send(JSON.stringify({
-                Event: "new_message",
-                Data: messageData,
-                To: id,
-            }));
-            console.log('Chat: Message sent to WebSocket:', messageData);
-        } else {
-            console.warn('Chat: WebSocket is not open, message not sent to WebSocket');
-        }setNewMessage('');
-        setSelectedFiles([]);
-    } catch (err) {
-        console.error('Chat: Error sending message:', {
-            message: err.message,
-            status: err.response?.status,
-            data: err.response?.data,
-        });
-        setError('خطا در ارسال پیام: ' + (err.response?.data?.error || err.message));
+      if (!allowedTypes.includes(file.type)) {
+        setError('نوع فایل غیرمجاز است');
         setOpenSnackbar(true);
+        return;
+      }
+      if (file.size > maxSize) {
+        setError('حجم فایل بیش از حد مجاز است');
+        setOpenSnackbar(true);
+        return;
+      }
+      formData.append('files', file);
     }
-};
+  
+    try {
+      const endpoint = `/message/user/${id}`;
+      const response = await axios.post(`${API_URL}${endpoint}`, formData, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+      });
+      console.log('Chat: Server response:', JSON.stringify(response.data, null, 2));
+  
+      const messageData = {
+        ID: response.data.ID || Date.now(),
+        SenderID: parseInt(userId, 10),
+        ReceiverID: parseInt(id, 10),
+        Content: response.data.Content || newMessage || 'فایل ارسالی',
+        Type: response.data.Type,
+        Tags: response.data.Tags || tags,
+        Files: response.data.Files || [],
+        CreatedAt: response.data.CreatedAt || new Date().toISOString(),
+        ChatID: response.data.ChatID,
+        Seen: response.data.seen || false,
+        IsReceived: response.data.is_received || false,
+      };
+  
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.send(
+          JSON.stringify({
+            Event: 'new_message',
+            Data: messageData,
+            To: id,
+          })
+        );
+      }
+  
+      setMessages((prevMessages) => [...prevMessages, messageData]);
+      setNewMessage('');
+      setSelectedFiles([]);
+    } catch (err) {
+      console.error('Chat: Error sending message:', err);
+      setError('خطا در ارسال پیام: ' + (err.response?.data?.error || err.message));
+      setOpenSnackbar(true);
+    }
+  };
+
+  const handleEmojiClick = (emojiObject) => {
+    setNewMessage((prev) => prev + emojiObject.emoji);
+    setShowEmojiPicker(false);
+  };
 
   // آپلود فایل
   const handleFileChange = (event) => {
@@ -611,111 +632,147 @@ const startMultiUserCall = async (conferenceId) => {
 
 return (
   <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    {/* بخش نمایش پیام‌ها */}
     <Box sx={{ flexGrow: 1, overflowY: 'auto', p: 2 }}>
-      {messages.map((msg) => (
-        <Paper
-          key={msg.ID}
-          sx={{
-            p: 2,
-            mb: 2,
-            maxWidth: '70%',
-            alignSelf: msg.SenderID === parseInt(userId) ? 'flex-end' : 'flex-start',
-          }}
-        >
-          <Typography>
-            {msg.Content.split(' ').map((part, index) => {
-              if (part.startsWith('@') || part.startsWith('#')) {
-                const tag = msg.Tags?.find((t) => t.name === part.slice(1));
-                if (tag) {
-                  return (
-                    <span
-                      key={index}
-                      style={{ color: 'blue', cursor: 'pointer' }}
-                      onClick={() => {
-                        if (tag.type === 'user') navigate(`/profile/${tag.id}`);
-                        else if (tag.type === 'file') window.open(tag.name, '_blank');
-                        else if (tag.type === 'workflow') navigate(`/workflow/${tag.id}`);
-                      }}
-                    >
-                      {part}{' '}
-                    </span>
-                  );
-                }
-              }
-              return part + ' ';
-            })}
-          </Typography>
-          {msg.Files?.map((file) => (
-            <Box key={file.ID}>
-              {file.Type === 'picture' && <img src={file.FilePath} alt="attachment" style={{ maxWidth: '200px' }} />}
-              {file.Type === 'voice' && <audio controls src={file.FilePath} />}
-              {file.Type === 'video' && <video controls src={file.FilePath} style={{ maxWidth: '200px' }} />}
-            </Box>
-          ))}
-        </Paper>
-      ))}
+      {Array.isArray(messages) && messages.length > 0 ? (
+        messages.map((msg, index) => (
+          <Paper
+            key={`${msg.ID}-${index}`} // کلید پیش‌فرض اگه ID وجود نداشته باشه
+            sx={{
+              p: 2,
+              mb: 2,
+              maxWidth: '70%',
+              alignSelf:
+                msg.SenderID && msg.SenderID === parseInt(userId) ? 'flex-end' : 'flex-start',
+            }}
+          >
+            <Typography>
+              {typeof msg.Content === 'string' && msg.Content ? (
+                msg.Content.split(' ').map((part, partIndex) => {
+                  if (part.startsWith('@') || part.startsWith('#')) {
+                    const tag = Array.isArray(msg.Tags)
+                      ? msg.Tags.find((t) => t?.name === part.slice(1))
+                      : null;
+                    if (tag) {
+                      return (
+                        <span
+                          key={partIndex}
+                          style={{ color: 'blue', cursor: 'pointer' }}
+                          onClick={() => {
+                            if (tag.type === 'user') navigate(`/profile/${tag.id}`);
+                            else if (tag.type === 'file') window.open(tag.name, '_blank');
+                            else if (tag.type === 'workflow') navigate(`/workflow/${tag.id}`);
+                          }}
+                        >
+                          {part}{' '}
+                        </span>
+                      );
+                    }
+                  }
+                  return part + ' ';
+                })
+              ) : (
+                'پیام بدون محتوا'
+              )}
+            </Typography>
+            {Array.isArray(msg.Files) && msg.Files.length > 0 ? (
+  msg.Files.map((file) => {
+    console.log('Rendering file:', file); // لاگ برای دیباگ
+    const isVoice = file.Type === 'voice' || file.file_path.endsWith('.webm') || file.file_path.endsWith('.mp3') || file.file_path.endsWith('.wav');
+    const isPicture = file.Type === 'picture' || file.file_path.match(/\.(jpg|jpeg|png|gif)$/i);
+    const isVideo = file.Type === 'video' && !isVoice;
+    return (
+      <Box key={file.ID || `${msg.ID}-file-${file.FilePath}`}>
+        {isPicture && file.file_path && (
+          <img
+            src={`${API_URL}${file.file_path}`}
+            alt="attachment"
+            style={{ maxWidth: '200px' }}
+          />
+        )}
+        {isVoice && file.file_path && (
+          <audio controls src={`${API_URL}${file.file_path}`} />
+        )}
+        {isVideo && file.file_path && (
+          <video controls src={`${API_URL}${file.file_path}`} style={{ maxWidth: '200px' }} />
+        )}
+      </Box>
+    );
+  })
+) : null}
+          </Paper>
+        ))
+      ) : (
+        <Typography>پیامی برای نمایش وجود ندارد</Typography>
+      )}
       <div ref={messagesEndRef} />
     </Box>
-  <Box sx={{ p: 2, borderTop: '1px solid #ccc' }}>
-    {showEmojiPicker && <EmojiPicker onEmojiClick={(emoji) => setNewMessage((prev) => prev + emoji.emoji)} />}
-    {isSuggestionsLoaded && tagSuggestions.length > 0 ? (
-      <MentionsInput
-        value={newMessage}
-        onChange={(e, newValue) => setNewMessage(newValue)}
-        style={{ width: '100%', minHeight: '50px' }}
-        placeholder="پیام خود را بنویسید..."
-      >
-        <Mention
-          trigger="@"
-          data={tagSuggestions}
-          markup="@[display](id)"
-          appendSpaceOnAdd
+
+    {/* بخش ورودی پیام و دکمه‌ها */}
+    <Box sx={{ p: 2, borderTop: '1px solid #ccc' }}>
+      {showEmojiPicker && (
+        <EmojiPicker
+          onEmojiClick={(emoji) => setNewMessage((prev) => prev + emoji.emoji)}
         />
-        <Mention
-          trigger="#"
-          data={tagSuggestions}
-          markup="#[display](id)"
-          appendSpaceOnAdd
-        />
-      </MentionsInput>
-    ) : (
-      <TextField
-        value={newMessage}
-        onChange={(e) => setNewMessage(e.target.value)}
-        placeholder="پیام خود را بنویسید..."
-        fullWidth
-        multiline
-      />
-    )}
-    <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-      <IconButton onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
-        <EmojiEmotions />
-      </IconButton>
-      <IconButton onClick={() => fileInputRef.current.click()}>
-        <AttachFile />
-      </IconButton>
-      <input
-        type="file"
-        multiple
-        ref={fileInputRef}
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
-      {isRecording ? (
-        <IconButton onClick={stopRecording}>
-          <MicOff color="error" />
-        </IconButton>
-      ) : (
-        <IconButton onClick={startRecording}>
-          <Mic />
-        </IconButton>
       )}
-      <Button variant="contained" onClick={handleSendMessage} endIcon={<Send />}>
-        ارسال
-      </Button>
-      {type === 'user' && (
-        <>
-          <Button variant="contained" onClick={startVideoCall} disabled={inCall}>
+      {isSuggestionsLoaded && tagSuggestions.length > 0 ? (
+        <MentionsInput
+          value={newMessage}
+          onChange={(e, newValue) => setNewMessage(newValue)}
+          style={{ width: '100%', minHeight: '50px' }}
+          placeholder="پیام خود را بنویسید..."
+        >
+          <Mention
+            trigger="@"
+            data={tagSuggestions}
+            markup="@[display](id)"
+            appendSpaceOnAdd
+          />
+          <Mention
+            trigger="#"
+            data={tagSuggestions}
+            markup="#[display](id)"
+            appendSpaceOnAdd
+          />
+        </MentionsInput>
+      ) : (
+        <TextField
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          placeholder="پیام خود را بنویسید..."
+          fullWidth
+          multiline
+        />
+      )}
+      <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+        <IconButton onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
+          <EmojiEmotions />
+        </IconButton>
+        <IconButton onClick={() => fileInputRef.current.click()}>
+          <AttachFile />
+        </IconButton>
+        <input
+          type="file"
+          multiple
+          ref={fileInputRef}
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+        {isRecording ? (
+          <IconButton onClick={stopRecording}>
+            <MicOff color="error" />
+          </IconButton>
+        ) : (
+          <IconButton onClick={startRecording}>
+            <Mic />
+          </IconButton>
+        )}
+        <Button variant="contained" onClick={handleSendMessage} endIcon={<Send />}>
+          ارسال
+        </Button>
+        {type === 'user' && (
+          <>
+            <Button variant="contained" onClick={startVideoCall} disabled={inCall}>
             شروع تماس
           </Button>
           {inCall && (

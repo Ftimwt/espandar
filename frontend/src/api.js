@@ -54,7 +54,7 @@ export const login = async (userData) => {
 
 export const getProfile = async (token) => {
     const response = await axios.get(`${API_URL}/profile`, {
-        headers: {Authorization: `Bearer ${token}`},
+        headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;
 };
@@ -78,15 +78,15 @@ export const updateProfile = async (token, profileData) => {
 
 // اضافه کردن توابع جدید برای مدیریت ویدیوکال
 export const startVideoCall = async (token, otherUserID) => {
-    const response = await axios.post(`${API_URL}/startPrivateCall`, {otherUserID}, {
-        headers: {Authorization: `Bearer ${token}`},
+    const response = await axios.post(`${API_URL}/startPrivateCall`, { otherUserID }, {
+        headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;
 };
 
 export const joinVideoCall = async (token, roomID) => {
-    const response = await axios.post(`${API_URL}/joinVideoCall`, {roomID}, {
-        headers: {Authorization: `Bearer ${token}`},
+    const response = await axios.post(`${API_URL}/joinVideoCall`, { roomID }, {
+        headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;
 };
@@ -94,14 +94,14 @@ export const joinVideoCall = async (token, roomID) => {
 // مدیریت پیام‌ها
 export const getMessages = async (token, receiverType, receiverId) => {
     const response = await axios.get(`${API_URL}/messages/${receiverType}/${receiverId}`, {
-        headers: {Authorization: `Bearer ${token}`},
+        headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;
 };
 
 export const sendMessage = async (token, messageData) => {
     const response = await axios.post(`${API_URL}/message/${messageData.receiverType}/${messageData.receiverId}`, messageData, {
-        headers: {Authorization: `Bearer ${token}`},
+        headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;
 };
@@ -110,7 +110,7 @@ export const sendMessage = async (token, messageData) => {
 export const getContacts = async (token) => {
     try {
         const response = await axios.get('http://localhost:8080/contacts', {
-            headers: {Authorization: `Bearer ${token}`},
+            headers: { Authorization: `Bearer ${token}` },
         });
         console.log('getContacts response:', response.data);
         return Array.isArray(response.data) ? response.data : [];
@@ -127,7 +127,7 @@ export const getContacts = async (token) => {
 export const addContact = async (token, contact) => {
     console.log('addContact: Sending request with token:', token);
     const response = await axios.post(`${API_URL}/admin/contacts`, contact, {
-        headers: {Authorization: `Bearer ${token}`},
+        headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;
 };

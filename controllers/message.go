@@ -68,59 +68,88 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	var content string
 	if contentValues, ok := formContent.Value["content"]; ok && len(contentValues) > 0 {
 		content = contentValues[0]
+	} else {
+		content = "فایل ارسالی" // مقدار پیش‌فرض
 	}
 
-	// رمزنگاری محتوا با استفاده از AESCipher
-	encryptedContent, err := mc.aesCipher.Encrypt(content)
-	if err != nil {
-		log.Printf("SendMessage: Encryption error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption error"})
-		return
+	// پردازش نوع پیام
+	var messageType string
+	if typeValues, ok := formContent.Value["type"]; ok && len(typeValues) > 0 {
+		messageType = typeValues[0]
+	} else {
+		messageType = "text"
+		if len(formContent.File["files"]) > 0 {
+			fileHeader := formContent.File["files"][0]
+			contentType := fileHeader.Header.Get("Content-Type")
+			ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+			switch {
+			case strings.HasPrefix(contentType, "image/"):
+				messageType = "picture"
+			case strings.HasPrefix(contentType, "audio/") || ext == ".webm" || ext == ".mp3" || ext == ".wav":
+				messageType = "voice"
+			case strings.HasPrefix(contentType, "video/") && ext != ".webm":
+				messageType = "video"
+			}
+		}
+	}
+
+	// رمزنگاری محتوا
+	var encryptedContent string
+	if content != "" {
+		encryptedContent, err = mc.aesCipher.Encrypt(content)
+		if err != nil {
+			log.Printf("SendMessage: Encryption error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption error"})
+			return
+		}
 	}
 
 	// پردازش تگ‌ها
-	tagsJSON := formContent.Value["tags"][0]
+	var tagsJSON string
 	var tags []models.Tag
-	if tagsJSON != "" {
-		if err := json.Unmarshal([]byte(tagsJSON), &tags); err != nil {
-			log.Printf("SendMessage: Invalid tags format: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tags format"})
-			return
-		}
-		for _, tag := range tags {
-			switch tag.Type {
-			case "user":
-				var user models.User
-				if err := mc.db.Where("id = ?", tag.ID).First(&user).Error; err != nil {
-					log.Printf("SendMessage: Invalid user ID: %s, error: %v", tag.ID, err)
-					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid user ID: %s", tag.ID)})
-					return
-				}
-			case "file":
-				var file models.File
-				if err := mc.db.Where("id = ?", tag.ID).First(&file).Error; err != nil {
-					log.Printf("SendMessage: Invalid file ID: %s, error: %v", tag.ID, err)
-					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid file ID: %s", tag.ID)})
-					return
-				}
-			case "workflow":
-				var workflow models.Workflow
-				if err := mc.db.Where("id = ?", tag.ID).First(&workflow).Error; err != nil {
-					log.Printf("SendMessage: Invalid workflow ID: %s, error: %v", tag.ID, err)
-					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid workflow ID: %s", tag.ID)})
-					return
-				}
-			default:
-				log.Printf("SendMessage: Invalid tag type: %s", tag.Type)
-				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid tag type: %s", tag.Type)})
+	if tagValues, ok := formContent.Value["tags"]; ok && len(tagValues) > 0 {
+		tagsJSON = tagValues[0]
+		if tagsJSON != "" {
+			if err := json.Unmarshal([]byte(tagsJSON), &tags); err != nil {
+				log.Printf("SendMessage: Invalid tags format: %v", err)
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tags format"})
 				return
+			}
+			for _, tag := range tags {
+				switch tag.Type {
+				case "user":
+					var user models.User
+					if err := mc.db.Where("id = ?", tag.ID).First(&user).Error; err != nil {
+						log.Printf("SendMessage: Invalid user ID: %d, error: %v", tag.ID, err)
+						c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid user ID: %d", tag.ID)})
+						return
+					}
+				case "file":
+					var file models.File
+					if err := mc.db.Where("id = ?", tag.ID).First(&file).Error; err != nil {
+						log.Printf("SendMessage: Invalid file ID: %d, error: %v", tag.ID, err)
+						c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid file ID: %d", tag.ID)})
+						return
+					}
+				case "workflow":
+					var workflow models.Workflow
+					if err := mc.db.Where("id = ?", tag.ID).First(&workflow).Error; err != nil {
+						log.Printf("SendMessage: Invalid workflow ID: %d, error: %v", tag.ID, err)
+						c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid workflow ID: %d", tag.ID)})
+						return
+					}
+				default:
+					log.Printf("SendMessage: Invalid tag type: %s", tag.Type)
+					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid tag type: %s", tag.Type)})
+					return
+				}
 			}
 		}
 	}
 
 	// پیدا کردن یا ایجاد Chat
 	var chat models.Chat
-	if err := mc.db.Where("user_id1 = ? AND user_id2 = ? OR user_id1 = ? AND user_id2 = ?",
+	if err := mc.db.Where("(user_id1 = ? AND user_id2 = ?) OR (user_id1 = ? AND user_id2 = ?)",
 		user.ID, receiverIDUint, receiverIDUint, user.ID).First(&chat).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			chat = models.Chat{
@@ -137,113 +166,192 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error finding chat"})
 			return
 		}
-		// ایجاد پیام
-		message := models.Message{
-			Content:  encryptedContent, // ذخیره پیام رمزنگاری‌شده
-			SenderID: user.ID,
-			Tags:     tagsJSON,
-			RoomID:   &roomID,
-			ChatID:   chat.ID,
-		}
+	}
 
-		// تنظیم گیرنده پیام
-		switch strings.ToLower(receiverType) {
-		case "user":
-			userIDPtr := new(uint)
-			*userIDPtr = receiverIDUint
-			message.UserID = userIDPtr
-		case "group":
-			groupIDPtr := new(uint)
-			*groupIDPtr = receiverIDUint
-			message.GroupID = groupIDPtr
-		case "channel":
-			channelIDPtr := new(uint)
-			*channelIDPtr = receiverIDUint
-			message.ChannelID = channelIDPtr
-		default:
-			log.Printf("SendMessage: Invalid receiver type: %s", receiverType)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver type"})
+	// ایجاد پیام
+	message := models.Message{
+		Content:  encryptedContent,
+		SenderID: user.ID,
+		Type:     messageType,
+		Tags:     tagsJSON,
+		RoomID:   &roomID,
+		ChatID:   chat.ID,
+	}
+
+	// تنظیم گیرنده پیام
+	switch strings.ToLower(receiverType) {
+	case "user":
+		userIDPtr := new(uint)
+		*userIDPtr = receiverIDUint
+		message.UserID = userIDPtr
+	case "group":
+		groupIDPtr := new(uint)
+		*groupIDPtr = receiverIDUint
+		message.GroupID = groupIDPtr
+	case "channel":
+		channelIDPtr := new(uint)
+		*channelIDPtr = receiverIDUint
+		message.ChannelID = channelIDPtr
+	default:
+		log.Printf("SendMessage: Invalid receiver type: %s", receiverType)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver type"})
+		return
+	}
+
+	// آپلود فایل‌ها به سرور
+	files := formContent.File["files"]
+	for _, fileHeader := range files {
+		file, err := fileHeader.Open()
+		if err != nil {
+			log.Printf("SendMessage: Error reading file %s: %v", fileHeader.Filename, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("error reading file %s: %v", fileHeader.Filename, err)})
 			return
 		}
+		defer file.Close()
 
-		// آپلود فایل‌ها به S3
-		files := formContent.File["files"]
-		for _, fileHeader := range files {
-			file, err := fileHeader.Open()
-			if err != nil {
-				log.Printf("SendMessage: Error reading file %s: %v", fileHeader.Filename, err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "error reading file"})
-				return
-			}
-			defer file.Close()
-
-			filePath, err := mc.UploadFileToS3(fileHeader)
-			if err != nil {
-				log.Printf("SendMessage: Error uploading file %s: %v", fileHeader.Filename, err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "error uploading file"})
-				return
-			}
-			newFile := models.File{
-				FilePath: filePath,
-				Type:     mc.FileType(fileHeader.Filename, file),
-			}
-			message.Files = append(message.Files, newFile)
-		}
-
-		// ذخیره پیام در دیتابیس
-		if err := mc.db.Create(&message).Error; err != nil {
-			log.Printf("SendMessage: Error saving message: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error saving message"})
+		filePath, err := mc.UploadFileToLocal(fileHeader)
+		if err != nil {
+			log.Printf("SendMessage: Error uploading file %s: %v", fileHeader.Filename, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("error uploading file %s: %v", fileHeader.Filename, err)})
 			return
 		}
+		newFile := models.File{
+			FilePath:  filePath,
+			Type:      mc.FileType(fileHeader.Filename, file),
+			MessageID: 0, // MessageID بعداً تنظیم می‌شه
+		}
+		message.Files = append(message.Files, newFile)
+	}
 
-		// رمزگشایی محتوا برای پاسخ و پخش
-		decryptedContent, err := mc.aesCipher.Decrypt(encryptedContent)
+	// ذخیره پیام در دیتابیس
+	if err := mc.db.Create(&message).Error; err != nil {
+		log.Printf("SendMessage: Error saving message: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("error saving message: %v", err)})
+		return
+	}
+
+	// ذخیره فایل‌ها در دیتابیس
+	for i := range message.Files {
+		message.Files[i].MessageID = message.ID
+		message.Files[i].ID = 0 // اطمینان از تولید خودکار ID
+		if err := mc.db.Create(&message.Files[i]).Error; err != nil {
+			log.Printf("SendMessage: Error saving file: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("error saving file: %v", err)})
+			return
+		}
+	}
+	// رمزگشایی محتوا برای پاسخ
+	decryptedContent := content // اگر محتوا رمزنگاری نشده، مستقیماً استفاده می‌شه
+	if encryptedContent != "" {
+		decryptedContent, err = mc.aesCipher.Decrypt(encryptedContent)
 		if err != nil {
 			log.Printf("SendMessage: Decryption error: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "decryption error"})
 			return
 		}
+	}
 
-		// آماده‌سازی پاسخ
-		response := gin.H{
-			"ID":        message.ID,
-			"Content":   decryptedContent, // ارسال پیام رمزگشایی‌شده به کلاینت
-			"SenderID":  message.SenderID,
-			"UserID":    message.UserID,
-			"GroupID":   message.GroupID,
-			"ChannelID": message.ChannelID,
-			"Files":     message.Files,
-			"Tags":      tags,
-			"RoomID":    message.RoomID,
-			"CreatedAt": message.CreatedAt,
+	// آماده‌سازی پاسخ
+	response := gin.H{
+		"ID":          message.ID,
+		"Content":     decryptedContent,
+		"SenderID":    message.SenderID,
+		"UserID":      message.UserID,
+		"GroupID":     message.GroupID,
+		"ChannelID":   message.ChannelID,
+		"Type":        message.Type,
+		"Files":       message.Files,
+		"Tags":        tags,
+		"RoomID":      message.RoomID,
+		"ChatID":      message.ChatID,
+		"CreatedAt":   message.CreatedAt,
+		"seen":        message.Seen,       // اضافه کردن Seen
+		"is_received": message.IsReceived, // اضافه کردن IsReceived
+	}
+
+	// پخش پیام از طریق WebSocket
+	switch strings.ToLower(receiverType) {
+	case "user":
+		var receiverUser models.User
+		if err := mc.db.Where("id = ?", receiverIDUint).First(&receiverUser).Error; err != nil {
+			log.Printf("SendMessage: Receiver not found, ID: %d, error: %v", receiverIDUint, err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "receiver not found"})
+			return
 		}
-
-		// پخش پیام به گیرندگان
-		switch strings.ToLower(receiverType) {
-		case "user":
-			var receiverUser models.User
-			if err := mc.db.Where("id = ?", receiverIDUint).First(&receiverUser).Error; err != nil {
-				log.Printf("SendMessage: Receiver not found, ID: %d, error: %v", receiverIDUint, err)
-				c.JSON(http.StatusBadRequest, gin.H{"error": "receiver not found"})
-				return
-			}
-			mc.broadcaster.BroadcastToUser(receiverUser.ID, "new_message", response)
-		case "group":
-			var members []models.GroupMember
-			mc.db.Where("group_id = ?", receiverIDUint).Find(&members)
-			for _, member := range members {
-				mc.broadcaster.BroadcastToUser(member.UserID, "new_message", response)
-			}
-		case "channel":
-			var channel models.Channel
-			mc.db.Where("id = ?", receiverIDUint).Preload("Members").First(&channel)
-			for _, member := range channel.Members {
-				mc.broadcaster.BroadcastToUser(member.ID, "new_message", response)
-			}
+		mc.broadcaster.BroadcastToUser(receiverUser.ID, "new_message", response)
+	case "group":
+		var members []models.GroupMember
+		mc.db.Where("group_id = ?", receiverIDUint).Find(&members)
+		for _, member := range members {
+			mc.broadcaster.BroadcastToUser(member.UserID, "new_message", response)
 		}
+	case "channel":
+		var channel models.Channel
+		mc.db.Where("id = ?", receiverIDUint).Preload("Members").First(&channel)
+		for _, member := range channel.Members {
+			mc.broadcaster.BroadcastToUser(member.ID, "new_message", response)
+		}
+	}
 
-		c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, response)
+}
+
+// UploadFileToLocal برای ذخیره فایل روی سرور
+func (mc *MessageController) UploadFileToLocal(file *multipart.FileHeader) (string, error) {
+	uploadDir := "./Uploads"
+	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
+		log.Printf("UploadFileToLocal: Error creating upload directory %s: %v", uploadDir, err)
+		return "", fmt.Errorf("failed to create upload directory: %w", err)
+	}
+
+	fileContent, err := file.Open()
+	if err != nil {
+		log.Printf("UploadFileToLocal: Error opening file %s: %v", file.Filename, err)
+		return "", fmt.Errorf("failed to open file %s: %w", file.Filename, err)
+	}
+	defer fileContent.Close()
+
+	// ایجاد نام فایل یکتا
+	filename := fmt.Sprintf("%s-%s", uuid.New().String(), file.Filename)
+	filePath := filepath.Join(uploadDir, filename)
+
+	// ذخیره فایل
+	out, err := os.Create(filePath)
+	if err != nil {
+		log.Printf("UploadFileToLocal: Error creating file %s: %v", filePath, err)
+		return "", fmt.Errorf("failed to create file %s: %w", filePath, err)
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, fileContent); err != nil {
+		log.Printf("UploadFileToLocal: Error copying file %s: %v", filePath, err)
+		return "", fmt.Errorf("failed to copy file %s: %w", filePath, err)
+	}
+
+	// برگرداندن مسیر قابل دسترسی برای کلاینت
+	return fmt.Sprintf("/Uploads/%s", filename), nil
+}
+
+// FileType برای تعیین نوع فایل
+func (mc *MessageController) FileType(fileName string, file io.Reader) models.FileType {
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err != nil && err != io.EOF {
+		log.Printf("FileType: Error reading file %s: %v", fileName, err)
+		return models.Default
+	}
+	mimeType := http.DetectContentType(buffer[:n])
+	// بررسی پسوند فایل برای دقت بیشتر
+	ext := strings.ToLower(filepath.Ext(fileName))
+	switch {
+	case strings.HasPrefix(mimeType, "image/"):
+		return models.Picture
+	case strings.HasPrefix(mimeType, "audio/") || ext == ".webm" || ext == ".mp3" || ext == ".wav":
+		return models.Voice
+	case strings.HasPrefix(mimeType, "video/") && ext != ".webm":
+		return models.Video
+	default:
+		return models.Default
 	}
 }
 
@@ -298,62 +406,6 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, messages)
-}
-
-// UploadFileToS3 برای آپلود فایل به S3
-func (mc *MessageController) UploadFileToS3(file *multipart.FileHeader) (string, error) {
-	uploadDir := "./uploads"
-	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
-		log.Printf("UploadFileToLocal: Error creating upload directory: %v", err)
-		return "", err
-	}
-
-	fileContent, err := file.Open()
-	if err != nil {
-		log.Printf("UploadFileToLocal: Error opening file %s: %v", file.Filename, err)
-		return "", err
-	}
-	defer fileContent.Close()
-
-	// ایجاد نام فایل یکتا
-	filename := fmt.Sprintf("%s-%s", uuid.New().String(), file.Filename)
-	filePath := filepath.Join(uploadDir, filename)
-
-	// ذخیره فایل
-	out, err := os.Create(filePath)
-	if err != nil {
-		log.Printf("UploadFileToLocal: Error creating file %s: %v", filePath, err)
-		return "", err
-	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, fileContent); err != nil {
-		log.Printf("UploadFileToLocal: Error copying file %s: %v", filePath, err)
-		return "", err
-	}
-
-	return filePath, nil
-}
-
-// FileType برای تعیین نوع فایل
-func (mc *MessageController) FileType(fileName string, file io.Reader) models.FileType {
-	buffer := make([]byte, 512)
-	_, err := file.Read(buffer)
-	if err != nil && err != io.EOF {
-		log.Printf("FileType: Error reading file %s: %v", fileName, err)
-		return models.Default
-	}
-	mimeType := http.DetectContentType(buffer)
-	switch mimeType {
-	case "image/jpeg", "image/png":
-		return models.Picture
-	case "audio/mpeg", "audio/wav", "audio/webm":
-		return models.Voice
-	case "video/mp4":
-		return models.Video
-	default:
-		return models.Default
-	}
 }
 
 // GetWorkflows برای دریافت جریان‌های کاری
