@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"espandar/dto"
+	"espandar/mapper"
 	"espandar/models"
 	"net/http"
 	"strconv"
@@ -19,38 +20,28 @@ func NewChannelController(db *gorm.DB) *ChannelController {
 }
 
 func (cc *ChannelController) CreateChannel(c *gin.Context) {
-	user, _ := c.MustGet("user").(*models.User)
+	currentUser, _ := c.MustGet("user").(*models.User)
 
 	// بررسی نقش کاربر (کاربر عادی یا ادمین)
-	if user.Role != "user" && user.Role != "admin" {
+	if currentUser.Role != "user" && currentUser.Role != "admin" {
 		c.JSON(http.StatusForbidden, gin.H{"error": "only users and admins can create channels"})
 		return
 	}
 
-	var dto dto.Channel
-	if err := c.ShouldBind(&dto); err != nil {
+	var input dto.ChannelRequest
+	if err := c.ShouldBind(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request payload", "details": err.Error()})
 		return
 	}
 
-	channel := models.Channel{
-		Name:        dto.Name,
-		Description: dto.Description,
-		CreatorID:   user.ID,
-	}
+	channel := mapper.ChannelRequestToModel(currentUser.ID, input)
 
 	if err := cc.db.Create(&channel).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating channel"})
 		return
 	}
 
-	// افزودن خالق به اعضای کانال
-	if err := cc.db.Model(&channel).Association("Members").Append(&user); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error adding creator to channel"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "channel created successfully", "channel": channel})
+	c.JSON(http.StatusOK, mapper.ToChannelResponse("channel created successfully", channel))
 }
 
 func (cc *ChannelController) CreateChannelWithMembers(c *gin.Context) {

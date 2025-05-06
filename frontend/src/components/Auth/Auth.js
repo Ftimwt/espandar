@@ -64,7 +64,7 @@ const Auth = ({ onUserLogin, onAdminLogin }) => {
       // ذخیره توکن و user_id
       const { token, user_id } = response;
       localStorage.setItem('token', token);
-      localStorage.setItem('user_id', user_id);
+      localStorage.setItem('userId', user_id);
 
       // فراخوانی callback مناسب
       if (isAdmin) {
