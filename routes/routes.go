@@ -36,6 +36,7 @@ func SetupRoutes(
 		protected.GET("/users", userCtrl.GetUsers)
 		protected.POST("/message/:receiver_type/:receiver_id", messageCtrl.SendMessage)
 		protected.GET("/messages/:receiver_type/:receiver_id", messageCtrl.GetMessages)
+		protected.POST("/message/:message_id/seen", messageCtrl.MarkMessageAsSeen)
 		protected.PUT("/message/:message_id", messageCtrl.UpdateMessage)
 		protected.DELETE("/message/:message_id", messageCtrl.DeleteMessage)
 		protected.POST("/channel", channelCtrl.CreateChannel)
