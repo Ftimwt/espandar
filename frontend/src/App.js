@@ -4,6 +4,9 @@ import axios from 'axios';
 import Auth from './components/Auth/Auth';
 import Contacts from './components/Contacts/Contacts';
 import Chat from './components/Chat/Chat';
+import { ToastContainer } from "react-toastify";
+import HomePage from "./pages/Home";
+import Layout from "./layout";
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
@@ -41,17 +44,16 @@ function App() {
     validateToken();
   }, []);
 
-  const handleUserLogin = (newToken, userId) => {
-    console.log('App: User logged in, token:', newToken, 'userId:', userId);
+  const handleUserLogin = (newToken) => {
+    console.log('App: User logged in, token:', newToken);
     setToken(newToken);
     setIsAdmin(false);
     setIsAuthenticated(true);
     localStorage.setItem('token', newToken);
     localStorage.setItem('isAdmin', 'false');
-    localStorage.setItem('userId', userId.toString());
-};
+  };
 
-const handleAdminLogin = (newToken, userId) => {
+  const handleAdminLogin = (newToken, userId) => {
     console.log('App: Admin logged in, token:', newToken, 'userId:', userId);
     setToken(newToken);
     setIsAdmin(true);
@@ -59,7 +61,7 @@ const handleAdminLogin = (newToken, userId) => {
     localStorage.setItem('token', newToken);
     localStorage.setItem('isAdmin', 'true');
     localStorage.setItem('userId', userId.toString());
-};
+  };
 
   const handleLogout = () => {
     console.log('App: Logging out');
@@ -76,44 +78,48 @@ const handleAdminLogin = (newToken, userId) => {
 
   return (
     <Router>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            isAuthenticated ? (
-              <Navigate to="/contacts" />
-            ) : (
-              <Auth
-                onUserLogin={handleUserLogin}
-                onAdminLogin={handleAdminLogin}
-              />
-            )
-          }
-        />
-        <Route
-          path="/contacts"
-          element={
-            isAuthenticated ? (
-              <Contacts
-                token={token}
-                isAdmin={isAdmin}
-                onLogout={handleLogout}
-              />
-            ) : (
-              <Navigate to="/" />
-            )
-          }
-        />
-        <Route
-          path="/chat/user/:id"
-          element={
-            isAuthenticated ? <Chat /> : <Navigate to="/" />
-          }
-        />
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
+      <ToastContainer />
+      <Layout>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              isAuthenticated ? (
+                <HomePage />
+              ) : (
+                <Auth
+                  onUserLogin={handleUserLogin}
+                  onAdminLogin={handleAdminLogin}
+                />
+              )
+            }
+          />
+          <Route
+            path="/contacts"
+            element={
+              isAuthenticated ? (
+                <Contacts
+                  token={token}
+                  isAdmin={isAdmin}
+                  onLogout={handleLogout}
+                />
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+          <Route
+            path="/chat/user/:id"
+            element={
+              isAuthenticated ? <Chat /> : <Navigate to="/" />
+            }
+          />
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </Layout>
     </Router>
-  );
+  )
+    ;
 }
 
 export default App;
