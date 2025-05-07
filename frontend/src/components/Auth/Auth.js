@@ -151,7 +151,8 @@ const Auth = ({ onUserLogin, onAdminLogin }) => {
         <Button type="submit" variant="contained" color="primary" fullWidth>
           {isSignup ? 'ثبت‌نام' : 'ورود'}
         </Button>
-      </Box><Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+      </Box>
+      <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
         <FormControlLabel
           control={
             <Switch
@@ -170,68 +171,6 @@ const Auth = ({ onUserLogin, onAdminLogin }) => {
             {isSignup ? 'ثبت‌نام' : 'ورود'} {isAdmin ? 'ادمین' : 'کاربر'}
           </Typography>
         </Button>
-
-        {error && (
-          <Alert severity="error" sx={{ mb: 2, width: '100%', maxWidth: 400 }}>
-            {error}
-          </Alert>
-        )}
-
-        <Box
-          component="form"
-          onSubmit={handleSubmit}
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
-            width: '100%',
-            maxWidth: 400,
-          }}
-        >
-          <TextField
-            label="نام کاربری"
-            variant="outlined"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)} required
-            fullWidth
-          />
-          <TextField
-            label="رمز عبور"
-            type="password"
-            variant="outlined"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            fullWidth
-          />
-          {isSignup && (
-            <TextField
-              label="شماره تلفن"
-              variant="outlined"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              fullWidth
-            />
-          )}
-          <Button type="submit" variant="contained" color="primary" fullWidth>
-            {isSignup ? 'ثبت‌نام' : 'ورود'}
-          </Button>
-        </Box>
-        <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={isAdmin}
-                onChange={() => setIsAdmin(!isAdmin)}
-                color="primary"
-              />
-            }
-            label={`تغییر به ${isAdmin ? 'کاربر' : 'ادمین'}`}
-          />
-          <Button variant="outlined" onClick={() => setIsSignup(!isSignup)}>
-            تغییر به {isSignup ? 'ورود' : 'ثبت‌نام'}
-          </Button>
-        </Box>
       </Box>
     </Box>
   );
