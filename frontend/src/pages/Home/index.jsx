@@ -7,6 +7,7 @@ import AdminPanel from "../../components/Panel/admin";
 import AdminButton from "./admin";
 import HomeHeader from "./header";
 import { HomeProvider } from "./context";
+import Chat from "./chat";
 
 const HomePage = () => {
     return (
@@ -26,6 +27,7 @@ const HomePage = () => {
                         }}
                     >
                         <HomeHeader />
+                        <Chat />
                     </Grid>
                 </Grid>
             </HomeProvider>

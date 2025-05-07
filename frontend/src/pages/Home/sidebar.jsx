@@ -23,8 +23,9 @@ const HomeSidebar = ({ onSelect, sx }) => {
         return `${type}_${id}`;
     };
 
-    const handleSelect = (type, id) => () => {
-        setSelectedID(ID(type, id));
+    const handleSelect = (type, model) => () => {
+        setSelectedID(ID(type, model.id));
+        setSelected(type, model);
     };
 
     return (
@@ -42,7 +43,7 @@ const HomeSidebar = ({ onSelect, sx }) => {
                 <MenuItem
                     value={ID("user", contact.id)}
                     key={ID("user", contact.id)}
-                    onClick={handleSelect("user", contact.id)}
+                    onClick={handleSelect("user", contact)}
                     selected={ID("user", contact.id) === selected}
                 >
                     <Stack direction="row" gap={1}>
