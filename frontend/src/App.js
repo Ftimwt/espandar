@@ -4,9 +4,8 @@ import axios from 'axios';
 import Auth from './components/Auth/Auth';
 import Contacts from './components/Contacts/Contacts';
 import Chat from './components/Chat/Chat';
-import { ToastContainer } from "react-toastify";
-import HomePage from "./pages/Home";
-import Layout from "./layout";
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
@@ -79,47 +78,35 @@ function App() {
   return (
     <Router>
       <ToastContainer />
-      <Layout>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              isAuthenticated ? (
-                <HomePage />
-              ) : (
-                <Auth
-                  onUserLogin={handleUserLogin}
-                  onAdminLogin={handleAdminLogin}
-                />
-              )
-            }
-          />
-          <Route
-            path="/contacts"
-            element={
-              isAuthenticated ? (
-                <Contacts
-                  token={token}
-                  isAdmin={isAdmin}
-                  onLogout={handleLogout}
-                />
-              ) : (
-                <Navigate to="/" />
-              )
-            }
-          />
-          <Route
-            path="/chat/user/:id"
-            element={
-              isAuthenticated ? <Chat /> : <Navigate to="/" />
-            }
-          />
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
-      </Layout>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            isAuthenticated ? (
+              <Contacts token={token} isAdmin={isAdmin} onLogout={handleLogout} />
+            ) : (
+              <Auth onUserLogin={handleUserLogin} onAdminLogin={handleAdminLogin} />
+            )
+          }
+        />
+        <Route
+          path="/contacts"
+          element={
+            isAuthenticated ? (
+              <Contacts token={token} isAdmin={isAdmin} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/" />
+            )
+          }
+        />
+        <Route
+          path="/chat/user/:id"
+          element={isAuthenticated ? <Chat /> : <Navigate to="/" />}
+        />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
     </Router>
-  )
-    ;
+  );
 }
 
 export default App;
