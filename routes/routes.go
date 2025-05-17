@@ -18,6 +18,7 @@ func SetupRoutes(
 	groupCtrl *controllers.GroupController,
 	contactCtrl *controllers.ContactController,
 	userCtrl *controllers.UserController,
+	callCtrl *controllers.CallController,
 	fileCtrl *controllers.FileController,
 ) {
 	r.Static("/static", "./static")
@@ -59,6 +60,9 @@ func SetupRoutes(
 		protected.GET("./files", fileCtrl.GetFiles)
 		protected.GET("/workflows", messageCtrl.GetWorkflows)
 		protected.GET("/ws", websocket.SocketHandler)
+		protected.POST("/startCall", callCtrl.HandleStartCall)
+		protected.POST("/joinCall", callCtrl.HandleJoinCall)
+
 	}
 
 	adminProtected := r.Group("/admin")

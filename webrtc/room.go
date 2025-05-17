@@ -29,6 +29,7 @@ type Peer struct {
 type UserConnData struct {
 	MemberID string `json:"memberID"`
 	Username string `json:"username"`
+	CallType string `json:"calltype"`
 }
 
 type WebsocketMessage struct {

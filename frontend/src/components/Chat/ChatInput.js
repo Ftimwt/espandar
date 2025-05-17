@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Box, Button, IconButton } from '@mui/material';
 import { Send, AttachFile, Mic, MicOff, EmojiEmotions } from '@mui/icons-material';
 import { MentionsInput, Mention } from 'react-mentions';
@@ -19,6 +19,11 @@ const ChatInput = ({ onSendMessage, setError, setOpenSnackbar }) => {
 
   useEffect(() => {
     const fetchTagSuggestions = async () => {
+      if (!token) {
+        setError('توکن نامعتبر است');
+        setOpenSnackbar(true);
+        return;
+      }
       try {
         const [usersRes, filesRes] = await Promise.all([
           axios.get(`${API_URL}/users`, { headers: { Authorization: `Bearer ${token}` } }),
@@ -76,6 +81,11 @@ const ChatInput = ({ onSendMessage, setError, setOpenSnackbar }) => {
   };
 
   const handleSend = () => {
+    if (!newMessage.trim() && selectedFiles.length === 0) {
+      setError('پیام یا فایل الزامی است');
+      setOpenSnackbar(true);
+      return;
+    }
     const tags = [];
     const userMatches = newMessage.matchAll(/@(\w+)/g);
     for (const match of userMatches) {
@@ -93,12 +103,12 @@ const ChatInput = ({ onSendMessage, setError, setOpenSnackbar }) => {
       <MentionsInput
         value={newMessage}
         onChange={(e, newValue) => setNewMessage(newValue)}
-        style={{ width: '100%', minHeight: '50px' }}
-        placeholder="پیام خود را بنویسید..."
+        style={{ width: '100%', minHeight: '50px' }}placeholder="پیام خود را بنویسید..."
       >
         <Mention trigger="@" data={tagSuggestions} markup="@[display](id)" appendSpaceOnAdd />
         <Mention trigger="#" data={tagSuggestions} markup="#[display](id)" appendSpaceOnAdd />
-      </MentionsInput><Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+      </MentionsInput>
+      <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
         <IconButton onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
           <EmojiEmotions />
         </IconButton>

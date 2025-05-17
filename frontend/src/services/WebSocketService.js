@@ -1,54 +1,73 @@
 class WebSocketService {
-  constructor(receiverId, token, onMessage) {
-    this.socket = null;
+  constructor(receiverId, token, callType, onMessage) {
     this.receiverId = receiverId;
     this.token = token;
-    this.onMessage = onMessage;
-    this.isConnecting = false;
+    this.callType = callType;
+    this.onMessage = onMessage || (() => console.warn('WebSocket: No onMessage handler provided'));
+    this.ws = null;
+    this.userId = null;
+    this.isDisconnected = false;
     this.connect();
   }
 
   connect() {
-    if (this.isConnecting || this.socket?.readyState === WebSocket.OPEN) return;
+    const encodedToken = encodeURIComponent(this.token);
+  const wsUrl = `ws://localhost:8080/ws?receiver_id=${this.receiverId}&Authorization=${encodedToken}&call_type=${this.callType}`;
+  console.log('WebSocket: Connecting to', wsUrl);
+  this.ws = new WebSocket(wsUrl);
 
-    this.isConnecting = true;
-    const wsUrl = `ws://localhost:8080/ws?receiver_id=${this.receiverId}&Authorization=${encodeURIComponent(this.token)}`;
-    this.socket = new WebSocket(wsUrl);
-
-    this.socket.onopen = () => {
-      this.isConnecting = false;
+    this.ws.onopen = () => {
+      console.log('WebSocket: Connection opened for receiver_id:', this.receiverId);
+      console.log('WebSocket: Current userId:', this.userId);
     };
 
-    this.socket.onmessage = (event) => {
+    this.ws.onmessage = (event) => {
+      console.log('WebSocket: Raw message received:', event.data);
       try {
         const message = JSON.parse(event.data);
+        console.log('WebSocket: Parsed message:', message);
+        if (message.event === 'connect_success') {
+          this.userId = message.data.user_id;
+          console.log('WebSocket: User ID set to', this.userId);
+        }
+        if (message.event === 'webrtc_offer') {
+          console.log('WebSocket: Received webrtc_offer from:', message.from);
+        }
         this.onMessage(message);
       } catch (err) {
-        console.error('WebSocket message parsing error:', err);
+        console.error('WebSocket: Error parsing message:', err);
       }
     };
 
-    this.socket.onclose = (event) => {
-      this.isConnecting = false;
-      setTimeout(() => this.connect(), 5000);
+    this.ws.onclose = () => {
+      console.log('WebSocket: Connection closed');
+      if (!this.isDisconnected) {
+        console.log('WebSocket: Attempting to reconnect in 1 second');
+        setTimeout(() => this.connect(), 1000);
+      }
     };
 
-    this.socket.onerror = (err) => {
-      this.isConnecting = false;
-      console.error('WebSocket error:', err);
+    this.ws.onerror = (err) => {
+      console.error('WebSocket: Error:', err);
     };
   }
 
   send(message) {
-    if (this.socket?.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify(message));
+
+
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      console.log('WebSocket: Sending message:', message);
+      this.ws.send(JSON.stringify(message));
+    } else {
+      console.warn('WebSocket: Cannot send message, connection not open');
     }
   }
 
   disconnect() {
-    if (this.socket) {
-      this.socket.close();
-      this.socket = null;
+    this.isDisconnected = true;
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
     }
   }
 }

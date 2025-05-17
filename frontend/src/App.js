@@ -4,6 +4,7 @@ import axios from 'axios';
 import Auth from './components/Auth/Auth';
 import Contacts from './components/Contacts/Contacts';
 import Chat from './components/Chat/Chat';
+import WebSocketService from './services/WebSocketService'; // مسیر را تنظیم کنید
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -11,7 +12,9 @@ function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [isAdmin, setIsAdmin] = useState(localStorage.getItem('isAdmin') === 'true');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [messages, setMessages] = useState([]); // برای ذخیره پیام‌ها
 
+  // اعتبارسنجی توکن
   useEffect(() => {
     const validateToken = async () => {
       const storedToken = localStorage.getItem('token');
@@ -36,6 +39,7 @@ function App() {
         setIsAuthenticated(false);
         localStorage.removeItem('token');
         localStorage.removeItem('isAdmin');
+        localStorage.removeItem('userId');
         setToken('');
         setIsAdmin(false);
       }
@@ -43,13 +47,47 @@ function App() {
     validateToken();
   }, []);
 
-  const handleUserLogin = (newToken) => {
-    console.log('App: User logged in, token:', newToken);
+  // WebSocket عمومی برای کاربر
+  useEffect(() => {
+    if (!token || !isAuthenticated || !localStorage.getItem('userId')) {
+      console.log('App: Skipping WebSocket connection due to missing token/isAuthenticated/userId');
+      return;
+    }
+
+    console.log('App: Initializing global WebSocket for user:', localStorage.getItem('userId'));
+    const userSocket = new WebSocketService(null, token, (message) => {
+      console.log('App: Global WebSocket message received:', message);
+      if (message.event === 'message_seen' && message.data) {
+        console.log('App: Updating message status for message_id:', message.data.message_id);
+        setMessages((prev) => {
+          const updatedMessages = prev.map((msg) =>
+            msg.ID === Number(message.data.message_id)
+              ? {
+                  ...msg,
+                  seen: !!message.data.seen,
+                  is_received: !!message.data.is_received,
+                }
+              : msg
+          );
+          return [...updatedMessages];
+        });
+      }
+    });
+
+    return () => {
+      console.log('App: Disconnecting global WebSocket');
+      userSocket.disconnect();
+    };
+  }, [token, isAuthenticated]);
+
+  const handleUserLogin = (newToken, userId) => {
+    console.log('App: User logged in, token:', newToken, 'userId:', userId);
     setToken(newToken);
     setIsAdmin(false);
     setIsAuthenticated(true);
     localStorage.setItem('token', newToken);
     localStorage.setItem('isAdmin', 'false');
+    localStorage.setItem('userId', userId.toString());
   };
 
   const handleAdminLogin = (newToken, userId) => {
@@ -67,15 +105,11 @@ function App() {
     setToken('');
     setIsAdmin(false);
     setIsAuthenticated(false);
+    setMessages([]);
     localStorage.removeItem('token');
     localStorage.removeItem('isAdmin');
-  };
-
-  useEffect(() => {
-    console.log('App: isAuthenticated:', isAuthenticated, 'token:', token);
-  }, [isAuthenticated, token]);
-
-  return (
+    localStorage.removeItem('userId');
+  };return (
     <Router>
       <ToastContainer />
       <Routes>
@@ -101,7 +135,13 @@ function App() {
         />
         <Route
           path="/chat/user/:id"
-          element={isAuthenticated ? <Chat /> : <Navigate to="/" />}
+          element={
+            isAuthenticated ? (
+              <Chat messages={messages} setMessages={setMessages} />
+            ) : (
+              <Navigate to="/" />
+            )
+          }
         />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

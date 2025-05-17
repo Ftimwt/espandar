@@ -39,7 +39,7 @@ func main() {
 
 	jwt.InitJWT()
 
-	broadcaster := &websocket.SocketBroadcaster{}
+	broadcaster := websocket.NewSocketBroadcaster(db)
 
 	authController := controllers.NewAuthController(db)
 	messageController := controllers.NewMessageController(db, broadcaster)
@@ -48,8 +48,9 @@ func main() {
 	contactController := controllers.NewContactController(db)
 	userController := controllers.NewUserController(db)
 	fileController := controllers.NewFileController(db)
+	callController := controllers.NewCallController(db, broadcaster)
 
-	routes.SetupRoutes(r, db, authController, messageController, channelController, groupController, contactController, userController, fileController)
+	routes.SetupRoutes(r, db, authController, messageController, channelController, groupController, contactController, userController, callController, fileController)
 
 	log.Fatal(r.Run(":8080"))
 }

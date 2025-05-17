@@ -7,7 +7,9 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
+	"log"
 	"os"
 )
 
@@ -17,6 +19,7 @@ type AESCipher struct {
 
 func NewAESCipher() *AESCipher {
 	key := []byte(os.Getenv("AES_KEY"))
+	log.Printf("AES_KEY: %x, length: %d", key, len(key))
 	if len(key) != 32 {
 		panic("AES_KEY must be 32 bytes")
 	}
@@ -35,8 +38,13 @@ func unpad(src []byte) ([]byte, error) {
 		return nil, errors.New("invalid padding")
 	}
 	unpadding := int(src[length-1])
-	if unpadding > length {
+	if unpadding > length || unpadding > aes.BlockSize || unpadding == 0 {
 		return nil, errors.New("invalid padding")
+	}
+	for i := length - unpadding; i < length; i++ {
+		if int(src[i]) != unpadding {
+			return nil, errors.New("invalid padding")
+		}
 	}
 	return src[:length-unpadding], nil
 }
@@ -63,9 +71,12 @@ func (a *AESCipher) Encrypt(plainText string) (string, error) {
 }
 
 func (a *AESCipher) Decrypt(cipherTextBase64 string) (string, error) {
+	if cipherTextBase64 == "" {
+		return "", errors.New("empty ciphertext")
+	}
 	cipherText, err := base64.StdEncoding.DecodeString(cipherTextBase64)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("invalid base64: %v", err)
 	}
 
 	if len(cipherText) < aes.BlockSize {

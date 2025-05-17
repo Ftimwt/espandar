@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"time"
 
 	"espandar/database"
 	"espandar/models"
@@ -50,6 +51,7 @@ var upgrader = websocket.Upgrader{
 		log.Printf("SocketHandler: Checking Origin: %s", origin)
 		return origin == "http://localhost:3000"
 	},
+	HandshakeTimeout: 10 * time.Second,
 }
 
 // نمونه سراسری SocketBroadcaster
@@ -71,7 +73,7 @@ func (s *SocketBroadcaster) BroadcastToUser(userID uint, event string, data inte
 	s.mu.RUnlock()
 
 	if !exists {
-		log.Printf("BroadcastToUser: User %d not connected", userID)
+		log.Printf("BroadcastToUser: User %d not connected for event %s", userID, event)
 		return
 	}
 
@@ -80,7 +82,7 @@ func (s *SocketBroadcaster) BroadcastToUser(userID uint, event string, data inte
 		log.Printf("BroadcastToUser: Error marshaling message for user %d: %v", userID, err)
 		return
 	}
-
+	log.Printf("BroadcastToUser: Sending to user %d, event: %s, data: %+v", userID, event, data)
 	select {
 	case client.send <- msg:
 		log.Printf("BroadcastToUser: Sent to user %d, event: %s", userID, event)
@@ -181,7 +183,8 @@ func SocketHandler(c *gin.Context) {
 
 	// دریافت receiver_id یا استفاده از conference
 	receiverID := c.Query("receiver_id")
-	log.Printf("SocketHandler: ReceiverID: %s", receiverID)
+	callType := c.Query("call_type")
+	log.Printf("SocketHandler: ReceiverID: %s, CallType: %s", receiverID, callType)
 	roomID := createRoomID(userID, receiverID)
 	log.Printf("SocketHandler: RoomID created: %s", roomID)
 
@@ -234,8 +237,9 @@ func SocketHandler(c *gin.Context) {
 	room.ConnectRoom(sender, webrtc.UserConnData{
 		MemberID: strconv.FormatUint(uint64(userID), 10),
 		Username: userModel.Username,
+		CallType: callType,
 	})
-	log.Printf("SocketHandler: User %d connected to WebRTC room %s", userID, roomID)
+	log.Printf("SocketHandler: User %d connected to WebRTC room %s with callType %s", userID, roomID, callType)
 
 	// شروع گوروتین‌ها برای خواندن و نوشتن
 	go client.write()
@@ -266,7 +270,9 @@ func (s *WebSocketMessageSender) Emit(event string, data interface{}) {
 
 // write برای ارسال پیام‌ها به کلاینت
 func (c *Client) write() {
+	ticker := time.NewTicker(15 * time.Second) // ارسال ping هر 30 ثانیه
 	defer func() {
+		ticker.Stop()
 		broadcaster.mu.Lock()
 		delete(broadcaster.clients, c.userID)
 		for i, client := range broadcaster.rooms[c.roomID] {
@@ -283,27 +289,39 @@ func (c *Client) write() {
 		log.Printf("write: User %d disconnected from room %s", c.userID, c.roomID)
 	}()
 
-	for message := range c.send {
-		if c.conn == nil {
-			log.Printf("write: Connection is nil for user %d", c.userID)
-			return
-		}
-		err := c.conn.WriteMessage(websocket.TextMessage, message)
-		if err != nil {
-			log.Printf("write: Error sending to user %d: %v", c.userID, err)
-			if websocket.IsUnexpectedCloseError(err) {
+	for {
+		select {
+		case message, ok := <-c.send:
+			if !ok {
+				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			continue
+			if c.conn == nil {
+				log.Printf("write: Connection is nil for user %d", c.userID)
+				return
+			}
+			err := c.conn.WriteMessage(websocket.TextMessage, message)
+			if err != nil {
+				log.Printf("write: Error sending to user %d: %v", c.userID, err)
+				if websocket.IsUnexpectedCloseError(err) {
+					return
+				}
+				continue
+			}
+			log.Printf("write: Sent message to user %d", c.userID)
+		case <-ticker.C:
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Printf("write: Error sending ping to user %d: %v", c.userID, err)
+				return
+			}
+			log.Printf("write: Sent ping to user %d", c.userID)
 		}
-		log.Printf("write: Sent message to user %d", c.userID)
 	}
 }
 
 // read برای دریافت و پردازش پیام‌ها
 func (c *Client) read(roomID string, db *gorm.DB) {
 	defer func() {
-		// Cleanup مشابه کد فعلی
 		broadcaster.mu.Lock()
 		delete(broadcaster.clients, c.userID)
 		for i, client := range broadcaster.rooms[roomID] {
@@ -353,9 +371,14 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 
 		switch message.Event {
 		case "webrtc_offer", "webrtc_answer", "webrtc_ice_candidate":
-			log.Printf("read: received webrtc_ice_candidate for user %d, to: %s, data: %v", c.userID, message.To, message.Data)
+			log.Printf("read: Received %s for user %d, to: %s, data: %v", message.Event, c.userID, message.To, message.Data)
 			if message.To == "" {
-				log.Printf("read: Empty 'to' field for %s, skipping", message.Event)
+				log.Printf("read: Empty 'to' field for %s, broadcasting to room %s (excluding user %d)", message.Event, roomID, c.userID)
+				// ارسال به تمام اعضای اتاق به جز فرستنده
+				broadcaster.BroadcastToRoom(roomID, message.Event, map[string]interface{}{
+					"data": message.Data,
+					"from": strconv.FormatUint(uint64(c.userID), 10), // اضافه کردن from
+				}, c.userID)
 				continue
 			}
 			toUserID, err := strconv.ParseUint(message.To, 10, 32)
@@ -363,12 +386,19 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 				log.Printf("read: Invalid 'to' user ID: %s", message.To)
 				continue
 			}
-			broadcaster.BroadcastToUser(uint(toUserID), message.Event, message.Data)
+			// ارسال پیام با اضافه کردن from
+			broadcaster.BroadcastToUser(uint(toUserID), message.Event, map[string]interface{}{
+				"data": message.Data,
+				"from": strconv.FormatUint(uint64(c.userID), 10), // اضافه کردن from
+			})
 		case "conference_invite":
 			var conference models.Conference
 			if err := db.Where("room_id = ?", roomID).First(&conference).Error; err == nil {
 				for _, member := range conference.Members {
-					broadcaster.BroadcastToUser(member.ID, "conference_invite", message.Data)
+					broadcaster.BroadcastToUser(member.ID, "conference_invite", map[string]interface{}{
+						"data": message.Data,
+						"from": strconv.FormatUint(uint64(c.userID), 10), // اضافه کردن from
+					})
 				}
 			} else {
 				log.Printf("read: Conference not found for room %s: %v", roomID, err)
@@ -393,9 +423,25 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 			if err := json.Unmarshal(dataBytes, &rawData); err != nil {
 				log.Printf("read: Error unmarshaling raw message data: %v", err)
 				continue
+			} // پر کردن فیلدها
+			msgData.SenderID = c.userID
+			if content, ok := rawData["Content"].(string); ok && content != "" {
+				msgData.Content = content
+			} else {
+				log.Printf("read: empty or invalid content for message from user %d, c.userID")
+				continue
 			}
-
-			// تبدیل Tags به string
+			var receiverID uint
+			if rawReceiverID, ok := rawData["UserID"].(float64); ok {
+				receiverID = uint(rawReceiverID)
+				msgData.UserID = &receiverID
+			} else {
+				log.Printf("read: UserID not found in message data for user %d", c.userID)
+				continue
+			}
+			if typeVal, ok := rawData["Type"].(string); ok {
+				msgData.Type = typeVal
+			}
 			if tags, ok := rawData["Tags"].([]interface{}); ok {
 				tagData, err := json.Marshal(tags)
 				if err != nil {
@@ -403,23 +449,6 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 					continue
 				}
 				msgData.Tags = string(tagData)
-			}
-
-			// پر کردن فیلدها
-			msgData.SenderID = c.userID
-			if content, ok := rawData["Content"].(string); ok {
-				msgData.Content = content
-			}
-			var receiverID uint
-			if rawReceiverID, ok := rawData["ReceiverID"].(float64); ok {
-				receiverID = uint(rawReceiverID)
-				msgData.UserID = &receiverID
-			} else {
-				log.Printf("read: ReceiverID not found in message data for user %d", c.userID)
-				continue
-			}
-			if typeVal, ok := rawData["Type"].(string); ok {
-				msgData.Type = typeVal
 			}
 			if files, ok := rawData["Files"].([]interface{}); ok {
 				fileData, err := json.Marshal(files)
@@ -434,16 +463,17 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 				}
 				msgData.Files = fileStructs
 			}
+
 			// تنظیم ChatID
 			var chat models.Chat
 			err := db.Where("(user_id1 = ? AND user_id2 = ?) OR (user_id1 = ? AND user_id2 = ?)",
-				c.userID, *msgData.UserID, *msgData.UserID, c.userID).
+				c.userID, receiverID, receiverID, c.userID).
 				First(&chat).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					chat = models.Chat{
 						UserID1: c.userID,
-						UserID2: *msgData.UserID,
+						UserID2: receiverID,
 					}
 					if err := db.Create(&chat).Error; err != nil {
 						log.Printf("read: Error creating chat: %v", err)
@@ -455,14 +485,13 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 				}
 			}
 			msgData.ChatID = chat.ID
+
 			// تنظیم RoomID
 			if roomID == "" {
-				log.Printf("read: RoomID is empty for user %d and receiver %d", c.userID, receiverID)
 				roomID = createRoomID(c.userID, strconv.FormatUint(uint64(receiverID), 10))
-				msgData.RoomID = &roomID
-			} else {
-				msgData.RoomID = &roomID
 			}
+			msgData.RoomID = &roomID
+
 			// ذخیره پیام
 			if err := db.Create(&msgData).Error; err != nil {
 				log.Printf("read: Error saving message to database: %v", err)
@@ -476,23 +505,12 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 					continue
 				}
 			}
+
 			// ارسال پیام به گیرنده
-			if message.To != "" {
-				toUserID, err := strconv.ParseUint(message.To, 10, 32)
-				if err != nil {
-					log.Printf("read: Invalid 'to' user ID: %s", message.To)
-					continue
-				}
-				broadcaster.BroadcastToUser(uint(toUserID), "new_message", message.Data)
-				log.Printf("read: Sent new_message to user %d", toUserID)
-				// ارسال به فرستنده برای تأیید
-				broadcaster.BroadcastToUser(c.userID, "new_message", message.Data)
-				log.Printf("read: Sent new_message to sender %d", c.userID)
-			} else {
-				log.Printf("read: No 'to' field, broadcasting to user %d", receiverID)
-				broadcaster.BroadcastToUser(receiverID, "new_message", message.Data)
-				broadcaster.BroadcastToUser(c.userID, "new_message", message.Data)
-			}
+			broadcaster.BroadcastToUser(receiverID, "new_message", map[string]interface{}{
+				"data": rawData,
+				"from": strconv.FormatUint(uint64(c.userID), 10), // اضافه کردن from
+			})
 		default:
 			log.Printf("read: Unknown event from user %d: %s", c.userID, message.Event)
 		}
@@ -501,12 +519,11 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 
 // createRoomID برای ایجاد شناسه اتاق بر اساس userID و receiverID
 func createRoomID(userID uint, receiverID string) string {
+	if receiverID == "" {
+		return "user_" + strconv.FormatUint(uint64(userID), 10)
+	}
 	if receiverID == "conference" {
 		return "conference_" + strconv.FormatUint(uint64(userID), 10)
-	}
-	if receiverID == "" {
-		log.Printf("createRoomID: receiverID is empty for user %d", userID)
-		return "room_" + strconv.FormatUint(uint64(userID), 10)
 	}
 	ids := []uint{userID, uint(atoi(receiverID))}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })

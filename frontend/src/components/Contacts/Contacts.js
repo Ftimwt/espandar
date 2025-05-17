@@ -25,7 +25,7 @@ const Contacts = ({ token, isAdmin, onLogout }) => {
   const fetchContacts = useCallback(async () => {
     try {
       if (!token) throw new Error('No token provided');
-      console.log('Contacts: Fetching contacts with token');
+      console.log('Contacts: Fetching contacts with token:', token);
       const response = await getContacts(token);
       console.log('Contacts: Raw response:', JSON.stringify(response, null, 2));
       const validContacts = Array.isArray(response)
@@ -132,6 +132,7 @@ const Contacts = ({ token, isAdmin, onLogout }) => {
       event.preventDefault();
       event.stopPropagation();
     }
+    console.log('Contacts: handleContactClick called with targetId:', targetId, 'type:', typeof targetId);
     if (!targetId || isNaN(targetId) || targetId.toString().trim() === '') {
       console.error('Contacts: Invalid targetId:', targetId);
       alert('شناسه مخاطب نامعتبر است');

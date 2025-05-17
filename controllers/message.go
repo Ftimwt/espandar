@@ -2,7 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
-	"espandar/encryption" // بسته encryption
+	"espandar/encryption"
 	"espandar/models"
 	"espandar/websocket"
 	"fmt"
@@ -252,6 +252,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 	}
 
 	// آماده‌سازی پاسخ
+	log.Printf("Sending message with Seen=%v, IsReceived=%v", message.Seen, message.IsReceived)
 	response := gin.H{
 		"ID":          message.ID,
 		"Content":     decryptedContent,
@@ -265,8 +266,8 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		"RoomID":      message.RoomID,
 		"ChatID":      message.ChatID,
 		"CreatedAt":   message.CreatedAt,
-		"seen":        message.Seen,       // اضافه کردن Seen
-		"is_received": message.IsReceived, // اضافه کردن IsReceived
+		"seen":        message.Seen,
+		"is_received": message.IsReceived,
 	}
 
 	// پخش پیام از طریق WebSocket
@@ -278,19 +279,28 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "receiver not found"})
 			return
 		}
+		log.Printf("SendMessage: Broadcasting to receiver %d: %v", receiverUser.ID, response)
 		mc.broadcaster.BroadcastToUser(receiverUser.ID, "new_message", response)
 	case "group":
 		var members []models.GroupMember
 		mc.db.Where("group_id = ?", receiverIDUint).Find(&members)
 		for _, member := range members {
+			log.Printf("SendMessage: Broadcasting to group member %d: %v", member.UserID, response)
 			mc.broadcaster.BroadcastToUser(member.UserID, "new_message", response)
 		}
+		// پخش به فرستنده (اگر عضو گروه است، قبلاً پخش شده، اما برای اطمینان)
+		log.Printf("SendMessage: Broadcasting to sender %d: %v", user.ID, response)
+		mc.broadcaster.BroadcastToUser(user.ID, "new_message", response)
 	case "channel":
 		var channel models.Channel
 		mc.db.Where("id = ?", receiverIDUint).Preload("Members").First(&channel)
 		for _, member := range channel.Members {
+			log.Printf("SendMessage: Broadcasting to channel member %d: %v", member.ID, response)
 			mc.broadcaster.BroadcastToUser(member.ID, "new_message", response)
 		}
+		// پخش به فرستنده
+		log.Printf("SendMessage: Broadcasting to sender %d: %v", user.ID, response)
+		mc.broadcaster.BroadcastToUser(user.ID, "new_message", response)
 	}
 
 	c.JSON(http.StatusOK, response)
@@ -377,22 +387,16 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 	query := mc.db.Preload("Files").Where("sender_id = ? OR user_id = ?", user.ID, user.ID)
 	switch strings.ToLower(receiverType) {
 	case "user":
-		// پیدا کردن ChatID
 		var chat models.Chat
 		if err := mc.db.Where(
 			"(user_id1 = ? AND user_id2 = ?) OR (user_id1 = ? AND user_id2 = ?)",
 			user.ID, receiverID, receiverID, user.ID,
 		).First(&chat).Error; err != nil {
 			log.Printf("GetMessages: No chat found for user %d and receiver %d: %v", user.ID, receiverID, err)
-			c.JSON(http.StatusOK, []models.Message{}) // چت وجود نداره، لیست خالی
+			c.JSON(http.StatusOK, []models.Message{})
 			return
 		}
-
-		// گرفتن پیام‌ها با ChatID و فیلتر دوطرفه
-		query = query.Where("chat_id = ?", chat.ID).Where(
-			"(sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)",
-			user.ID, receiverID, receiverID, user.ID,
-		)
+		query = query.Where("chat_id = ?", chat.ID)
 	case "group":
 		query = query.Where("receiver_type = ? AND group_id = ?", "group", receiverID)
 	case "channel":
@@ -409,17 +413,17 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 		return
 	}
 
-	// رمزگشایی پیام‌ها و آماده‌سازی پاسخ
-	response := make([]gin.H, len(messages))
-	for i, msg := range messages {
+	response := make([]gin.H, 0, len(messages))
+	for _, msg := range messages {
 		decryptedContent := ""
 		if msg.Content != "" {
+			log.Printf("GetMessages: Attempting to decrypt message ID %d, content: %s", msg.ID, msg.Content)
 			decryptedContent, err = mc.aesCipher.Decrypt(msg.Content)
 			if err != nil {
-				log.Printf("GetMessages: Decryption error for message ID %d: %v", msg.ID, err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "decryption error"})
-				return
+				log.Printf("GetMessages: Decryption error for message ID %d, content: %s, error: %v", msg.ID, msg.Content, err)
+				continue
 			}
+			log.Printf("GetMessages: Decrypted content for message ID %d: %s", msg.ID, decryptedContent)
 		}
 		var tags []models.Tag
 		if msg.Tags != "" {
@@ -427,7 +431,7 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 				log.Printf("GetMessages: Error parsing tags for message ID %d: %v", msg.ID, err)
 			}
 		}
-		response[i] = gin.H{
+		response = append(response, gin.H{
 			"ID":          msg.ID,
 			"Content":     decryptedContent,
 			"SenderID":    msg.SenderID,
@@ -442,7 +446,7 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 			"CreatedAt":   msg.CreatedAt,
 			"seen":        msg.Seen,
 			"is_received": msg.IsReceived,
-		}
+		})
 	}
 
 	log.Printf("GetMessages: Returning %d messages for user %d and receiver %d", len(messages), user.ID, receiverID)
@@ -477,6 +481,7 @@ func (mc *MessageController) MarkMessageAsSeen(c *gin.Context) {
 	}
 
 	// اطلاع‌رسانی به فرستنده
+	log.Printf("Broadcasting message_seen to user %d for message %s", message.SenderID, message.ID)
 	mc.broadcaster.BroadcastToUser(message.SenderID, "message_seen", gin.H{
 		"message_id":  message.ID,
 		"seen":        true,
@@ -561,26 +566,89 @@ func (mc *MessageController) UpdateMessage(c *gin.Context) {
 	userID := c.MustGet("user").(*models.User).ID
 	messageID := c.Param("message_id")
 
-	var updatedMessage models.Message
+	var input struct {
+		Content string `json:"content" binding:"required"`
+	}
 
-	if err := c.ShouldBindJSON(&updatedMessage); err != nil {
+	if err := c.ShouldBindJSON(&input); err != nil {
+		log.Printf("UpdateMessage: Invalid input, error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
 
-	if err := mc.db.Model(&updatedMessage).Where("id=? AND user_id=?", messageID, userID).Updates(models.Message{Content: updatedMessage.Content, Seen: updatedMessage.Seen, IsReceived: updatedMessage.IsReceived}).Error; err != nil {
+	var message models.Message
+	if err := mc.db.Where("id = ? AND sender_id = ?", messageID, userID).First(&message).Error; err != nil {
+		log.Printf("UpdateMessage: Message not found, ID: %s, userID: %d, error: %v", messageID, userID, err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "message not found or unauthorized"})
+		return
+	}
+
+	message.Content = input.Content
+	if err := mc.db.Save(&message).Error; err != nil {
+		log.Printf("UpdateMessage: Error updating message, ID: %s, error: %v", messageID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not updated"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "message updated"})
-}
 
+	// اطلاع‌رسانی به گیرنده یا اتاق
+	if message.UserID != nil {
+		mc.broadcaster.BroadcastToUser(*message.UserID, "message_updated", gin.H{
+			"message_id": message.ID,
+			"content":    message.Content,
+		})
+	} else if message.GroupID != nil || message.ChannelID != nil {
+		if message.RoomID != nil && *message.RoomID != "" {
+			// فرض می‌کنیم آرگومان چهارم userID است
+			mc.broadcaster.BroadcastToRoom(*message.RoomID, "message_updated", gin.H{
+				"message_id": message.ID,
+				"content":    message.Content,
+			}, userID)
+		} else {
+			log.Printf("UpdateMessage: RoomID is nil or empty for message ID: %s", messageID)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "message updated",
+		"message_id": message.ID,
+		"content":    message.Content,
+	})
+}
 func (mc *MessageController) DeleteMessage(c *gin.Context) {
 	userID := c.MustGet("user").(*models.User).ID
 	messageID := c.Param("message_id")
-	if err := mc.db.Where("id=? AND user_id=?", messageID, userID).Delete(&models.Message{}).Error; err != nil {
+
+	var message models.Message
+	if err := mc.db.Where("id = ? AND sender_id = ?", messageID, userID).First(&message).Error; err != nil {
+		log.Printf("DeleteMessage: Message not found, ID: %s, userID: %d, error: %v", messageID, userID, err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "message not found or unauthorized"})
+		return
+	}
+
+	if err := mc.db.Delete(&message).Error; err != nil {
+		log.Printf("DeleteMessage: Error deleting message, ID: %s, error: %v", messageID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "message not deleted"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "message deleted"})
+
+	// اطلاع‌رسانی به گیرنده یا اتاق
+	if message.UserID != nil {
+		mc.broadcaster.BroadcastToUser(*message.UserID, "message_deleted", gin.H{
+			"message_id": message.ID,
+		})
+	} else if message.GroupID != nil || message.ChannelID != nil {
+		if message.RoomID != nil && *message.RoomID != "" {
+			// فرض می‌کنیم آرگومان چهارم userID است
+			mc.broadcaster.BroadcastToRoom(*message.RoomID, "message_deleted", gin.H{
+				"message_id": message.ID,
+			}, userID)
+		} else {
+			log.Printf("DeleteMessage: RoomID is nil or empty for message ID: %s", messageID)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "message deleted",
+		"message_id": message.ID,
+	})
 }
