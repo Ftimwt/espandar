@@ -14,11 +14,19 @@ export const encryptMessage = (content) => {
 
 export const decryptMessage = (encryptedContent) => {
   try {
-    if (!encryptedContent) return '';
+    if (!encryptedContent) {
+      console.warn('decryptMessage: Empty content');
+      return '';
+    }
     const bytes = CryptoJS.AES.decrypt(encryptedContent, AES_KEY);
-    return bytes.toString(CryptoJS.enc.Utf8) || encryptedContent;
+    const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+    if (!decrypted) {
+      console.warn('decryptMessage: Decryption returned empty string for content:', encryptedContent);
+      return encryptedContent;
+    }
+    return decrypted;
   } catch (err) {
-    console.error('Decryption error:', err);
+    console.error('decryptMessage: Decryption error:', err, 'Content:', encryptedContent);
     return encryptedContent;
   }
 };

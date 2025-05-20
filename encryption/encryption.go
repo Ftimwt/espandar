@@ -80,23 +80,26 @@ func (a *AESCipher) Decrypt(cipherTextBase64 string) (string, error) {
 	}
 
 	if len(cipherText) < aes.BlockSize {
+		log.Printf("Decrypt: Ciphertext too short, length: %d", len(cipherText))
 		return "", errors.New("ciphertext too short")
 	}
-
 	iv := cipherText[:aes.BlockSize]
 	cipherText = cipherText[aes.BlockSize:]
-
 	block, err := aes.NewCipher(a.Key)
 	if err != nil {
+		log.Printf("Decrypt: AES cipher error: %v", err)
 		return "", err
 	}
-
+	if len(cipherText)%aes.BlockSize != 0 {
+		log.Printf("Decrypt: Invalid ciphertext length: %d", len(cipherText))
+		return "", errors.New("invalid ciphertext length")
+	}
 	plainText := make([]byte, len(cipherText))
 	mode := cipher.NewCBCDecrypter(block, iv)
 	mode.CryptBlocks(plainText, cipherText)
-
 	unpaddedText, err := unpad(plainText)
 	if err != nil {
+		log.Printf("Decrypt: Unpad error: %v", err)
 		return "", err
 	}
 	return string(unpaddedText), nil

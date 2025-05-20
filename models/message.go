@@ -17,13 +17,13 @@ type Message struct {
 	ChatID     uint   `json:"chat_id" form:"chat_id" binding:"required"`
 	Seen       bool   `json:"seen" form:"seen"`
 	IsReceived bool   `json:"is_received" form:"is_received"`
-
-	User    User
-	Group   Group
-	Channel Channel
-	Tags    string  `json:"tags"`
-	Files   []File  `gorm:"foreignKey:MessageID"`
-	RoomID  *string `json:"room_id"`
+	MessageID  string `json:"message_id" gorm:"unique;not null"` // فیلد جدید برای message_id
+	User       User
+	Group      Group
+	Channel    Channel
+	Tags       string  `json:"tags"`
+	Files      []File  `gorm:"foreignKey:MessageID"`
+	RoomID     *string `json:"room_id"`
 }
 
 type Tag struct {

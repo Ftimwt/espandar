@@ -117,12 +117,16 @@ export const joinCall = async (token, data) => {
 };
 
 export const getMessages = async (token, receiverType, receiverId) => {
-  const response = await axios.get(`${API_URL}/messages/${receiverType}/${receiverId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  return response.data;
+  try {
+    const response = await axios.get(`${API_URL}/messages/${receiverType}/${receiverId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error in getMessages:', error.response?.data || error.message);
+    throw error;
+  }
 };
-
 export const sendMessage = async (token, receiverType, receiverId, messageData) => {
   try{
     const response = await axios.post(`${API_URL}/messages/${receiverType}/${receiverId}`, 
@@ -137,6 +141,18 @@ console.log('sendMessage response:', response.data);
     return response.data;
   } catch (error) {
     console.error('sendMessage error:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+export const markMessageAsSeen = async (token, messageId) => {
+  try {
+    await axios.post(`${API_URL}/messages/${messageId}/seen`, {}, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    console.log(`Message ${messageId} marked as seen`);
+  } catch (error) {
+    console.error('Error in markMessageAsSeen:', error.response?.data || error.message);
     throw error;
   }
 };

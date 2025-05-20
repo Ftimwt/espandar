@@ -2,7 +2,6 @@ package websocket
 
 import (
 	"encoding/json"
-	"errors"
 	"log"
 	"net/http"
 	"sort"
@@ -37,9 +36,10 @@ type Client struct {
 
 // Message ساختار پیام‌های WebSocket
 type Message struct {
-	Event string      `json:"event"`
-	Data  interface{} `json:"data"`
-	To    string      `json:"to"` // برای ارسال به کاربر خاص یا اتاق
+	Event     string      `json:"event"`
+	Data      interface{} `json:"data"`
+	To        string      `json:"to"`
+	MessageID string      `json:"message_id"`
 }
 
 // تنظیمات WebSocket
@@ -47,9 +47,10 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		log.Printf("SocketHandler: Checking Origin: %s", origin)
-		return origin == "http://localhost:3000"
+		return true
+		//origin := r.Header.Get("Origin")
+		//log.Printf("SocketHandler: Checking Origin: %s", origin)
+		//return origin == "http://localhost:3000"
 	},
 	HandshakeTimeout: 10 * time.Second,
 }
@@ -74,6 +75,54 @@ func (s *SocketBroadcaster) BroadcastToUser(userID uint, event string, data inte
 
 	if !exists {
 		log.Printf("BroadcastToUser: User %d not connected for event %s", userID, event)
+		if event == "new_message" {
+			// استخراج داده‌های پیام
+			rawData, ok := data.(map[string]interface{})
+			if !ok {
+				log.Printf("BroadcastToUser: Invalid data format for user %d", userID)
+				return
+			}
+
+			// استخراج اطلاعات از پیام
+			messageID, _ := rawData["message_id"].(string)
+			dataMap, _ := rawData["data"].(map[string]interface{})
+			content, _ := dataMap["Content"].(string)
+			messageType, _ := rawData["type"].(string)
+			roomID, _ := rawData["room_id"].(string)
+			senderIDStr, _ := rawData["from"].(string)
+			senderID, _ := strconv.ParseUint(senderIDStr, 10, 32)
+			chatIDFloat, _ := dataMap["ChatID"].(float64)
+			chatID := uint(chatIDFloat)
+			tags, _ := dataMap["Tags"].([]interface{})
+			var tagsStr string
+			if tags != nil {
+				tagsBytes, err := json.Marshal(tags)
+				if err == nil {
+					tagsStr = string(tagsBytes)
+				}
+			}
+
+			// ایجاد مدل پیام
+			message := models.Message{
+				SenderID:   uint(senderID),
+				UserID:     &userID, // گیرنده
+				Content:    content,
+				Type:       messageType,
+				RoomID:     &roomID,
+				ChatID:     chatID,
+				MessageID:  messageID,
+				Tags:       tagsStr,
+				IsReceived: false,
+				Seen:       false,
+			}
+
+			// ذخیره پیام در دیتابیس
+			if err := s.db.Create(&message).Error; err != nil {
+				log.Printf("BroadcastToUser: Error saving message for user %d: %v", userID, err)
+			} else {
+				log.Printf("BroadcastToUser: Message saved for offline user %d, message_id: %s", userID, messageID)
+			}
+		}
 		return
 	}
 
@@ -137,17 +186,12 @@ func (s *SocketBroadcaster) BroadcastToRoom(roomID string, event string, data in
 
 // SocketHandler برای مدیریت اتصال WebSocket
 func SocketHandler(c *gin.Context) {
-	// لاگ اطلاعات درخواست
 	log.Printf("SocketHandler: Handling request: %s %s", c.Request.Method, c.Request.URL.String())
 	log.Printf("SocketHandler: Query params: %+v", c.Request.URL.Query())
 	log.Printf("SocketHandler: Headers: %+v", c.Request.Header)
 	log.Printf("SocketHandler: Origin: %s", c.Request.Header.Get("Origin"))
 
-	// بررسی Authorization از query
-	authToken := c.Query("Authorization")
-	log.Printf("SocketHandler: Authorization from query: %s", authToken)
-
-	// دریافت کاربر از gin.Context
+	// بررسی کاربر از gin.Context (توسط JWTAuthMiddleware تنظیم شده)
 	user, exists := c.Get("user")
 	if !exists {
 		log.Println("SocketHandler: User not found in gin.Context")
@@ -181,7 +225,7 @@ func SocketHandler(c *gin.Context) {
 	}
 	log.Printf("SocketHandler: WebSocket connection upgraded successfully for user %d", userID)
 
-	// دریافت receiver_id یا استفاده از conference
+	// دریافت receiver_id و call_type
 	receiverID := c.Query("receiver_id")
 	callType := c.Query("call_type")
 	log.Printf("SocketHandler: ReceiverID: %s, CallType: %s", receiverID, callType)
@@ -218,6 +262,48 @@ func SocketHandler(c *gin.Context) {
 	} else {
 		client.send <- welcomeMsg
 		log.Printf("SocketHandler: Welcome message sent to user %d", userID)
+	}
+
+	// بررسی و ارسال پیام‌های ذخیره‌شده
+	var pendingMessages []models.Message
+	if err := db.Where("user_id = ? AND is_received = ?", userID, false).Find(&pendingMessages).Error; err != nil {
+		log.Printf("SocketHandler: Error fetching pending messages for user %d: %v", userID, err)
+	} else {
+		for _, msg := range pendingMessages {
+			tags, err := msg.GetTags()
+			if err != nil {
+				log.Printf("SocketHandler: Error parsing tags for message %s: %v", msg.MessageID, err)
+			}
+			messageData := map[string]interface{}{
+				"data": map[string]interface{}{
+					"Content": msg.Content,
+					"UserID":  *msg.UserID,
+					"ChatID":  msg.ChatID,
+					"Type":    msg.Type,
+					"Tags":    tags,
+				},
+				"from":       strconv.FormatUint(uint64(msg.SenderID), 10),
+				"message_id": msg.MessageID,
+				"room_id":    msg.RoomID,
+				"type":       msg.Type,
+			}
+			msgBytes, err := json.Marshal(Message{
+				Event: "new_message",
+				Data:  messageData,
+			})
+			if err != nil {
+				log.Printf("SocketHandler: Error marshaling pending message %s for user %d: %v", msg.MessageID, userID, err)
+				continue
+			}
+			client.send <- msgBytes
+			log.Printf("SocketHandler: Sent pending message %s to user %d", msg.MessageID, userID)
+
+			// به‌روزرسانی وضعیت پیام
+			msg.IsReceived = true
+			if err := db.Save(&msg).Error; err != nil {
+				log.Printf("SocketHandler: Error updating message %s for user %d: %v", msg.MessageID, userID, err)
+			}
+		}
 	}
 
 	// مدیریت اتاق WebRTC
@@ -270,7 +356,7 @@ func (s *WebSocketMessageSender) Emit(event string, data interface{}) {
 
 // write برای ارسال پیام‌ها به کلاینت
 func (c *Client) write() {
-	ticker := time.NewTicker(15 * time.Second) // ارسال ping هر 30 ثانیه
+	ticker := time.NewTicker(30 * time.Second) // ارسال ping هر 30 ثانیه
 	defer func() {
 		ticker.Stop()
 		broadcaster.mu.Lock()
@@ -367,17 +453,16 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 			continue
 		}
 
-		log.Printf("read: Received message from user %d in room %s: %s", c.userID, roomID, message.Event)
+		log.Printf("read: Received message from user %d in room %s: %s, data: %v", c.userID, roomID, message.Event, message.Data)
 
 		switch message.Event {
 		case "webrtc_offer", "webrtc_answer", "webrtc_ice_candidate":
 			log.Printf("read: Received %s for user %d, to: %s, data: %v", message.Event, c.userID, message.To, message.Data)
 			if message.To == "" {
 				log.Printf("read: Empty 'to' field for %s, broadcasting to room %s (excluding user %d)", message.Event, roomID, c.userID)
-				// ارسال به تمام اعضای اتاق به جز فرستنده
 				broadcaster.BroadcastToRoom(roomID, message.Event, map[string]interface{}{
 					"data": message.Data,
-					"from": strconv.FormatUint(uint64(c.userID), 10), // اضافه کردن from
+					"from": strconv.FormatUint(uint64(c.userID), 10),
 				}, c.userID)
 				continue
 			}
@@ -386,30 +471,31 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 				log.Printf("read: Invalid 'to' user ID: %s", message.To)
 				continue
 			}
-			// ارسال پیام با اضافه کردن from
 			broadcaster.BroadcastToUser(uint(toUserID), message.Event, map[string]interface{}{
 				"data": message.Data,
-				"from": strconv.FormatUint(uint64(c.userID), 10), // اضافه کردن from
+				"from": strconv.FormatUint(uint64(c.userID), 10),
 			})
+
 		case "conference_invite":
 			var conference models.Conference
 			if err := db.Where("room_id = ?", roomID).First(&conference).Error; err == nil {
 				for _, member := range conference.Members {
 					broadcaster.BroadcastToUser(member.ID, "conference_invite", map[string]interface{}{
 						"data": message.Data,
-						"from": strconv.FormatUint(uint64(c.userID), 10), // اضافه کردن from
+						"from": strconv.FormatUint(uint64(c.userID), 10),
 					})
 				}
 			} else {
 				log.Printf("read: Conference not found for room %s: %v", roomID, err)
 			}
+
 		case "new_message":
-			var msgData models.Message
+			log.Printf("read: Processing new_message from user %d: %v", c.userID, message.Data)
 			var rawData map[string]interface{}
 			var dataBytes []byte
+
+			// استخراج داده‌ها
 			switch data := message.Data.(type) {
-			case []byte:
-				dataBytes = data
 			case string:
 				dataBytes = []byte(data)
 			default:
@@ -423,94 +509,49 @@ func (c *Client) read(roomID string, db *gorm.DB) {
 			if err := json.Unmarshal(dataBytes, &rawData); err != nil {
 				log.Printf("read: Error unmarshaling raw message data: %v", err)
 				continue
-			} // پر کردن فیلدها
-			msgData.SenderID = c.userID
-			if content, ok := rawData["Content"].(string); ok && content != "" {
-				msgData.Content = content
+			} // بررسی message_id
+			var messageID string
+			if msgID, ok := rawData["message_id"].(string); ok && msgID != "" {
+				messageID = msgID
 			} else {
-				log.Printf("read: empty or invalid content for message from user %d, c.userID")
+				log.Printf("read: No message_id provided for message from user %d", c.userID)
 				continue
 			}
+
+			// تنظیم ReceiverID
 			var receiverID uint
 			if rawReceiverID, ok := rawData["UserID"].(float64); ok {
 				receiverID = uint(rawReceiverID)
-				msgData.UserID = &receiverID
 			} else {
-				log.Printf("read: UserID not found in message data for user %d", c.userID)
+				log.Printf("read: UserID not found in message data for user %d: %v", c.userID, rawData)
 				continue
 			}
-			if typeVal, ok := rawData["Type"].(string); ok {
-				msgData.Type = typeVal
-			}
-			if tags, ok := rawData["Tags"].([]interface{}); ok {
-				tagData, err := json.Marshal(tags)
-				if err != nil {
-					log.Printf("read: Error marshaling tags: %v", err)
-					continue
-				}
-				msgData.Tags = string(tagData)
-			}
-			if files, ok := rawData["Files"].([]interface{}); ok {
-				fileData, err := json.Marshal(files)
-				if err != nil {
-					log.Printf("read: Error marshaling files: %v", err)
-					continue
-				}
-				var fileStructs []models.File
-				if err := json.Unmarshal(fileData, &fileStructs); err != nil {
-					log.Printf("read: Error unmarshaling files: %v", err)
-					continue
-				}
-				msgData.Files = fileStructs
-			}
-
-			// تنظیم ChatID
-			var chat models.Chat
-			err := db.Where("(user_id1 = ? AND user_id2 = ?) OR (user_id1 = ? AND user_id2 = ?)",
-				c.userID, receiverID, receiverID, c.userID).
-				First(&chat).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					chat = models.Chat{
-						UserID1: c.userID,
-						UserID2: receiverID,
-					}
-					if err := db.Create(&chat).Error; err != nil {
-						log.Printf("read: Error creating chat: %v", err)
-						continue
-					}
-				} else {
-					log.Printf("read: Error finding chat: %v", err)
-					continue
-				}
-			}
-			msgData.ChatID = chat.ID
 
 			// تنظیم RoomID
 			if roomID == "" {
 				roomID = createRoomID(c.userID, strconv.FormatUint(uint64(receiverID), 10))
+				log.Printf("read: Generated roomID: %s for user %d and receiver %d", roomID, c.userID, receiverID)
 			}
-			msgData.RoomID = &roomID
 
-			// ذخیره پیام
-			if err := db.Create(&msgData).Error; err != nil {
-				log.Printf("read: Error saving message to database: %v", err)
-				continue
+			// تنظیم Type
+			messageType := "text"
+			if msgType, ok := rawData["type"].(string); ok && msgType != "" {
+				messageType = msgType
 			}
-			// ذخیره فایل‌ها
-			for i := range msgData.Files {
-				msgData.Files[i].MessageID = msgData.ID
-				if err := db.Create(&msgData.Files[i]).Error; err != nil {
-					log.Printf("read: Error saving file: %v", err)
-					continue
-				}
-			}
+
+			// لاگ اطلاعات پیام
+			log.Printf("read: Broadcasting message: SenderID=%d, ReceiverID=%d, Content=%v, Type=%s, RoomID=%s, MessageID=%s",
+				c.userID, receiverID, rawData["Content"], messageType, roomID, messageID)
 
 			// ارسال پیام به گیرنده
 			broadcaster.BroadcastToUser(receiverID, "new_message", map[string]interface{}{
-				"data": rawData,
-				"from": strconv.FormatUint(uint64(c.userID), 10), // اضافه کردن from
+				"data":       rawData,
+				"from":       strconv.FormatUint(uint64(c.userID), 10),
+				"message_id": messageID,
+				"room_id":    roomID,
+				"type":       messageType,
 			})
+
 		default:
 			log.Printf("read: Unknown event from user %d: %s", c.userID, message.Event)
 		}

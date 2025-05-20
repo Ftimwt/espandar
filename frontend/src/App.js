@@ -50,35 +50,35 @@ function App() {
   // WebSocket عمومی برای کاربر
   useEffect(() => {
     if (!token || !isAuthenticated || !localStorage.getItem('userId')) {
-      console.log('App: Skipping WebSocket connection due to missing token/isAuthenticated/userId');
-      return;
+        console.log('App: Skipping WebSocket connection due to missing token/isAuthenticated/userId');
+        return;
     }
 
     console.log('App: Initializing global WebSocket for user:', localStorage.getItem('userId'));
-    const userSocket = new WebSocketService(null, token, (message) => {
-      console.log('App: Global WebSocket message received:', message);
-      if (message.event === 'message_seen' && message.data) {
-        console.log('App: Updating message status for message_id:', message.data.message_id);
-        setMessages((prev) => {
-          const updatedMessages = prev.map((msg) =>
-            msg.ID === Number(message.data.message_id)
-              ? {
-                  ...msg,
-                  seen: !!message.data.seen,
-                  is_received: !!message.data.is_received,
-                }
-              : msg
-          );
-          return [...updatedMessages];
-        });
-      }
+    const userSocket = new WebSocketService(localStorage.getItem('userId'), token, 'chat', (message) => {
+        console.log('App: Global WebSocket message received:', message);
+        if (message.event === 'message_seen' && message.data) {
+            console.log('App: Updating message status for message_id:', message.data.message_id);
+            setMessages((prev) => {
+                const updatedMessages = prev.map((msg) =>
+                    msg.ID === Number(message.data.message_id)
+                        ? {
+                              ...msg,
+                              seen: !!message.data.seen,
+                              is_received: !!message.data.is_received,
+                          }
+                        : msg
+                );
+                return [...updatedMessages];
+            });
+        }
     });
 
     return () => {
-      console.log('App: Disconnecting global WebSocket');
-      userSocket.disconnect();
+        console.log('App: Disconnecting global WebSocket');
+        userSocket.disconnect();
     };
-  }, [token, isAuthenticated]);
+}, [token, isAuthenticated]);
 
   const handleUserLogin = (newToken, userId) => {
     console.log('App: User logged in, token:', newToken, 'userId:', userId);
