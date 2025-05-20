@@ -72,7 +72,7 @@ func (c *CallController) HandleStartCall(ctx *gin.Context) {
 		return
 	}
 
-	// ایجاد RoomID با استفاده از userModel.ID
+	// ایجاد RoomID
 	roomID := createRoomID(userModel.ID, req.OtherUserID)
 
 	// ایجاد یا استفاده از اتاق WebRTC
@@ -80,6 +80,7 @@ func (c *CallController) HandleStartCall(ctx *gin.Context) {
 		webrtc.Rooms[roomID] = webrtc.NewRoom()
 	}
 
+	// اطلاع‌رسانی تماس ورودی به گیرنده
 	c.Broadcaster.BroadcastToUser(req.OtherUserID, "call_incoming", map[string]interface{}{
 		"roomID":   roomID,
 		"callType": req.CallType,

@@ -35,6 +35,7 @@ func SetupRoutes(
 		protected.PUT("/profile", authCtrl.UpdateProfile)
 		protected.POST("/signout", authCtrl.SignOut)
 		protected.GET("/users", userCtrl.GetUsers)
+		protected.GET("/users/:id", userCtrl.GetUserByID)
 		protected.POST("/messages/:receiver_type/:receiver_id", messageCtrl.SendMessage)
 		protected.GET("/messages/:receiver_type/:receiver_id", messageCtrl.GetMessages)
 		protected.POST("/message/:message_id/seen", messageCtrl.MarkMessageAsSeen)

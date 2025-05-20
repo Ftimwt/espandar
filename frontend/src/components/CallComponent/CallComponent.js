@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Box, Button, Dialog, DialogContent, Typography, Snackbar } from '@mui/material';
-import { Mic, MicOff, Videocam, VideocamOff } from '@mui/icons-material';
+import { Box, Button, Dialog, DialogContent, DialogActions, Typography, Snackbar, IconButton } from '@mui/material';
+import { Mic, MicOff, Videocam, VideocamOff, CallEnd } from '@mui/icons-material';
 import WebSocketService from '../../services/WebSocketService';
 import { startCall, joinCall } from '../../api';
 
@@ -12,6 +12,7 @@ const CallComponent = ({ receiverId, token, callType = 'video', onEndCall, userI
   const [remoteStreams, setRemoteStreams] = useState({});
   const [error, setError] = useState('');
   const [openSnackbar, setOpenSnackbar] = useState(false);
+  const [incomingCall, setIncomingCall] = useState(null);
   const localVideoRef = useRef(null);
   const peerConnectionsRef = useRef({});
   const socketRef = useRef(null);
@@ -20,17 +21,10 @@ const CallComponent = ({ receiverId, token, callType = 'video', onEndCall, userI
     try {
       console.log('handleOffer: Received offer from:', from, 'offer:', offer, 'roomID:', roomID);
       if (!from) {
-        console.error('handleOffer: No from field provided');
         setError('خطا: شناسه فرستنده نامشخص');
         setOpenSnackbar(true);
         return;
       }
-
-      const joinData = await joinCall(token, {
-        roomID: roomID,
-        callType,
-      });
-      console.log('handleOffer: joinCall response:', joinData);
 
       const pc = new RTCPeerConnection({
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
@@ -61,7 +55,6 @@ const CallComponent = ({ receiverId, token, callType = 'video', onEndCall, userI
       };
 
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      console.log('handleOffer: Set remote description');
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       console.log('handleOffer: Sending answer to:', from);
@@ -71,12 +64,13 @@ const CallComponent = ({ receiverId, token, callType = 'video', onEndCall, userI
         to: from,
       });
       setInCall(true);
+      setIncomingCall(null);
     } catch (err) {
       console.error('handleOffer: Error:', err);
       setError(`خطا در پردازش پیشنهاد تماس: ${err.message}`);
       setOpenSnackbar(true);
     }
-  }, [isVideoCall, token, callType]);
+  }, [isVideoCall]);
 
   const handleAnswer = useCallback(async (answer, from) => {
     try {
@@ -86,8 +80,9 @@ const CallComponent = ({ receiverId, token, callType = 'video', onEndCall, userI
         throw new Error(`No peer connection found for user ${from}`);
       }
       await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      setInCall(true);
     } catch (err) {
-      console.error('Error in handleAnswer:', err);
+      console.error('handleAnswer: Error:', err);
       setError('خطا در پردازش پاسخ تماس');
       setOpenSnackbar(true);
     }
@@ -98,11 +93,46 @@ const CallComponent = ({ receiverId, token, callType = 'video', onEndCall, userI
       const pc = peerConnectionsRef.current[from];
       await pc.addIceCandidate(new RTCIceCandidate(candidate));
     } catch (err) {
-      console.error('Error in handleIceCandidate:', err);
+      console.error('handleIceCandidate: Error:', err);
       setError('خطا در پردازش ICE candidate');
       setOpenSnackbar(true);
     }
   }, []);
+
+  const handleIncomingCall = useCallback((data) => {
+    console.log('handleIncomingCall: Incoming call:', data);
+    setIncomingCall(data);
+  }, []);
+
+  const acceptCall = async () => {
+    try {
+      const joinData = await joinCall(token, {
+        roomID: incomingCall.roomID,
+        callType: incomingCall.callType,
+      });
+      console.log('acceptCall: joinCall response:', joinData);
+      setInCall(true);
+      socketRef.current.send({
+        event: 'call_accepted',
+        data: { roomID: incomingCall.roomID },
+        to: incomingCall.from,
+      });
+      setIncomingCall(null);
+    } catch (err) {
+      console.error('acceptCall: Error:', err);
+      setError(`خطا در قبول تماس: ${err.message}`);
+      setOpenSnackbar(true);
+    }
+  };
+
+  const rejectCall = () => {
+    socketRef.current.send({
+      event: 'call_rejected',
+      data: { roomID: incomingCall.roomID },
+      to: incomingCall.from,
+    });
+    setIncomingCall(null);
+  };
 
   useEffect(() => {
     if (!socketRef.current) {
@@ -114,8 +144,7 @@ const CallComponent = ({ receiverId, token, callType = 'video', onEndCall, userI
           setOpenSnackbar(true);
         }
         if (message.event === 'call_incoming') {
-          console.log('CallComponent: incoming call:', message.data);
-          handleIncomingCall(message.data); // اصلاح نام تابع
+          handleIncomingCall(message.data);
         }
         if (message.event === 'webrtc_offer') {
           handleOffer(message.data, message.from, message.roomID);
@@ -125,6 +154,11 @@ const CallComponent = ({ receiverId, token, callType = 'video', onEndCall, userI
         }
         if (message.event === 'webrtc_ice_candidate') {
           handleIceCandidate(message.data, message.from);
+        }
+        if (message.event === 'call_rejected') {
+          setError('تماس رد شد');
+          setOpenSnackbar(true);
+          onEndCall();
         }
       });
       socketRef.current.connect();
@@ -136,30 +170,10 @@ const CallComponent = ({ receiverId, token, callType = 'video', onEndCall, userI
         socketRef.current = null;
       }
     };
-  }, [receiverId, token, callType, handleOffer, handleAnswer, handleIceCandidate]);
-
-  const handleIncomingCall = async (data) => {
-    try {
-      console.log('handleIncomingCall: Joining call:', data);
-      const joinData = await joinCall(token, {
-        roomID: data.roomID,
-        callType: data.callType,
-      });
-      console.log('handleIncomingCall: joinCall response:', joinData);
-      setInCall(true);
-    } catch (err) {
-      console.error('handleIncomingCall: Error:', err);
-      setError(`خطا در پیوستن به تماس: ${err.message}`);
-      setOpenSnackbar(true);
-    }
-  };
+  }, [receiverId, token, callType, handleOffer, handleAnswer, handleIceCandidate, handleIncomingCall, onEndCall]);
 
   const startCallHandler = async () => {
     try {
-      console.log('startCall type:', typeof startCall);
-      if (typeof startCall !== 'function') {
-        throw new Error('startCall is not a function');
-      }
       const constraints = { video: isVideoCall, audio: true };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
@@ -193,17 +207,12 @@ const CallComponent = ({ receiverId, token, callType = 'video', onEndCall, userI
         to: receiverId.toString(),
         roomID: roomID,
       });
-      setInCall(true);
 
       if (isVideoCall && localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
-      } else if (!isVideoCall) {
-        console.log('Voice call: No video element required');
-      } else {
-        console.warn('Video call: localVideoRef.current is null');
       }
     } catch (err) {
-      console.error('Error in startCallHandler:', err);
+      console.error('startCallHandler: Error:', err);
       setError(`خطا در شروع تماس: ${err.message}`);
       setOpenSnackbar(true);
       setInCall(false);
@@ -220,6 +229,11 @@ const CallComponent = ({ receiverId, token, callType = 'video', onEndCall, userI
     setIsMuted(false);
     setIsVideoOff(!isVideoCall);
     onEndCall();
+    socketRef.current.send({
+      event: 'call_ended',
+      data: {},
+      to: receiverId.toString(),
+    });
   };
 
   const toggleMute = () => {
@@ -249,7 +263,7 @@ const CallComponent = ({ receiverId, token, callType = 'video', onEndCall, userI
           style={{ display: 'none' }}
         />
       )}
-      {!inCall && (
+      {!inCall && !incomingCall && (
         <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
           <Button
             variant="contained"
@@ -261,6 +275,19 @@ const CallComponent = ({ receiverId, token, callType = 'video', onEndCall, userI
           </Button>
         </Box>
       )}
+      <Dialog open={incomingCall !== null} onClose={rejectCall}>
+        <DialogContent>
+          <Typography>تماس ورودی از کاربر {incomingCall?.from}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={acceptCall} color="primary">
+            قبول
+          </Button>
+          <Button onClick={rejectCall} color="error">
+            رد
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={inCall} onClose={endCall} maxWidth="lg" fullWidth>
         <DialogContent>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
@@ -284,6 +311,19 @@ const CallComponent = ({ receiverId, token, callType = 'video', onEndCall, userI
               <Typography variant="caption" sx={{ mt: 1 }}>
                 شما
               </Typography>
+              <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                <IconButton onClick={toggleMute}>
+                  {isMuted ? <MicOff /> : <Mic />}
+                </IconButton>
+                {isVideoCall && (
+                  <IconButton onClick={toggleVideo}>
+                    {isVideoOff ? <VideocamOff /> : <Videocam />}
+                  </IconButton>
+                )}
+                <IconButton onClick={endCall} color="error">
+                  <CallEnd />
+                </IconButton>
+              </Box>
             </Box>
             {Object.entries(remoteStreams).map(([userId, stream]) => (
               <Box key={userId} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -301,27 +341,21 @@ const CallComponent = ({ receiverId, token, callType = 'video', onEndCall, userI
                 <Typography variant="caption" sx={{ mt: 1 }}>
                   کاربر {userId}
                 </Typography>
+                <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                  <IconButton onClick={toggleMute}>
+                    {isMuted ? <MicOff /> : <Mic />}
+                  </IconButton>
+                  {isVideoCall && (
+                    <IconButton onClick={toggleVideo}>
+                      {isVideoOff ? <VideocamOff /> : <Videocam />}
+                    </IconButton>
+                  )}
+                  <IconButton onClick={endCall} color="error">
+                    <CallEnd />
+                  </IconButton>
+                </Box>
               </Box>
             ))}
-          </Box>
-          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 2 }}>
-            <Button
-              onClick={toggleMute}
-              startIcon={isMuted ? <MicOff /> : <Mic />}
-            >
-              {isMuted ? 'فعال کردن صدا' : 'قطع صدا'}
-            </Button>
-            {isVideoCall && (
-              <Button
-                onClick={toggleVideo}
-                startIcon={isVideoOff ? <VideocamOff /> : <Videocam />}
-              >
-                {isVideoOff ? 'فعال کردن ویدیو' : 'قطع ویدیو'}
-              </Button>
-            )}
-            <Button variant="contained" color="error" onClick={endCall}>
-              پایان تماس
-            </Button>
           </Box>
         </DialogContent>
       </Dialog>
