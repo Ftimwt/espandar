@@ -44,3 +44,20 @@ func (u User) GetUserByUsername(username string) (*models.User, error) {
 
 	return &user, nil
 }
+
+func (u User) GetUserByID(id uint) (*models.User, error) {
+	var user models.User
+	tx := u.db.
+		Where("id=?", id).
+		Find(&user)
+
+	if err := tx.Error; err != nil {
+		return nil, err
+	}
+
+	if user.ID == 0 {
+		return nil, nil
+	}
+
+	return &user, nil
+}

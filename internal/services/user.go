@@ -42,6 +42,17 @@ func (u User) hashPassword(user *models.User) error {
 	return err
 }
 
+// Signup creates a new user and returns a JWT token for that user.
+//
+// It first checks if the desired username is already taken. If the username
+// is already taken, it returns DuplicateUsernameErr.
+//
+// It then hashes the password and creates the user in the repository. If
+// there is an error while creating the user, it is returned.
+//
+// If the user is successfully created, it creates a JWT token for that user
+// and returns the token. If there is an error while creating the token, it is
+// returned.
 func (u User) Signup(user *models.User) (token string, err error) {
 	if err := u.checkDuplicateUsername(user.Username); err != nil {
 		return "", err
@@ -63,6 +74,12 @@ func (u User) Signup(user *models.User) (token string, err error) {
 	return token, nil
 }
 
+// comparePassword compares the hashed password from a user object with a target
+// password.
+//
+// Returns true if the target password matches the hashed password, and false
+// otherwise. If there is an error that is not ErrMismatchedHashAndPassword,
+// returns the error.
 func (u User) comparePassword(user *models.User, targetPass string) (bool, error) {
 	bPass := []byte(user.Password)
 	err := bcrypt.CompareHashAndPassword(bPass, []byte(targetPass))
@@ -72,6 +89,12 @@ func (u User) comparePassword(user *models.User, targetPass string) (bool, error
 	return err == nil, nil
 }
 
+// Login checks user credentials and returns a JWT token for the user.
+//
+// If the username or password is incorrect, it returns UsernamePasswordIncorrect.
+// If the user does not exist, it returns UsernamePasswordIncorrect.
+// If there is an error while checking the user credentials or creating the token,
+// it returns that error.
 func (u User) Login(username string, password string) (*models.User, string, error) {
 	user, err := u.repo.GetUserByUsername(username)
 	if err != nil {
@@ -94,4 +117,8 @@ func (u User) Login(username string, password string) (*models.User, string, err
 	}
 
 	return user, token, nil
+}
+
+func (u User) FindUserByID(id uint) (*models.User, error) {
+	return u.repo.GetUserByID(id)
 }

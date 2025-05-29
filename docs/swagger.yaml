@@ -79,6 +79,39 @@ paths:
                 type: object
             type: object
       summary: Login
+  /auth/me:
+    get:
+      description: Get user by token
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              allOf:
+              - {}
+              - properties:
+                  status:
+                    type: boolean
+                  user:
+                    $ref: '#/definitions/models.User'
+                type: object
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              allOf:
+              - {}
+              - properties:
+                  message:
+                    type: string
+                  status:
+                    type: boolean
+                type: object
+            type: object
+      summary: Get user by token
   /auth/signup:
     post:
       consumes:

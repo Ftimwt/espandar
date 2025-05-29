@@ -8,5 +8,5 @@ const (
 
 type Database struct {
 	Type DatabaseType `env:"DB_TYPE"`
-	Name string       `env:"DB_NAME"`
+	Name string       `env:"DB_NAME" envDefault:"database"`
 }

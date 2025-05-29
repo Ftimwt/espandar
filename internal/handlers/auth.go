@@ -7,6 +7,7 @@ import (
 	"v/internal/dto"
 	"v/internal/mapper"
 	"v/internal/services"
+	"v/pkg/models"
 )
 
 type Auth struct {
@@ -73,5 +74,25 @@ func (a Auth) Login(c *fiber.Ctx) error {
 		"message": "Welcome to system",
 		"token":   token,
 		"user":    user,
+	})
+}
+
+// Me
+// @Summary Get user by token
+// @Description Get user by token
+// @Produce  json
+// @Success 200 {object} map[string]any{status=bool,user=models.User}
+// @Failure 400 {object} map[string]any{status=bool,message=string}
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @Router  /auth/me [get]
+func (a Auth) Me(ctx *fiber.Ctx) error {
+	userLocale := ctx.Locals("user")
+	user := userLocale.(*models.User)
+
+	return ctx.Status(http.StatusOK).JSON(fiber.Map{
+		"status": true,
+		"user":   user,
 	})
 }

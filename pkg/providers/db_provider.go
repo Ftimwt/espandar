@@ -8,7 +8,8 @@ import (
 )
 
 func LoadDatabase(cfg *config.Config) (*gorm.DB, error) {
-	db, err := gorm.Open(sqlite.Open("database.sqlite"))
+	dsn := cfg.Database.Name + ".sqlite"
+	db, err := gorm.Open(sqlite.Open(dsn))
 	if err != nil {
 		return nil, err
 	}
