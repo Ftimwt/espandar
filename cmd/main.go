@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 
+	_ "v/docs"
 	"v/internal/server"
 )
 

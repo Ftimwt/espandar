@@ -19,6 +19,15 @@ func NewAuth(service *services.User) *Auth {
 	}
 }
 
+// Signup
+// @Summary Signup
+// @Description Signup to system
+// @Accept  json
+// @Produce  json
+// @Param   signup body     dto.SignupRequest true "Signup request"
+// @Success 200 {object} map[string]any{status=bool,message=string,token=string}
+// @Failure 400 {object} map[string]any{status=bool,message=string}
+// @Router  /auth/signup [post]
 func (a Auth) Signup(c *fiber.Ctx) error {
 	var signup dto.SignupRequest
 	if err := c.BodyParser(&signup); err != nil {
@@ -33,12 +42,21 @@ func (a Auth) Signup(c *fiber.Ctx) error {
 	}
 
 	return c.Status(http.StatusOK).JSON(fiber.Map{
-		"status":  "OK",
+		"status":  true,
 		"message": "welcome to system",
 		"token":   token,
 	})
 }
 
+// Login
+// @Summary Login
+// @Description Login to system
+// @Accept  json
+// @Produce  json
+// @Param   login body     dto.LoginRequest true "Login request"
+// @Success 200 {object} map[string]any{status=bool,message=string,token=string,user=models.User}
+// @Failure 400 {object} map[string]any{status=bool,message=string}
+// @Router  /auth/login [post]
 func (a Auth) Login(c *fiber.Ctx) error {
 	var login dto.LoginRequest
 	if err := c.BodyParser(&login); err != nil {

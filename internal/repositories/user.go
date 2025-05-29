@@ -21,6 +21,7 @@ func (u User) Create(model *models.User) error {
 func (u User) IsUsernameExists(username string) (bool, error) {
 	var exists bool
 	tx := u.db.
+		Table("users").
 		Select("1=1").
 		Where("username=?", username).
 		Find(&exists)
