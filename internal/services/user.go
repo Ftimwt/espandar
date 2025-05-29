@@ -55,7 +55,12 @@ func (u User) Signup(user *models.User) (token string, err error) {
 		return "", err
 	}
 
-	return "", nil
+	token, err = u.jwt.CreateToken(user.ID)
+	if err != nil {
+		return "", err
+	}
+
+	return token, nil
 }
 
 func (u User) comparePassword(user *models.User, targetPass string) (bool, error) {

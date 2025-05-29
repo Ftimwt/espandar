@@ -19,6 +19,7 @@ func NewAuth(service *services.User) *Auth {
 	}
 }
 
+// Signup
 // @Summary Signup
 // @Description Signup to system
 // @Accept  json
@@ -47,6 +48,7 @@ func (a Auth) Signup(c *fiber.Ctx) error {
 	})
 }
 
+// Login
 // @Summary Login
 // @Description Login to system
 // @Accept  json
