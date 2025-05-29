@@ -1,0 +1,126 @@
+definitions:
+  dto.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+  dto.SignupRequest:
+    properties:
+      firstname:
+        type: string
+      lastname:
+        type: string
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+  models.User:
+    properties:
+      firstname:
+        type: string
+      id:
+        type: integer
+      lastname:
+        type: string
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Login to system
+      parameters:
+      - description: Login request
+        in: body
+        name: login
+        required: true
+        schema:
+          $ref: '#/definitions/dto.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              allOf:
+              - {}
+              - properties:
+                  message:
+                    type: string
+                  status:
+                    type: boolean
+                  token:
+                    type: string
+                  user:
+                    $ref: '#/definitions/models.User'
+                type: object
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              allOf:
+              - {}
+              - properties:
+                  message:
+                    type: string
+                  status:
+                    type: boolean
+                type: object
+            type: object
+      summary: Login
+  /auth/signup:
+    post:
+      consumes:
+      - application/json
+      description: Signup to system
+      parameters:
+      - description: Signup request
+        in: body
+        name: signup
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SignupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              allOf:
+              - {}
+              - properties:
+                  message:
+                    type: string
+                  status:
+                    type: boolean
+                  token:
+                    type: string
+                type: object
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              allOf:
+              - {}
+              - properties:
+                  message:
+                    type: string
+                  status:
+                    type: boolean
+                type: object
+            type: object
+      summary: Signup
+swagger: "2.0"
