@@ -38,9 +38,30 @@ func (h *Channel) Create(c *fiber.Ctx) error {
 }
 
 func (h *Channel) List(c *fiber.Ctx) error {
-	list, err := h.service.List()
+	user := getUser(c)
+	list, err := h.service.GetUserChannels(user.ID)
 	if err != nil {
 		return err
 	}
 	return c.Status(http.StatusOK).JSON(list)
+}
+
+// SendMessage sends a message to a channel by its ID.
+// It expects the channel ID in the route path and the message body as a JSON object.
+// It returns the sent message on success, or an error if any occurs.
+func (h *Channel) SendMessage(ctx *fiber.Ctx) error {
+	user := getUser(ctx)
+	var body dto.Message
+	channelID, err := ctx.ParamsInt("channelID")
+	if err != nil {
+		return err
+	}
+	if err := ctx.BodyParser(&body); err != nil {
+		return err
+	}
+	message, err := h.service.SendMessage(user.ID, uint(channelID), &body)
+	if err != nil {
+		return err
+	}
+	return ctx.Status(http.StatusOK).JSON(message)
 }

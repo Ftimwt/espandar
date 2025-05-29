@@ -7,6 +7,8 @@ import (
 
 type ChannelI interface {
 	Interface[models.Channel]
+	CreateByUserID(userID uint, name string, membersID []uint) (*models.Channel, error)
+	GetUserChannels(userID uint) ([]models.Channel, error)
 }
 
 type Channel struct {
@@ -21,7 +23,7 @@ func NewChannel(db *gorm.DB) *Channel {
 	}
 }
 
-func (c Channel) Create(userID uint, name string, membersID []uint) (*models.Channel, error) {
+func (c Channel) CreateByUserID(userID uint, name string, membersID []uint) (*models.Channel, error) {
 	members := make([]models.User, len(membersID))
 
 	for i, id := range membersID {
@@ -50,4 +52,27 @@ func (c Channel) List() ([]models.Channel, error) {
 		return nil, err
 	}
 	return channels, nil
+}
+
+func (c Channel) GetUserChannels(userID uint) ([]models.Channel, error) {
+	var channels []models.Channel
+
+	err := c.db.
+		Joins("JOIN channel_users ON channel_users.channel_id = channels.id").
+		Where("channel_users.user_id = ? OR channels.creator_id = ?", userID, userID).
+		Preload("Creator").
+		Find(&channels).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return channels, nil
+}
+
+func (c Channel) SendMessage(id uint, user uint, message *models.Message) (*models.Message, error) {
+	return message, c.db.
+		Model(&models.Channel{ID: id}).
+		Association("Messages").
+		Append(message)
 }

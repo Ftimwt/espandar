@@ -17,4 +17,9 @@ func SetupChannel(routes fiber.Router, option Option) {
 	protected := routes.Use(middlewares.IsAuthenticated(userService, option.jwt))
 	protected.Post("/", handler.Create)
 	protected.Get("/", handler.List)
+
+	creator := protected.Use(middlewares.IsChannelManager(option.channelService))
+	creator.Get("/:channelID/send", handler.SendMessage)
+	//creator.Post("/:channelID", handler.Update)
+	//creator.Delete("/:channelID", handler.Delete)
 }
