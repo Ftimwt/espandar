@@ -13,7 +13,12 @@ func LoadDatabase(cfg *config.Config) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := db.AutoMigrate(&models.User{}); err != nil {
+	if err := db.AutoMigrate(
+		&models.User{},
+		&models.Channel{},
+		&models.Message{},
+		&models.File{},
+	); err != nil {
 		return nil, err
 	}
 	return db, nil

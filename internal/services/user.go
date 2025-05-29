@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"golang.org/x/crypto/bcrypt"
+	"v/internal/dto"
 	"v/internal/repositories"
 	"v/pkg/models"
 	"v/pkg/providers"
@@ -121,4 +122,17 @@ func (u User) Login(username string, password string) (*models.User, string, err
 
 func (u User) FindUserByID(id uint) (*models.User, error) {
 	return u.repo.GetUserByID(id)
+}
+
+func (u User) SendMessage(userID uint, targetID uint, req dto.Message) (*models.Message, error) {
+	message := &models.Message{
+		Text:     req.Text,
+		Files:    nil,
+		SenderID: userID,
+	}
+	return message, u.repo.SendMessage(userID, targetID, message)
+}
+
+func (u User) GetMessages(userID uint, targetID uint, limit int, skip int) ([]models.Message, error) {
+	return u.repo.GetMessages(userID, targetID, limit, skip)
 }

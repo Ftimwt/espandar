@@ -52,7 +52,13 @@ func Run() error {
 	app.Use(logger.New())
 	app.Use(cors.New())
 
-	routes.SetupAuth(app.Group("/auth"), db, jwt)
+	routes.SetupRoutes(app, db, jwt,
+		map[string]func(routes fiber.Router, option routes.Option){
+			"/auth":     routes.SetupAuth,
+			"/channels": routes.SetupChannel,
+			"/users":    routes.SetupUser,
+		},
+	)
 
 	app.Get("/", handlers.Welcome)
 	app.Get("/room/create", handlers.RoomCreate)
