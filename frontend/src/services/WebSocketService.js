@@ -1,7 +1,11 @@
-// WebSocketService.js
+function createRoomID(myId, receiverId) {
+  const sorted = [parseInt(myId), parseInt(receiverId)].sort((a, b) => a - b);
+  return `room_${sorted[0]}_${sorted[1]}`;
+}
 class WebSocketService {
-  constructor(receiverId, token, callType, onMessage) {
-    this.receiverId = receiverId;
+  constructor(myId, receiverId, token, callType, onMessage) {
+    this.userId = parseInt(myId); 
+    this.receiverId = parseInt(receiverId);
     this.token = token;
     this.callType = callType;
     this.onMessage = onMessage;
@@ -9,79 +13,64 @@ class WebSocketService {
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 10;
     this.reconnectInterval = 5000;
+
     this.connect();
   }
+  
+connect() {
+  const roomID = createRoomID(this.userId, this.receiverId);
+  const params = new URLSearchParams();
+  params.set("receiver_id", this.receiverId);
+  params.set("room_id", roomID);
+  params.set("Authorization", `Bearer ${this.token}`);
 
-  connect() {
-    const wsUrl = `ws://localhost:8080/ws?receiver_id=${this.receiverId}&call_type=${this.callType}&Authorization=Bearer%20${this.token}`;
-    console.log('WebSocketService: Connecting to', wsUrl);
-    this.ws = new WebSocket(wsUrl);
-
-    this.ws.onopen = () => {
-      console.log('WebSocketService: Connection established');
-      this.reconnectAttempts = 0;
-    };
-
-    this.ws.onmessage = (event) => {
-      console.log('WebSocketService: Raw message received:', event.data);
-      try {
-        const message = JSON.parse(event.data);
-        this.onMessage(message);
-      } catch (err) {
-        console.error('WebSocketService: Error parsing message:', err);
-      }
-    };
-
-    this.ws.onclose = (event) => {
-      console.log('WebSocketService: Connection closed', event.code, event.reason);
-      if (this.reconnectAttempts < this.maxReconnectAttempts) {
-        this.reconnectAttempts++;
-        console.log(`WebSocketService: Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-        setTimeout(() => this.connect(), this.reconnectInterval);
-      } else {
-        console.error('WebSocketService: Max reconnect attempts reached');
-      }
-    };
-
-    this.ws.onerror = (error) => {
-      console.error('WebSocketService: Error:', error);
-    };
+  if (this.callType && this.callType !== "null" && this.callType !== "") {
+    params.set("call_type", this.callType);
+  } else {
+    params.set("call_type", "chat"); // مقدار پیش‌فرض برای جلوگیری از ارور
   }
 
-  sendMessage(content, receiverId, tags, files, messageId, roomId) {
-    const message = {
-      event: 'new_message',
-      data: {
-        Content: content,
-        UserID: parseInt(receiverId, 10),
-        Tags: tags,
-        Files: files,
-        message_id: messageId,
-        type: files.length > 0 ? (files[0].type.startsWith('image') ? 'picture' : 'voice') : 'text',
-        room_id: roomId || `room_${Math.min(parseInt(localStorage.getItem('userId'), 10), parseInt(receiverId, 10))}_${Math.max(parseInt(localStorage.getItem('userId'), 10), parseInt(receiverId, 10))}`,
-        ChatID: parseInt(receiverId, 10), // فرض بر این است که ChatID برابر UserID است
-      },
-      to: receiverId,
-    };
-    this.send(message);
-  }
+  const wsUrl = `ws://localhost:8080/ws?${params.toString()}`;
+  console.log('WebSocketService: Connecting to', wsUrl);
+  
+  this.ws = new WebSocket(wsUrl);
 
-  send(message) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      const messageString = JSON.stringify(message);
-      console.log('WebSocketService: Sending message:', messageString);
-      this.ws.send(messageString);
-    } else {
-      console.error('WebSocketService: Cannot send message, connection state:', this.ws?.readyState);
+  this.ws.onopen = () => {
+    console.log('WebSocketService: Connection established');
+    this.reconnectAttempts = 0;
+  };
+
+  this.ws.onmessage = (event) => {
+    try {
+      const message = JSON.parse(event.data);
+      console.log('WebSocketService: Message received:', message);
+      this.onMessage(message);
+    } catch (err) {
+      console.error('WebSocketService: Failed to parse message:', err);
+    }
+  };
+
+  this.ws.onclose = (event) => {
+    console.warn('WebSocketService: Connection closed', event.code, event.reason);
+    this.ws = null;
+
+    console.log(`WebSocketService: Reconnecting attempt ${this.reconnectAttempts}`);
+    this.reconnectAttempts++;
+    setTimeout(() => this.connect(), this.reconnectInterval);
+  };
+
+  this.ws.onerror = (error) => {
+    console.error('WebSocketService: Error occurred:', error);
+  };
+}
+
+
+ disconnect() {
+  if (this.ws) {
+    this.ws.close();
     }
   }
 
-  disconnect() {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-  }
 }
 
 export default WebSocketService;

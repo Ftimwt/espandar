@@ -76,28 +76,22 @@ export const updateProfile = async (token, profileData) => {
   return await response.json();
 };
 
-// api.js
-export const startCall = async (token, otherUserID, callType = 'video') => {
+export const startCall = async (token, receiverId, callType = 'video', receiverType = 'user') => {
   try {
     const response = await axios.post(
       `${API_URL}/startCall`,
-      { otherUserID: parseInt(otherUserID,10),
-         callType
-         },
+      { otherUserID: parseInt(receiverId, 10), callType, receiverType },
       {
         headers: { Authorization: `Bearer ${token}` },
       }
     );
-    console.log('startCall response:', response.data);
-    if (!response.data) {
-      throw new Error('No data returned from startCall API');
-    }
     return response.data;
   } catch (error) {
     console.error('startCall error:', error.response?.data || error.message);
     throw error;
   }
 };
+
 
 export const joinCall = async (token, data) => {
   try {
@@ -155,6 +149,22 @@ export const markMessageAsSeen = async (token, messageId) => {
     console.error('Error in markMessageAsSeen:', error.response?.data || error.message);
     throw error;
   }
+};
+export const deleteMessage = async (token, messageId) => {
+  await axios.delete(`${API_URL}/message/${messageId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+};
+
+export const updateMessage = async (token, messageId, content) => {
+  const response = await axios.put(
+    `${API_URL}/message/${messageId}`,
+    { content },
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  return response.data;
 };
 
 export const getContacts = async (token) => {

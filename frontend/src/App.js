@@ -4,38 +4,33 @@ import axios from 'axios';
 import Auth from './components/Auth/Auth';
 import Contacts from './components/Contacts/Contacts';
 import Chat from './components/Chat/Chat';
-import WebSocketService from './services/WebSocketService'; // مسیر را تنظیم کنید
+import WebSocketService from './services/WebSocketService';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import GroupManager from './pages/GroupManager';
+import ChannelManager from './pages/ChannelManager';
+import ConferenceRoom from './pages/ConferenceRoom';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [isAdmin, setIsAdmin] = useState(localStorage.getItem('isAdmin') === 'true');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [messages, setMessages] = useState([]); // برای ذخیره پیام‌ها
+  const [messages, setMessages] = useState([]);
 
-  // اعتبارسنجی توکن
   useEffect(() => {
     const validateToken = async () => {
       const storedToken = localStorage.getItem('token');
       if (!storedToken) {
-        console.log('App: No token found in localStorage');
         setIsAuthenticated(false);
         return;
       }
 
       try {
-        const response = await axios.get('http://localhost:8080/contacts', {
+        await axios.get('http://localhost:8080/contacts', {
           headers: { Authorization: `Bearer ${storedToken}` },
         });
-        console.log('App: Token is valid, response:', response.data);
         setIsAuthenticated(true);
       } catch (error) {
-        console.error('App: Token validation failed:', {
-          message: error.message,
-          response: error.response?.data,
-          status: error.response?.status,
-        });
         setIsAuthenticated(false);
         localStorage.removeItem('token');
         localStorage.removeItem('isAdmin');
@@ -47,41 +42,25 @@ function App() {
     validateToken();
   }, []);
 
-  // WebSocket عمومی برای کاربر
   useEffect(() => {
-    if (!token || !isAuthenticated || !localStorage.getItem('userId')) {
-        console.log('App: Skipping WebSocket connection due to missing token/isAuthenticated/userId');
-        return;
-    }
+    if (!token || !isAuthenticated || !localStorage.getItem('userId')) return;
 
-    console.log('App: Initializing global WebSocket for user:', localStorage.getItem('userId'));
     const userSocket = new WebSocketService(localStorage.getItem('userId'), token, 'chat', (message) => {
-        console.log('App: Global WebSocket message received:', message);
-        if (message.event === 'message_seen' && message.data) {
-            console.log('App: Updating message status for message_id:', message.data.message_id);
-            setMessages((prev) => {
-                const updatedMessages = prev.map((msg) =>
-                    msg.ID === Number(message.data.message_id)
-                        ? {
-                              ...msg,
-                              seen: !!message.data.seen,
-                              is_received: !!message.data.is_received,
-                          }
-                        : msg
-                );
-                return [...updatedMessages];
-            });
-        }
+      if (message.event === 'message_seen' && message.data) {
+        setMessages((prev) => {
+          return prev.map((msg) =>
+            msg.ID === Number(message.data.message_id)
+              ? { ...msg, seen: !!message.data.seen, is_received: !!message.data.is_received }
+              : msg
+          );
+        });
+      }
     });
 
-    return () => {
-        console.log('App: Disconnecting global WebSocket');
-        userSocket.disconnect();
-    };
-}, [token, isAuthenticated]);
+    return () => userSocket.disconnect();
+  }, [token, isAuthenticated]);
 
   const handleUserLogin = (newToken, userId) => {
-    console.log('App: User logged in, token:', newToken, 'userId:', userId);
     setToken(newToken);
     setIsAdmin(false);
     setIsAuthenticated(true);
@@ -91,7 +70,6 @@ function App() {
   };
 
   const handleAdminLogin = (newToken, userId) => {
-    console.log('App: Admin logged in, token:', newToken, 'userId:', userId);
     setToken(newToken);
     setIsAdmin(true);
     setIsAuthenticated(true);
@@ -101,7 +79,6 @@ function App() {
   };
 
   const handleLogout = () => {
-    console.log('App: Logging out');
     setToken('');
     setIsAdmin(false);
     setIsAuthenticated(false);
@@ -109,7 +86,9 @@ function App() {
     localStorage.removeItem('token');
     localStorage.removeItem('isAdmin');
     localStorage.removeItem('userId');
-  };return (
+  };
+
+  return (
     <Router>
       <ToastContainer />
       <Routes>
@@ -142,6 +121,38 @@ function App() {
               <Navigate to="/" />
             )
           }
+        />
+        <Route
+          path="/chat/group/:id"
+          element={
+            isAuthenticated ? (
+              <Chat messages={messages} setMessages={setMessages} />
+            ) : (
+              <Navigate to="/" />
+            )
+          }
+        />
+        <Route
+          path="/chat/channel/:id"
+          element={
+            isAuthenticated ? (
+              <Chat messages={messages} setMessages={setMessages} />
+            ) : (
+              <Navigate to="/" />
+            )
+          }
+        />
+        <Route
+          path="/groups/manage"
+          element={isAuthenticated ? <GroupManager /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/channels/manage"
+          element={isAuthenticated ? <ChannelManager /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/conference/:room_id"
+          element={isAuthenticated ? <ConferenceRoom /> : <Navigate to="/" />}
         />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

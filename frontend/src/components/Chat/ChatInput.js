@@ -6,7 +6,7 @@ import EmojiPicker from 'emoji-picker-react';
 import axios from 'axios';
 import { API_URL } from '../../constants/config';
 
-const ChatInput = ({ onSendMessage, setError, setOpenSnackbar }) => {
+  const ChatInput = ({ onSendMessage, setError, setOpenSnackbar, editingMessage, setEditingMessage }) => {
   const [newMessage, setNewMessage] = useState('');
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -50,6 +50,10 @@ const ChatInput = ({ onSendMessage, setError, setOpenSnackbar }) => {
 
     fetchTagSuggestions();
   }, [setError, setOpenSnackbar, token]);
+
+  useEffect(() => {
+      if (editingMessage) setNewMessage(editingMessage.Content || '');
+    }, [editingMessage]);
 
   const handleFileChange = (event) => {
     setSelectedFiles([...event.target.files]);
@@ -97,13 +101,28 @@ const ChatInput = ({ onSendMessage, setError, setOpenSnackbar }) => {
     setSelectedFiles([]);
   };
 
-  return (
+    return (
     <Box sx={{ p: 2, borderTop: '1px solid #ccc' }}>
-      {showEmojiPicker && <EmojiPicker onEmojiClick={(emoji) => setNewMessage((prev) => prev + emoji.emoji)} />}
+      {editingMessage && (
+        <Box sx={{ mb: 1 }}>
+          <strong>در حال ویرایش پیام...</strong>{' '}
+          <Button size="small" onClick={() => {
+            setEditingMessage(null);
+            setNewMessage('');
+          }}>
+            لغو
+          </Button>
+        </Box>
+      )}
+
+      {showEmojiPicker && (
+        <EmojiPicker onEmojiClick={(emoji) => setNewMessage((prev) => prev + emoji.emoji)} />
+      )}
       <MentionsInput
         value={newMessage}
         onChange={(e, newValue) => setNewMessage(newValue)}
-        style={{ width: '100%', minHeight: '50px' }}placeholder="پیام خود را بنویسید..."
+        style={{ width: '100%', minHeight: '50px' }}
+        placeholder="پیام خود را بنویسید..."
       >
         <Mention trigger="@" data={tagSuggestions} markup="@[display](id)" appendSpaceOnAdd />
         <Mention trigger="#" data={tagSuggestions} markup="#[display](id)" appendSpaceOnAdd />
@@ -115,13 +134,7 @@ const ChatInput = ({ onSendMessage, setError, setOpenSnackbar }) => {
         <IconButton onClick={() => fileInputRef.current.click()}>
           <AttachFile />
         </IconButton>
-        <input
-          type="file"
-          multiple
-          ref={fileInputRef}
-          style={{ display: 'none' }}
-          onChange={handleFileChange}
-        />
+        <input type="file" multiple ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
         {isRecording ? (
           <IconButton onClick={stopRecording}>
             <MicOff color="error" />

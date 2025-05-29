@@ -226,6 +226,7 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 		return
 	} // آپلود فایل‌ها به سرور
 	files := formContent.File["files"]
+	log.Printf("SendMessage: received %d files", len(files))
 	for _, fileHeader := range files {
 		file, err := fileHeader.Open()
 		if err != nil {
@@ -327,7 +328,6 @@ func (mc *MessageController) SendMessage(c *gin.Context) {
 			mc.broadcaster.BroadcastToUser(member.ID, "new_message", response)
 		}
 		log.Printf("SendMessage: Broadcasting to sender %d for message %d", user.ID, message.ID)
-		mc.broadcaster.BroadcastToUser(user.ID, "new_message", response)
 	}
 
 	c.JSON(http.StatusOK, response)
@@ -363,7 +363,7 @@ func (mc *MessageController) UpdateMessage(c *gin.Context) {
 	}
 
 	var message models.Message
-	if err := mc.db.Where("id = ? AND sender_id = ?", messageID, userID).First(&message).Error; err != nil {
+	if err := mc.db.Where("message_id = ? AND sender_id = ?", messageID, userID).First(&message).Error; err != nil {
 		log.Printf("UpdateMessage: Message not found, ID: %s, userID: %d, error: %v", messageID, userID, err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "message not found or unauthorized"})
 		return
@@ -405,7 +405,7 @@ func (mc *MessageController) DeleteMessage(c *gin.Context) {
 	messageID := c.Param("message_id")
 
 	var message models.Message
-	if err := mc.db.Where("id = ? AND sender_id = ?", messageID, userID).First(&message).Error; err != nil {
+	if err := mc.db.Where("message_id = ? AND sender_id = ?", messageID, userID).First(&message).Error; err != nil {
 		log.Printf("DeleteMessage: Message not found, ID: %s, userID: %d, error: %v", messageID, userID, err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "message not found or unauthorized"})
 		return
@@ -465,15 +465,23 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 			"(user_id1 = ? AND user_id2 = ?) OR (user_id1 = ? AND user_id2 = ?)",
 			user.ID, receiverID, receiverID, user.ID,
 		).First(&chat).Error; err != nil {
-			log.Printf("GetMessages: No chat found for user %d and receiver %d: %v", user.ID, receiverID, err)
-			c.JSON(http.StatusOK, []models.Message{})
-			return
+			if err == gorm.ErrRecordNotFound {
+				chat = models.Chat{UserID1: user.ID, UserID2: uint(receiverID)}
+				if err := mc.db.Create(&chat).Error; err != nil {
+					log.Printf("Error creating chat: %v", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot create chat"})
+					return
+				}
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "error finding chat"})
+				return
+			}
 		}
 		query = query.Where("chat_id = ?", chat.ID)
 	case "group":
-		query = query.Where("receiver_type = ? AND group_id = ?", "group", receiverID)
+		query = query.Where("group_id = ?", receiverID)
 	case "channel":
-		query = query.Where("receiver_type = ? AND channel_id = ?", "channel", receiverID)
+		query = query.Where("channel_id = ?", receiverID)
 	default:
 		log.Printf("GetMessages: Invalid receiver type: %s", receiverType)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid receiver type"})
@@ -504,22 +512,27 @@ func (mc *MessageController) GetMessages(c *gin.Context) {
 				log.Printf("GetMessages: Error parsing tags for message ID %d: %v", msg.ID, err)
 			}
 		}
-		response = append(response, gin.H{
-			"ID":          msg.ID,
-			"Content":     decryptedContent,
-			"SenderID":    msg.SenderID,
-			"UserID":      msg.UserID,
-			"GroupID":     msg.GroupID,
-			"ChannelID":   msg.ChannelID,
-			"Type":        msg.Type,
-			"Files":       msg.Files,
-			"Tags":        tags,
-			"RoomID":      msg.RoomID,
-			"ChatID":      msg.ChatID,
-			"CreatedAt":   msg.CreatedAt,
-			"seen":        msg.Seen,
-			"is_received": msg.IsReceived,
-		})
+		var sender models.User
+		if err := mc.db.First(&sender, msg.SenderID).Error; err == nil {
+			response = append(response, gin.H{
+				"ID":                 msg.ID,
+				"Content":            decryptedContent,
+				"SenderID":           msg.SenderID,
+				"UserID":             msg.UserID,
+				"GroupID":            msg.GroupID,
+				"ChannelID":          msg.ChannelID,
+				"Type":               msg.Type,
+				"Files":              msg.Files,
+				"Tags":               tags,
+				"RoomID":             msg.RoomID,
+				"ChatID":             msg.ChatID,
+				"CreatedAt":          msg.CreatedAt,
+				"seen":               msg.Seen,
+				"is_received":        msg.IsReceived,
+				"SenderUsername":     sender.Username,
+				"SenderProfileImage": sender.ProfileImage,
+			})
+		}
 	}
 
 	log.Printf("GetMessages: Returning %d messages for user %d and receiver %d", len(response), user.ID, receiverID)
@@ -555,7 +568,7 @@ func (mc *MessageController) MarkMessageAsSeen(c *gin.Context) {
 	// اطلاع‌رسانی به فرستنده
 	log.Printf("Broadcasting message_seen to user %d for message %s", message.SenderID, message.ID)
 	mc.broadcaster.BroadcastToUser(message.SenderID, "message_seen", gin.H{
-		"message_id":  message.ID,
+		"message_id":  message.MessageID,
 		"seen":        true,
 		"is_received": true,
 	})
@@ -651,6 +664,7 @@ func (mc *MessageController) CreateConference(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
+
 	startTime, err := time.Parse(time.RFC3339, input.StartTime)
 	if err != nil {
 		log.Printf("CreateConference: Invalid start time: %v", err)
@@ -658,11 +672,10 @@ func (mc *MessageController) CreateConference(c *gin.Context) {
 		return
 	}
 
-	// ایجاد roomID برای کنفرانس
-	roomID := fmt.Sprintf("conference_%s", uuid.New().String())
-	inviteLink := fmt.Sprintf("https://app.com/conference/%s", uuid.New().String())
+	uid := uuid.New().String()
+	roomID := fmt.Sprintf("conference_%s", uid)
+	inviteLink := fmt.Sprintf("https://app.com/conference/%s", uid)
 
-	// ایجاد کنفرانس
 	conference := models.Conference{
 		Title:      input.Title,
 		StartTime:  startTime,
@@ -676,15 +689,18 @@ func (mc *MessageController) CreateConference(c *gin.Context) {
 		return
 	}
 
-	// افزودن اعضا
 	var members []models.User
 	mc.db.Where("id IN ?", input.UserIDs).Find(&members)
+	if len(members) == 0 {
+		log.Println("CreateConference: No valid members found")
+	}
 	mc.db.Model(&conference).Association("Members").Append(members)
 
-	// پخش دعوت به اعضا
 	for _, member := range members {
 		mc.broadcaster.BroadcastToUser(member.ID, "conference_invite", gin.H{
 			"conference_id": conference.ID,
+			"title":         conference.Title,
+			"start_time":    conference.StartTime,
 			"invite_link":   inviteLink,
 			"room_id":       roomID,
 		})

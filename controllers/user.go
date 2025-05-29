@@ -18,7 +18,7 @@ func NewUserController(db *gorm.DB) *UserController {
 	return &UserController{db: db}
 }
 
-// GetUserByID اطلاعات یک کاربر خاص را بر اساس ID برمی‌گرداند
+// GetUserByID اطلاعات کامل یک کاربر خاص را برمی‌گرداند
 func (uc *UserController) GetUserByID(c *gin.Context) {
 	userID := c.Param("id")
 
@@ -34,10 +34,13 @@ func (uc *UserController) GetUserByID(c *gin.Context) {
 		return
 	}
 
-	// فقط فیلدهای ضروری را برگردانید (برای امنیت)
+	// بازگشت اطلاعات لازم برای UI
 	c.JSON(http.StatusOK, gin.H{
-		"id":       user.ID,
-		"username": user.Username,
+		"id":            user.ID,
+		"username":      user.Username,
+		"phone":         user.Phone,
+		"profile_image": user.ProfileImage,
+		"is_online":     user.IsOnline,
 	})
 }
 

@@ -66,6 +66,8 @@ func (cc *ChannelController) CreateChannelWithMembers(c *gin.Context) {
 		Description: input.Description,
 		CreatorID:   user.ID,
 	}
+	input.UserIDs = append(input.UserIDs, user.ID)
+
 	if err := cc.db.Create(&channel).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating channel"})
 		return
@@ -104,6 +106,19 @@ func (cc *ChannelController) AddChannelMember(c *gin.Context) {
 	cc.db.Model(&channel).Association("Members").Append(&member)
 
 	c.JSON(http.StatusOK, gin.H{"message": "member added"})
+}
+
+func (cc *ChannelController) GetChannelMembers(c *gin.Context) {
+	channelID := c.Param("channel_id")
+
+	var members []models.User
+	if err := cc.db.Joins("JOIN channel_members ON channel_members.user_id = users.id").
+		Where("channel_members.channel_id = ?", channelID).Find(&members).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch members"})
+		return
+	}
+
+	c.JSON(http.StatusOK, members)
 }
 
 func (cc *ChannelController) RemoveMemberFromChannel(c *gin.Context) {
@@ -171,6 +186,7 @@ func (cc *ChannelController) LeaveChannel(c *gin.Context) {
 }
 
 func (cc *ChannelController) GetChannels(c *gin.Context) {
+	currentUser := c.MustGet("user").(*models.User)
 	pageStr := c.Query("page")
 	perPageStr := c.Query("perpage")
 
@@ -192,7 +208,7 @@ func (cc *ChannelController) GetChannels(c *gin.Context) {
 	offset := (page - 1) * perPage
 
 	var channels []models.Channel
-	if err := cc.db.Offset(offset).Limit(perPage).Find(&channels).Error; err != nil {
+	if err := cc.db.Joins("JOIN channel_members ON channel_members.channel_id = channels.id").Where("channel_members.user_id = ?", currentUser.ID).Offset(offset).Limit(perPage).Find(&channels).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error retrieving channels"})
 		return
 	}

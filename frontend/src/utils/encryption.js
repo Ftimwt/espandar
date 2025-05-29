@@ -5,6 +5,7 @@ const AES_KEY = 'this_is_a_32_byte_long_key_1234!';
 export const encryptMessage = (content) => {
   try {
     if (!content) return '';
+    console.log("Encrypting content:", content);
     return CryptoJS.AES.encrypt(content, AES_KEY).toString();
   } catch (err) {
     console.error('Encryption error:', err);
@@ -18,6 +19,7 @@ export const decryptMessage = (encryptedContent) => {
       console.warn('decryptMessage: Empty content');
       return '';
     }
+    console.log("Decrypting content:", encryptedContent);
     const bytes = CryptoJS.AES.decrypt(encryptedContent, AES_KEY);
     const decrypted = bytes.toString(CryptoJS.enc.Utf8);
     if (!decrypted) {

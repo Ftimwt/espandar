@@ -44,7 +44,7 @@ func (r *Room) ConnectRoom(sender MessageSender, userData UserConnData) {
 			log.Printf("ConnectRoom: Sending candidate for %s: %s", userData.MemberID, candidate)
 			peer.Sender.Emit("webrtc_ice_candidate", map[string]interface{}{
 				"data": i.ToJSON(),
-				"form": userData.MemberID,
+				"from": userData.MemberID,
 			})
 		})
 

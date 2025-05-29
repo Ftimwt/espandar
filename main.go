@@ -35,8 +35,6 @@ func main() {
 		MaxAge:           12 * 60 * 60,
 	}))
 
-	r.Static("/Uploads", "./Uploads")
-
 	jwt.InitJWT()
 
 	broadcaster := websocket.NewSocketBroadcaster(db)

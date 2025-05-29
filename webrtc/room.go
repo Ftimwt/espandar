@@ -80,3 +80,27 @@ func (r *Room) RemoveTrack(t *webrtc.TrackLocalStaticRTP) {
 	defer r.mu.Unlock()
 	delete(r.Tracks, t.ID())
 }
+func GetOrCreateRoom(roomID string) *Room {
+	if r, ok := Rooms[roomID]; ok {
+		return r
+	}
+	newRoom := NewRoom()
+	Rooms[roomID] = newRoom
+	return newRoom
+}
+
+func (r *Room) GetPeer(id string) *Peer {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.Peers[id]
+}
+
+func (r *Room) BroadcastExcept(senderID string, event string, data interface{}) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, p := range r.Peers {
+		if id != senderID {
+			p.Sender.Emit(event, data)
+		}
+	}
+}

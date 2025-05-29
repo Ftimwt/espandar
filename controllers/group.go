@@ -76,6 +76,9 @@ func (gc *GroupController) CreateGroupWithMembers(c *gin.Context) {
 		Name:      input.Name,
 		CreatorID: user.ID,
 	}
+
+	input.UserIDs = append(input.UserIDs, user.ID)
+
 	if err := gc.db.Create(&group).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating group"})
 		return
@@ -114,6 +117,19 @@ func (gc *GroupController) AddGroupMember(c *gin.Context) {
 	gc.db.Model(&group).Association("Members").Append(&member)
 
 	c.JSON(http.StatusOK, gin.H{"message": "member added"})
+}
+
+func (gc *GroupController) GetGroupMembers(c *gin.Context) {
+	groupID := c.Param("group_id")
+
+	var members []models.User
+	if err := gc.db.Joins("JOIN group_members ON group_members.user_id = users.id").
+		Where("group_members.group_id = ?", groupID).Find(&members).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch members"})
+		return
+	}
+
+	c.JSON(http.StatusOK, members)
 }
 
 func (gc *GroupController) RemoveMemberFromGroup(c *gin.Context) {
@@ -179,6 +195,7 @@ func (gc *GroupController) LeaveGroup(c *gin.Context) {
 }
 
 func (gc *GroupController) GetGroups(c *gin.Context) {
+	currentUser := c.MustGet("user").(*models.User)
 	pageStr := c.Query("page")
 	perPageStr := c.Query("perpage")
 
@@ -201,7 +218,7 @@ func (gc *GroupController) GetGroups(c *gin.Context) {
 	offset := (page - 1) * perPage
 
 	var groups []models.Group
-	if err := gc.db.Offset(offset).Limit(perPage).Find(&groups).Error; err != nil {
+	if err := gc.db.Joins("JOIN group_members ON group_members.group_id = groups.id").Where("group_members.user_id = ?", currentUser.ID).Offset(offset).Limit(perPage).Find(&groups).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error retrieving groups"})
 		return
 	}

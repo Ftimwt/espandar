@@ -9,6 +9,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+
+	"github.com/google/uuid"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -22,7 +26,6 @@ type AuthController struct {
 func NewAuthController(db *gorm.DB) *AuthController {
 	return &AuthController{db: db}
 }
-
 func (ac *AuthController) SignUp(c *gin.Context) {
 	var input struct {
 		Username string `json:"username"`
@@ -31,63 +34,23 @@ func (ac *AuthController) SignUp(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
-		fmt.Println("SignUp: Invalid input:", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
 	}
 
-	// اعتبارسنجی شماره تلفن
 	if !utils.ValidatePhone(input.Phone) {
-		fmt.Println("SignUp: Invalid phone number:", input.Phone)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone number must be 11 digits starting with 09"})
 		return
 	}
 
-	// بررسی وجود کاربر با شماره تلفن
 	var existingUser models.User
 	if err := ac.db.Where("phone = ?", input.Phone).First(&existingUser).Error; err == nil {
-		// بررسی اینکه آیا کاربر توسط ادمین ایجاد شده است
-		defaultPassword := "default123"
-		if bcrypt.CompareHashAndPassword([]byte(existingUser.Password), []byte(defaultPassword)) == nil {
-			// کاربر توسط ادمین ایجاد شده است، اطلاعات را به‌روزرسانی می‌کنیم
-			fmt.Println("SignUp: Found user created by admin, updating user:", input.Phone)
-			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
-			if err != nil {
-				fmt.Println("SignUp: Error hashing password:", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error hashing password"})
-				return
-			}
-
-			existingUser.Username = input.Username
-			existingUser.Password = string(hashedPassword)
-			if err := ac.db.Save(&existingUser).Error; err != nil {
-				fmt.Println("SignUp: Error updating user:", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating user"})
-				return
-			}
-
-			token, err := jwt.Generate(&existingUser)
-			if err != nil {
-				fmt.Println("SignUp: Error generating token:", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
-				return
-			}
-
-			fmt.Println("SignUp: User updated and logged in, token:", token)
-			c.JSON(http.StatusOK, gin.H{"token": token})
-			return
-		} else {
-			// کاربر وجود دارد و توسط ادمین ایجاد نشده است
-			fmt.Println("SignUp: Phone number already exists:", input.Phone)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Phone number already exists"})
-			return
-		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Phone number already exists"})
+		return
 	}
 
-	// ایجاد کاربر جدید
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
-		fmt.Println("SignUp: Error hashing password:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error hashing password"})
 		return
 	}
@@ -100,19 +63,45 @@ func (ac *AuthController) SignUp(c *gin.Context) {
 	}
 
 	if err := ac.db.Create(&user).Error; err != nil {
-		fmt.Println("SignUp: Error creating user:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating user"})
 		return
 	}
 
+	// همگام‌سازی مخاطبین با تمام کاربران دیگر
+	var allUsers []models.User
+	ac.db.Find(&allUsers)
+	for _, u := range allUsers {
+		if u.ID == user.ID {
+			continue
+		}
+
+		var exists1 models.Contact
+		if err := ac.db.Where("user_id = ? AND target_id = ?", user.ID, u.ID).First(&exists1).Error; err == gorm.ErrRecordNotFound {
+			ac.db.Create(&models.Contact{
+				UserID:   user.ID,
+				TargetID: u.ID,
+				Name:     u.Username,
+				Phone:    u.Phone,
+			})
+		}
+
+		var exists2 models.Contact
+		if err := ac.db.Where("user_id = ? AND target_id = ?", u.ID, user.ID).First(&exists2).Error; err == gorm.ErrRecordNotFound {
+			ac.db.Create(&models.Contact{
+				UserID:   u.ID,
+				TargetID: user.ID,
+				Name:     user.Username,
+				Phone:    user.Phone,
+			})
+		}
+	}
+
 	token, err := jwt.Generate(&user)
 	if err != nil {
-		fmt.Println("SignUp: Error generating token:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
 		return
 	}
 
-	fmt.Println("SignUp: User created, token:", token)
 	c.JSON(http.StatusOK, gin.H{
 		"token":   token,
 		"user_id": user.ID,
@@ -275,6 +264,52 @@ func (ac *AuthController) GetProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, user) // بازگشت اطلاعات کاربر
 }
 
+func (ac *AuthController) UploadProfileImage(c *gin.Context) {
+	user, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	userModel, ok := user.(*models.User)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user"})
+		return
+	}
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
+		return
+	}
+
+	// ساخت مسیر ذخیره‌سازی
+	uploadDir := "./Uploads/profile"
+	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create directory"})
+		return
+	}
+
+	filename := uuid.New().String() + filepath.Ext(file.Filename)
+	filePath := filepath.Join(uploadDir, filename)
+
+	if err := c.SaveUploadedFile(file, filePath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
+		return
+	}
+
+	// به‌روزرسانی مسیر عکس در پروفایل کاربر
+	userModel.ProfileImage = "/Uploads/profile/" + filename
+	if err := ac.db.Save(&userModel).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile image"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "Profile image updated",
+		"profile_image": userModel.ProfileImage,
+	})
+}
+
 // UpdateProfile - به‌روزرسانی پروفایل کاربر
 func (ac *AuthController) UpdateProfile(c *gin.Context) {
 	userID := c.MustGet("userID").(uint)
@@ -318,12 +353,30 @@ func (ac *AuthController) AddUser(c *gin.Context) {
 		return
 	}
 	user.Password = string(hashedPassword)
-	user.Role = "user" // می‌توانید نقش را بر اساس نیاز تغییر دهید
+	user.Role = "user"
 
-	result := ac.db.Create(&user)
-	if result.Error != nil {
+	if err := ac.db.Create(&user).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error creating user"})
 		return
+	}
+
+	// 🎯 افزودن مخاطبین از قبل اضافه‌شده توسط ادمین‌ها
+	var adminAddedContacts []models.Contact
+	if err := ac.db.Find(&adminAddedContacts).Error; err == nil {
+		for _, c := range adminAddedContacts {
+			if c.TargetID == user.ID || c.UserID == user.ID {
+				continue
+			}
+			var exists models.Contact
+			if err := ac.db.Where("user_id = ? AND target_id = ?", user.ID, c.TargetID).First(&exists).Error; err == gorm.ErrRecordNotFound {
+				ac.db.Create(&models.Contact{
+					UserID:   user.ID,
+					TargetID: c.TargetID,
+					Name:     c.Name,
+					Phone:    c.Phone,
+				})
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "user added successfully"})

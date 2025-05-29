@@ -24,6 +24,9 @@ type Message struct {
 	Tags       string  `json:"tags"`
 	Files      []File  `gorm:"foreignKey:MessageID"`
 	RoomID     *string `json:"room_id"`
+
+	SenderUsername     string `json:"SenderUsername" gorm:"-"`
+	SenderProfileImage string `json:"SenderProfileImage" gorm:"-"`
 }
 
 type Tag struct {

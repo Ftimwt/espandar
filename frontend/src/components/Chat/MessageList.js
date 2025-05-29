@@ -1,10 +1,23 @@
-import React from 'react';
-import { Box, Paper, Typography } from '@mui/material';
+import React, { useState } from 'react';
+import { Box, Paper, Typography, Menu, MenuItem, Avatar } from '@mui/material';
 import { Done, DoneAll } from '@mui/icons-material';
 import { API_URL } from '../../constants/config';
+import { deleteMessage, updateMessage } from '../../api';
 
-const MessageList = ({ messages, userId, navigate }) => {
-  // فرمت کردن تاریخ و ساعت به فرمت فارسی
+const MessageList = ({ messages, userId, navigate, setEditingMessage }) => {
+  const [contextMenu, setContextMenu] = useState(null);
+  const [selectedMessage, setSelectedMessage] = useState(null);
+
+  const handleContextMenu = (event, msg) => {
+    event.preventDefault();
+    setContextMenu({ mouseX: event.clientX + 2, mouseY: event.clientY - 6 });
+    setSelectedMessage(msg);
+  };
+
+  const handleCloseContextMenu = () => {
+    setContextMenu(null);
+  };
+
   const formatDateTime = (dateString) => {
     try {
       const date = new Date(dateString);
@@ -23,9 +36,10 @@ const MessageList = ({ messages, userId, navigate }) => {
   return (
     <Box sx={{ flexGrow: 1, overflowY: 'auto', p: 2 }}>
       {Array.isArray(messages) && messages.length > 0 ? (
-        messages.map((msg, index) => (
+        messages.map((msg) => (
           <Paper
-            key={`${msg.ID}-${index}`}
+           key={msg.message_id || msg.ID}
+            onContextMenu={(e) => handleContextMenu(e, msg)}
             sx={{
               p: 2,
               mb: 2,
@@ -36,8 +50,17 @@ const MessageList = ({ messages, userId, navigate }) => {
               flexDirection: 'column',
             }}
           >
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+  <Avatar
+    src={`${API_URL}${msg.Sender?.ProfileImage || msg.SenderProfileImage || '/Uploads/profile/default.png'}`}
+    sx={{ width: 32, height: 32, mr: 1 }}
+  />
+  <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+    {msg.Sender?.Username || msg.SenderUsername || 'کاربر'}
+  </Typography>
+</Box>
             <Typography variant="body1">
-              {msg.Content.split(' ').map((part, partIndex) => {
+              {msg.Content?.split(' ').map((part, partIndex) => {
                 if (part.startsWith('@') || part.startsWith('#')) {
                   const tag = Array.isArray(msg.Tags)
                     ? msg.Tags.find((t) => t?.name === part.slice(1))
@@ -60,49 +83,94 @@ const MessageList = ({ messages, userId, navigate }) => {
                 return <span key={partIndex}>{part} </span>;
               })}
             </Typography>
+
             {msg.Files?.map((file) => {
-              const isVoice = file.Type === 'voice' || file.file_path?.match(/\.(webm|mp3|wav)$/i);
-              const isPicture =
-                file.Type === 'picture' || file.file_path?.match(/\.(jpg|jpeg|png|gif)$/i);
-              const isVideo = file.Type === 'video' && !isVoice;
+              const type = (file.Type || '').toLowerCase();
+              const path = file.FilePath || file.file_path;
+              const isVoice = type === 'voice' || path?.match(/\.(webm|mp3|wav)$/i);
+              const isPicture = type === 'picture' || path?.match(/\.(jpg|jpeg|png|gif)$/i);
+              const isVideo = type === 'video' && !isVoice;
               return (
-                <Box key={file.ID || `${msg.ID}-file-${file.FilePath}`}>
-                  {isPicture && file.file_path && (
+                <Box key={file.ID || `${msg.ID}-${Math.random()}`}>
+                  {isPicture && path && (
                     <img
-                      src={`${API_URL}${file.file_path}`}
+                      src={`${API_URL}${path}`}
                       alt="attachment"
-                      style={{ maxWidth: '200px' }}
+                      style={{ maxWidth: '200px', marginTop: 8 }}
                     />
                   )}
-                  {isVoice && file.file_path && <audio controls src={`${API_URL}${file.file_path}`} />}
-                  {isVideo && file.file_path && (
-                    <video controls src={`${API_URL}${file.file_path}`} style={{ maxWidth: '200px' }} />
+                  {isVoice && path && (
+                    <audio controls src={`${API_URL}${path}`} style={{ marginTop: 8 }} />
+                  )}
+                  {isVideo && path && (
+                    <video
+                      controls
+                      src={`${API_URL}${path}`}
+                      style={{ maxWidth: '200px', marginTop: 8 }}
+                    />
                   )}
                 </Box>
               );
             })}
+
             <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, alignSelf: 'flex-end' }}>
               <Typography variant="caption" sx={{ mr: 1 }}>
                 {formatDateTime(msg.CreatedAt)}
               </Typography>
               {msg.SenderID === parseInt(userId) && (
-  <>
-    {console.log('Message status:', msg.ID, 'seen:', msg.seen, 'is_received:', msg.is_received)}
-    {msg.seen ? (
-      <DoneAll sx={{ fontSize: 16, color: 'blue' }} />
-    ) : msg.is_received ? (
-      <Done sx={{ fontSize: 16, color: 'grey' }} />
-    ) : (
-      <Done sx={{ fontSize: 16, color: 'grey', opacity: 0.5 }} />
-    )}
-  </>
-)}
+                <>
+                  {msg.seen ? (
+                    <DoneAll sx={{ fontSize: 16, color: 'blue' }} />
+                  ) : msg.is_received ? (
+                    <DoneAll sx={{ fontSize: 16, color: 'gray' }} />
+                  ) : (
+                    <Done sx={{ fontSize: 16, color: 'gray', opacity: 0.5 }} />
+                  )}
+                </>
+              )}
             </Box>
           </Paper>
         ))
       ) : (
         <Typography>پیامی برای نمایش وجود ندارد</Typography>
       )}
+
+<Menu
+  open={contextMenu !== null}
+  onClose={handleCloseContextMenu}
+  anchorReference="anchorPosition"
+  anchorPosition={
+    contextMenu !== null
+      ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+      : undefined
+  }
+>
+  {selectedMessage?.SenderID === parseInt(userId) &&
+    [
+      <MenuItem
+        key="edit"
+        onClick={() => {
+          setEditingMessage(selectedMessage);
+          handleCloseContextMenu();
+        }}
+      >
+        ویرایش
+      </MenuItem>,
+      <MenuItem
+        key="delete"
+        onClick={() => {
+          if (window.confirm("آیا از حذف پیام مطمئن هستید؟")) {
+            deleteMessage(localStorage.getItem("token"), selectedMessage.message_id).then(() =>
+              window.location.reload()
+            );
+          }
+          handleCloseContextMenu();
+        }}
+      >
+        حذف
+      </MenuItem>,
+    ]}
+</Menu>
     </Box>
   );
 };

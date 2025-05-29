@@ -4,12 +4,12 @@ import { Videocam, Call } from '@mui/icons-material';
 import CallComponent from '../CallComponent/CallComponent';
 import { startCall } from '../../api';
 
-const CallControls = ({ receiverId, token }) => {
-  const [callType, setCallType] = useState(null); // null, 'video', 'voice'
+const CallControls = ({ receiverId, token, receiverType }) => {
+  const [callType, setCallType] = useState(null); 
 
-  const startCall = async (type) => {
+  const startCallHandler = async (type) => {
     try {
-      await startCall(token, receiverId, type);
+      await startCall(token, receiverId, type, receiverType);
       setCallType(type);
     } catch (err) {
       console.error('Error starting call:', err);
@@ -21,22 +21,21 @@ const CallControls = ({ receiverId, token }) => {
   };
 
   return (
-    <Box sx={{ display: 'flex', gap: 1, p: 1, borderBottom: '1px solid #ccc' }}>
-      <IconButton onClick={() => startCall('video')} disabled={!!callType}>
+    <Box sx={{ display: 'flex', gap: 1, p: 1 }}>
+      <IconButton onClick={() => startCallHandler('video')} disabled={!!callType}>
         <Videocam />
       </IconButton>
-      <IconButton onClick={() => startCall('voice')} disabled={!!callType}>
+      <IconButton onClick={() => startCallHandler('voice')} disabled={!!callType}>
         <Call />
       </IconButton>
-      {callType && (
-        <CallComponent
-          receiverId={receiverId}
-          token={token}
-          callType={callType}
-          onEndCall={endCall}
-          userId={localStorage.getItem('userId')}
-        />
-      )}
+     <CallComponent
+  receiverId={receiverId}
+  token={token}
+  callType={callType}
+  onEndCall={() => {}}
+  userId={localStorage.getItem('userId')}
+  receiverType={receiverType}
+/>
     </Box>
   );
 };
