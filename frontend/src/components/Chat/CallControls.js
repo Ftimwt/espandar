@@ -5,12 +5,12 @@ import CallComponent from '../CallComponent/CallComponent';
 import { startCall } from '../../api';
 
 const CallControls = ({ receiverId, token, receiverType }) => {
-  const [callType, setCallType] = useState(null); 
+  const [callType, setCallType] = useState("video");
 
   const startCallHandler = async (type) => {
     try {
-      await startCall(token, receiverId, type, receiverType);
       setCallType(type);
+      await startCall(token, receiverId, type, receiverType);
     } catch (err) {
       console.error('Error starting call:', err);
     }
@@ -28,14 +28,14 @@ const CallControls = ({ receiverId, token, receiverType }) => {
       <IconButton onClick={() => startCallHandler('voice')} disabled={!!callType}>
         <Call />
       </IconButton>
-     <CallComponent
-  receiverId={receiverId}
-  token={token}
-  callType={callType}
-  onEndCall={() => {}}
-  userId={localStorage.getItem('userId')}
-  receiverType={receiverType}
-/>
+      <CallComponent
+        receiverId={receiverId}
+        token={token}
+        callType={callType}
+        onEndCall={() => { }}
+        userId={localStorage.getItem('userId')}
+        receiverType={receiverType}
+      />
     </Box>
   );
 };

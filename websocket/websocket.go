@@ -56,10 +56,10 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true
-		//origin := r.Header.Get("Origin")
-		//log.Printf("SocketHandler: Checking Origin: %s", origin)
-		//return origin == "http://localhost:3000"
+		// return true
+		origin := r.Header.Get("Origin")
+		log.Printf("SocketHandler: Checking Origin: %s", origin)
+		return origin == "http://localhost:3000"
 	},
 	HandshakeTimeout: 10 * time.Second,
 }

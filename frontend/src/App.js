@@ -45,6 +45,7 @@ function App() {
   useEffect(() => {
     if (!token || !isAuthenticated || !localStorage.getItem('userId')) return;
 
+    console.log("fucking token", token)
     const userSocket = new WebSocketService(localStorage.getItem('userId'), token, 'chat', (message) => {
       if (message.event === 'message_seen' && message.data) {
         setMessages((prev) => {

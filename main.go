@@ -27,7 +27,7 @@ func main() {
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
-		AllowAllOrigins:  true,
+		AllowOrigins:     []string{"http://localhost:3000"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -48,7 +48,18 @@ func main() {
 	fileController := controllers.NewFileController(db)
 	callController := controllers.NewCallController(db, broadcaster)
 
-	routes.SetupRoutes(r, db, authController, messageController, channelController, groupController, contactController, userController, callController, fileController)
+	routes.SetupRoutes(
+		r,
+		db,
+		authController,
+		messageController,
+		channelController,
+		groupController,
+		contactController,
+		userController,
+		callController,
+		fileController,
+	)
 
 	log.Fatal(r.Run(":8080"))
 }
