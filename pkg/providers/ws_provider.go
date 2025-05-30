@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"encoding/json"
 	"strconv"
 	"sync"
 
@@ -55,7 +56,7 @@ func (notifier *Notifier) HandleWebSocket(c *websocket.Conn) {
 	c.Close()
 }
 
-func (notifier *Notifier) Send(userID uint, message string) error {
+func (notifier *Notifier) Send(userID uint, data []byte) error {
 	notifier.mu.RLock()
 	conns, ok := notifier.connections[userID]
 	notifier.mu.RUnlock()
@@ -65,7 +66,7 @@ func (notifier *Notifier) Send(userID uint, message string) error {
 
 	for conn := range conns {
 		// ارسال پیام به هر کانکشن
-		if err := conn.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
+		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 			// اگر خطا داد کانکشن رو ببند و حذف کن
 			notifier.mu.Lock()
 			conn.Close()
@@ -78,4 +79,25 @@ func (notifier *Notifier) Send(userID uint, message string) error {
 	}
 
 	return nil
+}
+
+func (notifier *Notifier) Json(userID uint, data any) error {
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	return notifier.Send(userID, jsonData)
+}
+
+func (notifier *Notifier) Emit(userID uint, key string, data ...any) error {
+	return notifier.Json(userID, append([]any{key}, data...))
+}
+
+func (notifier *Notifier) Notification(userID uint, notifType string, data any) error {
+	var result map[string]any
+	result["user_id"] = userID
+	result["type"] = notifType
+	result["data"] = data
+
+	return notifier.Emit(userID, "notification", result)
 }
