@@ -10,7 +10,7 @@ import (
 
 func SetupUser(routes fiber.Router, option Option) {
 	userRepo := repositories.NewUser(option.db)
-	userService := services.NewUser(userRepo, option.jwt)
+	userService := services.NewUser(userRepo, option.jwt, option.notifier)
 
 	handler := handlers.NewUser(option.userService)
 

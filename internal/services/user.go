@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"errors"
 	"golang.org/x/crypto/bcrypt"
 	"v/internal/dto"
@@ -15,14 +16,16 @@ var (
 )
 
 type User struct {
-	repo *repositories.User
-	jwt  *providers.Jwt
+	repo     *repositories.User
+	jwt      *providers.Jwt
+	notifier *providers.Notifier
 }
 
-func NewUser(repo *repositories.User, jwt *providers.Jwt) *User {
+func NewUser(repo *repositories.User, jwt *providers.Jwt, notifier *providers.Notifier) *User {
 	return &User{
-		repo: repo,
-		jwt:  jwt,
+		repo:     repo,
+		jwt:      jwt,
+		notifier: notifier,
 	}
 }
 
@@ -129,6 +132,14 @@ func (u User) SendMessage(userID uint, targetID uint, req dto.Message) (*models.
 		Text:     req.Text,
 		Files:    nil,
 		SenderID: userID,
+	}
+	data := map[string]any{
+		"message":     message,
+		"receiver_id": targetID,
+	}
+	dataB, err := json.Marshal(data)
+	if err == nil {
+		u.notifier.Send(targetID, string(dataB))
 	}
 	return message, u.repo.SendMessage(userID, targetID, message)
 }

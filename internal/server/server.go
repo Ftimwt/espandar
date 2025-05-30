@@ -47,18 +47,30 @@ func Run() error {
 		return err
 	}
 
+	notifier := providers.NewNotifier()
+
 	engine := html.New("./views", ".html")
 	app := fiber.New(fiber.Config{Views: engine})
 	app.Use(logger.New())
 	app.Use(cors.New())
 
-	routes.SetupRoutes(app, db, jwt,
+	routes.SetupRoutes(app, db, jwt, notifier,
 		map[string]func(routes fiber.Router, option routes.Option){
 			"/auth":     routes.SetupAuth,
 			"/channels": routes.SetupChannel,
 			"/users":    routes.SetupUser,
 		},
 	)
+
+	app.Use("/ws", func(c *fiber.Ctx) error {
+		if websocket.IsWebSocketUpgrade(c) {
+			return c.Next()
+		}
+		return fiber.ErrUpgradeRequired
+	})
+
+	// مسیر WebSocket
+	app.Get("/ws/:userID", websocket.New(notifier.HandleWebSocket))
 
 	app.Get("/", handlers.Welcome)
 	app.Get("/room/create", handlers.RoomCreate)
