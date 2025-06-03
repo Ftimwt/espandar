@@ -1,6 +1,8 @@
-import axios from 'axios';
-import { prefixUrl } from './api.ts';
+import { type AxiosResponse } from 'axios';
+import { apiClient } from './api.ts';
 
-export const Login = (req: LoginRequest) => {
-  return axios.post<LoginResponse, LoginRequest>(prefixUrl(`/auth/login`), req);
+export const LoginRequest = async (req: LoginRequest) => {
+  return apiClient.post<LoginResponse, AxiosResponse<LoginResponse>, LoginRequest>('/auth/login', {
+    ...req,
+  });
 };

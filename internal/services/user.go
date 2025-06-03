@@ -139,7 +139,7 @@ func (u User) SendMessage(userID uint, targetID uint, req dto.Message) (*models.
 	}
 	dataB, err := json.Marshal(data)
 	if err == nil {
-		u.notifier.Send(targetID, string(dataB))
+		u.notifier.Send(targetID, dataB)
 	}
 	return message, u.repo.SendMessage(userID, targetID, message)
 }

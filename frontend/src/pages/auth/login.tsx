@@ -1,13 +1,29 @@
 import { Button, Form, Input, Typography } from 'antd';
 import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import Page from '../page.tsx';
+import { useMutation } from '@tanstack/react-query';
+import { LoginRequest } from '../../api/auth.ts';
 
 const { Title, Link } = Typography;
 
 const LoginAuthPage = () => {
+  const loginReq = useMutation({
+    mutationFn: LoginRequest,
+    onSuccess: (data) => {
+      localStorage.setItem('token', data.data.token);
+      console.log(data);
+    },
+    onError: (error) => {
+      console.log(error);
+    },
+  });
+
   const onFinish = (values: any) => {
     console.log('Login data:', values);
-    // handle login logic here
+    loginReq.mutate({
+      username: values.username,
+      password: values.password,
+    });
   };
 
   return (
@@ -37,11 +53,7 @@ const LoginAuthPage = () => {
               name="username"
               rules={[{ required: true, message: 'Please enter your username!' }]}
             >
-              <Input
-                prefix={<UserOutlined />}
-                placeholder="Username"
-                size="large"
-              />
+              <Input prefix={<UserOutlined />} placeholder="Username" size="large" />
             </Form.Item>
 
             <Form.Item
@@ -49,11 +61,7 @@ const LoginAuthPage = () => {
               name="password"
               rules={[{ required: true, message: 'Please enter your password!' }]}
             >
-              <Input.Password
-                prefix={<LockOutlined />}
-                placeholder="Password"
-                size="large"
-              />
+              <Input.Password prefix={<LockOutlined />} placeholder="Password" size="large" />
             </Form.Item>
 
             <div className="flex justify-end text-sm">

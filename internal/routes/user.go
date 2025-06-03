@@ -12,7 +12,7 @@ func SetupUser(routes fiber.Router, option Option) {
 	userRepo := repositories.NewUser(option.db)
 	userService := services.NewUser(userRepo, option.jwt, option.notifier)
 
-	handler := handlers.NewUser(option.userService)
+	handler := handlers.NewUser(option.userService, option.channelService)
 
 	protected := routes.Use(middlewares.IsAuthenticated(userService, option.jwt))
 	protected.Post("/:targetID/send", handler.SendMessage)

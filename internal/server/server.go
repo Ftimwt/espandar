@@ -2,23 +2,22 @@ package server
 
 import (
 	"flag"
+	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/swagger"
+	"github.com/gofiber/websocket/v2"
 	"log"
 	"os"
 	"time"
+	"v/internal/handlers"
 	"v/internal/routes"
 	"v/pkg/config"
 	"v/pkg/providers"
 
-	"v/internal/handlers"
 	w "v/pkg/webrtc"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/template/html"
-	"github.com/gofiber/websocket/v2"
-
-	"github.com/gofiber/swagger"
 	_ "v/docs"
 )
 
@@ -50,9 +49,27 @@ func Run() error {
 	notifier := providers.NewNotifier()
 
 	engine := html.New("./views", ".html")
-	app := fiber.New(fiber.Config{Views: engine})
+	app := fiber.New(fiber.Config{Views: engine, ErrorHandler: func(c *fiber.Ctx, err error) error {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}})
 	app.Use(logger.New())
 	app.Use(cors.New())
+
+	app.Use(func(c *fiber.Ctx) error {
+		if re := recover(); re != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": re,
+			})
+		}
+		return c.Next()
+	})
+
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "http://localhost:5173",
+		AllowHeaders: "Origin, Content-Type, Accept",
+	}))
 
 	routes.SetupRoutes(app, db, jwt, notifier,
 		map[string]func(routes fiber.Router, option routes.Option){
