@@ -8,12 +8,14 @@ import (
 )
 
 type User struct {
-	service *services.User
+	service        *services.User
+	channelService *services.Channel
 }
 
-func NewUser(service *services.User) *User {
+func NewUser(service *services.User, channelService *services.Channel) *User {
 	return &User{
-		service: service,
+		service:        service,
+		channelService: channelService,
 	}
 }
 

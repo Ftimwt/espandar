@@ -70,9 +70,33 @@ func (c Channel) GetUserChannels(userID uint) ([]models.Channel, error) {
 	return channels, nil
 }
 
-func (c Channel) SendMessage(id uint, user uint, message *models.Message) (*models.Message, error) {
-	return message, c.db.
-		Model(&models.Channel{ID: id}).
+// SendMessage sends message
+func (c Channel) SendMessage(senderID, channelID uint, message string, files []models.File) (*models.Message, error) {
+	channel := &models.Channel{
+		ID: channelID,
+	}
+
+	msg := &models.Message{
+		Text:     message,
+		Files:    files,
+		SenderID: senderID,
+	}
+
+	err := c.db.
+		Model(&channel).
 		Association("Messages").
-		Append(message)
+		Append(msg)
+
+	return msg, err
+}
+
+func (c Channel) GetUsersInChannelByID(channelID uint) ([]models.User, error) {
+	var users []models.User
+	if err := c.db.
+		Joins("JOIN channel_users ON channel_users.user_id = users.id").
+		Where("channel_users.channel_id = ?", channelID).
+		Find(&users).Error; err != nil {
+		return nil, err
+	}
+	return users, nil
 }
