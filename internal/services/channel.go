@@ -2,9 +2,11 @@ package services
 
 import (
 	"errors"
+	"github.com/gofiber/fiber/v2/log"
 	"v/internal/dto"
 	"v/internal/repositories"
 	"v/pkg/models"
+	"v/pkg/providers"
 )
 
 var (
@@ -12,7 +14,8 @@ var (
 )
 
 type Channel struct {
-	repo *repositories.Channel
+	repo     *repositories.Channel
+	notifier *providers.Notifier
 }
 
 func NewChannel(repo *repositories.Channel) *Channel {
@@ -40,11 +43,6 @@ func (c Channel) FindChannelByID(id uint) (*models.Channel, error) {
 // SendMessage sends a message to a channel.
 // It returns an error if any occurs during the operation.
 func (c Channel) SendMessage(userID, channelID uint, messageDTO *dto.Message) (*models.Message, error) {
-	var message = &models.Message{
-		Text:     messageDTO.Text,
-		Files:    nil,
-		SenderID: userID,
-	}
 	channel, err := c.FindChannelByID(channelID)
 	if err != nil {
 		return nil, err
@@ -53,5 +51,20 @@ func (c Channel) SendMessage(userID, channelID uint, messageDTO *dto.Message) (*
 		return nil, ErrChannelNotFound
 	}
 
-	return c.repo.SendMessage(userID, channelID, message)
+	users, err := c.repo.GetUsersInChannelByID(channelID)
+	if err != nil {
+		return nil, err
+	}
+	message, err := c.repo.SendMessage(userID, channelID, messageDTO.Text, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, user := range users {
+		if err := c.notifier.Notification(user.ID, "message", message); err != nil {
+			log.Errorf("error sending notification: %s", err)
+		}
+	}
+
+	return message, nil
 }
