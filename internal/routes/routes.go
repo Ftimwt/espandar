@@ -13,6 +13,8 @@ type Option struct {
 	userService    *services.User
 	channelRepo    *repositories.Channel
 	channelService *services.Channel
+	chatRepo       repositories.ChatI
+	chatService    services.ChatI
 	jwt            *providers.Jwt
 	db             *gorm.DB
 	notifier       *providers.Notifier
@@ -21,11 +23,14 @@ type Option struct {
 func SetupRoutes(routes fiber.Router, db *gorm.DB, jwt *providers.Jwt, notifier *providers.Notifier, callback map[string]func(routes fiber.Router, option Option)) {
 	userRepo := repositories.NewUser(db)
 	channelRepo := repositories.NewChannel(db)
+	chatRepo := repositories.NewChat(db)
 	option := Option{
 		userRepo:       userRepo,
 		userService:    services.NewUser(userRepo, jwt, notifier),
 		channelRepo:    channelRepo,
 		channelService: services.NewChannel(channelRepo),
+		chatRepo:       chatRepo,
+		chatService:    services.NewChat(chatRepo),
 		jwt:            jwt,
 		db:             db,
 		notifier:       notifier,

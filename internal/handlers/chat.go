@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"v/internal/services"
 	"v/pkg/chat"
+	"v/pkg/http/response"
 	w "v/pkg/webrtc"
 
 	"github.com/gofiber/fiber/v2"
@@ -48,4 +50,30 @@ func StreamChatWebsocket(c *websocket.Conn) {
 		return
 	}
 	w.RoomsLock.Unlock()
+}
+
+type Chat struct {
+	service services.ChatI
+}
+
+func NewChat(service services.ChatI) *Chat {
+	return &Chat{
+		service: service,
+	}
+}
+
+func (chat Chat) LatestChats(c *fiber.Ctx) error {
+	limit := c.QueryInt("limit")
+	offset := c.QueryInt("offset")
+
+	chats, err := chat.service.LatestChats(services.LatestChatsOption{
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		c.Status(fiber.StatusInternalServerError)
+		return nil
+	}
+
+	return response.WithField("chats", chats).WithStatus(fiber.StatusOK).Send(c)
 }

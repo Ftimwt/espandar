@@ -130,3 +130,21 @@ func (u User) GetMessages(userID, targetUser uint, limit, skip int) ([]models.Me
 
 	return messages, err
 }
+
+type UsersListOption struct {
+	Limit  int
+	Offset int
+	Order  string
+	Query  string
+}
+
+// GetUsersList lists users from database
+func (u User) GetUsersList(option UsersListOption) ([]models.User, error) {
+	var users []models.User
+	err := u.db.
+		Where("").
+		Limit(option.Limit).
+		Find(&users).Error
+
+	return users, err
+}

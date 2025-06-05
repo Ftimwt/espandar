@@ -76,6 +76,7 @@ func Run() error {
 			"/auth":     routes.SetupAuth,
 			"/channels": routes.SetupChannel,
 			"/users":    routes.SetupUser,
+			"/chats":    routes.SetupChat,
 		},
 	)
 
