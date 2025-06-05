@@ -1,20 +1,25 @@
-import { Button, Form, Input, Typography } from 'antd';
-import { LockOutlined, UserOutlined } from '@ant-design/icons';
+import {Button, Form, Input, notification, Typography} from 'antd';
+import {LockOutlined, UserOutlined} from '@ant-design/icons';
 import Page from '../page.tsx';
-import { useMutation } from '@tanstack/react-query';
-import { LoginRequest } from '../../api/auth.ts';
+import {useMutation} from '@tanstack/react-query';
+import {LoginRequest} from '../../api/auth.ts';
+import {useSetToken} from "../../utils/token.tsx";
 
-const { Title, Link } = Typography;
+const {Title, Link} = Typography;
 
 const LoginAuthPage = () => {
+  const [api, contextHolder] = notification.useNotification();
+  const setToken = useSetToken();
+
   const loginReq = useMutation({
     mutationFn: LoginRequest,
-    onSuccess: (data) => {
-      localStorage.setItem('token', data.data.token);
-      console.log(data);
+    onSuccess: (res) => {
+      setToken(res.data.token);
+      api.success({message: 'خوش آمدید'});
     },
     onError: (error) => {
       console.log(error);
+      api.error({message: error.message});
     },
   });
 
@@ -28,6 +33,7 @@ const LoginAuthPage = () => {
 
   return (
     <Page title="Login">
+      {contextHolder}
       <div className="flex min-h-screen flex-col justify-center px-6 py-12 bg-gray-50">
         <div className="sm:mx-auto sm:w-full sm:max-w-sm text-center">
           <img
@@ -51,17 +57,17 @@ const LoginAuthPage = () => {
             <Form.Item
               label="Username"
               name="username"
-              rules={[{ required: true, message: 'Please enter your username!' }]}
+              rules={[{required: true, message: 'Please enter your username!'}]}
             >
-              <Input prefix={<UserOutlined />} placeholder="Username" size="large" />
+              <Input prefix={<UserOutlined/>} placeholder="Username" size="large"/>
             </Form.Item>
 
             <Form.Item
               label="Password"
               name="password"
-              rules={[{ required: true, message: 'Please enter your password!' }]}
+              rules={[{required: true, message: 'Please enter your password!'}]}
             >
-              <Input.Password prefix={<LockOutlined />} placeholder="Password" size="large" />
+              <Input.Password prefix={<LockOutlined/>} placeholder="Password" size="large"/>
             </Form.Item>
 
             <div className="flex justify-end text-sm">
