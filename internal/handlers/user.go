@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"v/internal/dto"
 	"v/internal/services"
+	"v/pkg/http/response"
 )
 
 type User struct {
@@ -58,4 +59,22 @@ func (u User) GetMessages(c *fiber.Ctx) error {
 		"status":   true,
 		"messages": messages,
 	})
+}
+
+func (u User) GetUsersList(c *fiber.Ctx) error {
+	limit := c.QueryInt("limit", 20)
+	offset := c.QueryInt("offset", 0)
+	query := c.Query("q")
+	user := getUser(c)
+	users, err := u.service.GetUsersList(services.UsersListOption{
+		Limit:       limit,
+		Offset:      offset,
+		Query:       query,
+		CurrentUser: user.ID,
+	})
+	if err != nil {
+		return err
+	}
+
+	return response.WithField("users", users).SendWithStatus(c, fiber.StatusOK)
 }

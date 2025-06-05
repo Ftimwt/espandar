@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"errors"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/bcrypt"
 	"v/internal/dto"
 	"v/internal/repositories"
@@ -139,11 +140,34 @@ func (u User) SendMessage(userID uint, targetID uint, req dto.Message) (*models.
 	}
 	dataB, err := json.Marshal(data)
 	if err == nil {
-		u.notifier.Send(targetID, dataB)
+		if err := u.notifier.Send(targetID, dataB); err != nil {
+			log.WithError(err).Warn("error during send notification")
+		}
 	}
 	return message, u.repo.SendMessage(userID, targetID, message)
 }
 
 func (u User) GetMessages(userID uint, targetID uint, limit int, skip int) ([]models.Message, error) {
 	return u.repo.GetMessages(userID, targetID, limit, skip)
+}
+
+type UsersListOption struct {
+	Limit       int
+	Offset      int
+	Query       string
+	CurrentUser uint
+}
+
+func (u User) GetUsersList(option UsersListOption) ([]models.User, error) {
+	users, err := u.repo.GetUsersList(repositories.UsersListOption{
+		Limit:       option.Limit,
+		Offset:      option.Offset,
+		Order:       "lastname ASC",
+		Query:       option.Query,
+		CurrentUser: option.CurrentUser,
+	})
+	if err != nil {
+		log.WithError(err).Error("error during retrieve users")
+	}
+	return users, err
 }

@@ -132,19 +132,25 @@ func (u User) GetMessages(userID, targetUser uint, limit, skip int) ([]models.Me
 }
 
 type UsersListOption struct {
-	Limit  int
-	Offset int
-	Order  string
-	Query  string
+	Limit       int
+	Offset      int
+	Order       string
+	Query       string
+	CurrentUser uint
 }
 
 // GetUsersList lists users from database
 func (u User) GetUsersList(option UsersListOption) ([]models.User, error) {
 	var users []models.User
-	err := u.db.
-		Where("").
-		Limit(option.Limit).
-		Find(&users).Error
+	tx := u.db.
+		Limit(option.Limit).Offset(option.Offset)
 
-	return users, err
+	if option.CurrentUser != 0 {
+		tx.Where("id != ?", option.CurrentUser)
+	}
+	if option.Query != "" {
+		tx.Where("concat(username, firstname, lastname) like \"%$1%\"", option.Query)
+	}
+
+	return users, tx.Find(&users).Error
 }
