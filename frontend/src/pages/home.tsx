@@ -1,10 +1,10 @@
 import Page from './page.tsx';
-import { Typography } from 'antd';
+import ChatWindow from "../components/ChatWindow/ChatWindow.tsx";
 
 const HomePage = () => {
   return (
     <Page title="Home">
-      <Typography.Text>Home page</Typography.Text>
+      <ChatWindow/>
     </Page>
   );
 };

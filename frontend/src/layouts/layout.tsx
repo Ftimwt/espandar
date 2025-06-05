@@ -6,13 +6,13 @@ const BaseLayout = () => {
 
   return (
     <Layout>
-      <Layout.Header></Layout.Header>
+      {/*<Layout.Header></Layout.Header>*/}
       <Layout.Content>
         <Outlet />
       </Layout.Content>
-      <Layout.Footer>
+      {/*<Layout.Footer>*/}
 
-      </Layout.Footer>
+      {/*</Layout.Footer>*/}
     </Layout>
   );
 };
