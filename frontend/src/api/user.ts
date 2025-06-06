@@ -18,6 +18,13 @@ export const getUserMessages = (token: string, userID: number) => {
   >(`/users/${userID}/messages`, {});
 };
 
+export const getUserByID = (token: string, userID: number) => {
+  return authClient(token).get<UserResponse, AxiosResponse<UserResponse>, void>(
+    `/users/${userID}`,
+    {},
+  );
+};
+
 export const getUserListAPI = (token: string, req: UsersListRequest) => {
   return authClient(token).get<
     UsersListResponse,
@@ -50,5 +57,14 @@ export const useGetUserMessages = (userID: number) => {
   return useQuery({
     queryKey: ['userMessages', userID],
     queryFn: () => getUserMessages(token!, userID),
+  });
+};
+
+export const useGetUserByID = (userID: number) => {
+  const { token } = useTokenStore();
+
+  return useQuery({
+    queryKey: ['user', userID],
+    queryFn: () => getUserByID(token!, userID),
   });
 };

@@ -21,3 +21,7 @@ interface UsersListResponse {
   users: UserModel[];
   total: number;
 }
+
+interface UserResponse {
+  user: UserModel;
+}

@@ -78,3 +78,15 @@ func (u User) GetUsersList(c *fiber.Ctx) error {
 
 	return response.WithField("users", users).SendWithStatus(c, fiber.StatusOK)
 }
+
+func (u User) GetUserByID(c *fiber.Ctx) error {
+	userId, err := c.ParamsInt("id")
+	if err != nil {
+		return err
+	}
+	users, err := u.service.FindUserByID(uint(userId))
+	if err != nil {
+		return err
+	}
+	return response.WithField("user", users).SendWithStatus(c, fiber.StatusOK)
+}

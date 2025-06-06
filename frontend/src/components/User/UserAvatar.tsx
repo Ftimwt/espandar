@@ -12,7 +12,11 @@ const UserAvatar = (props: Props) => {
     [props.user],
   );
 
-  return <Avatar src={props.user?.avatar}>{firstLetter}</Avatar>;
+  return (
+    <Avatar src={props.user?.avatar} {...props}>
+      {firstLetter}
+    </Avatar>
+  );
 };
 
 export default UserAvatar;
