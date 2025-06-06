@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"gorm.io/gorm"
+	"time"
 	"v/pkg/models"
 )
 
@@ -89,11 +90,13 @@ func (u User) SendMessage(userID, targetUser uint, message *models.Message) erro
 
 	if channel.ID == 0 {
 		channel = &models.Channel{
-			Type: models.ChannelTypePrivateChat,
+			CreatorID: userID,
 			Members: []models.User{
 				{ID: userID},
 				{ID: targetUser},
 			},
+			Type:            models.ChannelTypePrivateChat,
+			LastMessageTime: time.Now(),
 		}
 		if err := u.db.Create(channel).Error; err != nil {
 			return err
@@ -150,6 +153,9 @@ func (u User) GetUsersList(option UsersListOption) ([]models.User, error) {
 	}
 	if option.Query != "" {
 		tx.Where("concat(username, firstname, lastname) like \"%$1%\"", option.Query)
+	}
+	if option.Order != "" {
+		tx.Order(option.Order)
 	}
 
 	return users, tx.Find(&users).Error

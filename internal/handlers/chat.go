@@ -63,10 +63,10 @@ func NewChat(service services.ChatI) *Chat {
 }
 
 func (chat Chat) LatestChats(c *fiber.Ctx) error {
-	limit := c.QueryInt("limit")
-	offset := c.QueryInt("offset")
-
-	chats, err := chat.service.LatestChats(services.LatestChatsOption{
+	limit := c.QueryInt("limit", 20)
+	offset := c.QueryInt("offset", 0)
+	user := getUser(c)
+	chats, err := chat.service.LatestChats(user.ID, services.LatestChatsOption{
 		Limit:  limit,
 		Offset: offset,
 	})

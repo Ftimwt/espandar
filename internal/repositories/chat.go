@@ -6,7 +6,7 @@ import (
 )
 
 type ChatI interface {
-	LatestChats(option LatestChatsOption) ([]models.Channel, error)
+	LatestChats(userID uint, option LatestChatsOption) ([]models.Channel, error)
 }
 
 type Chat struct {
@@ -26,13 +26,16 @@ type LatestChatsOption struct {
 
 // LatestChats retrieves the latest chat channels from the database based on the provided options.
 // It supports pagination via Limit and Offset, and sorts the results by the last message time in descending order.
-func (c Chat) LatestChats(option LatestChatsOption) ([]models.Channel, error) {
+func (c Chat) LatestChats(userID uint, option LatestChatsOption) ([]models.Channel, error) {
 	var channels []models.Channel
 
 	// Query the database for channels with pagination and ordering
 	err := c.db.
 		Limit(option.Limit).
 		Offset(option.Offset).
+		Preload("Members", "id != ?", userID).
+		Joins("INNER JOIN channel_users ON channels.id = channel_users.channel_id").
+		Where("channel_users.user_id = ?", userID).
 		Order("last_message_time desc").
 		Find(&channels).Error
 
