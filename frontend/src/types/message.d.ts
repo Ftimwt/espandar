@@ -14,3 +14,11 @@ interface UserMessagesRequest {
   offset?: number;
   query?: string;
 }
+
+interface SendMessageRequest {
+  text: string;
+}
+
+interface SendMessageResponse {
+  message: string;
+}

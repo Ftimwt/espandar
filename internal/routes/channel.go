@@ -10,7 +10,7 @@ import (
 
 func SetupChannel(routes fiber.Router, option Option) {
 	userRepo := repositories.NewUser(option.db)
-	userService := services.NewUser(userRepo, option.jwt, option.notifier)
+	userService := services.NewUser(userRepo, option.jwt, option.notifier, nil)
 
 	handler := handlers.NewChannel(option.channelService)
 

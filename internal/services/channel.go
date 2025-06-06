@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"fmt"
 	"github.com/gofiber/fiber/v2/log"
 	"v/internal/dto"
 	"v/internal/repositories"
@@ -18,9 +19,10 @@ type Channel struct {
 	notifier *providers.Notifier
 }
 
-func NewChannel(repo *repositories.Channel) *Channel {
+func NewChannel(repo *repositories.Channel, notifier *providers.Notifier) *Channel {
 	return &Channel{
-		repo: repo,
+		repo:     repo,
+		notifier: notifier,
 	}
 }
 
@@ -60,11 +62,27 @@ func (c Channel) SendMessage(userID, channelID uint, messageDTO *dto.Message) (*
 		return nil, err
 	}
 
+	receiverType := "channels"
+	if channel.Type == models.ChannelTypePrivateChat {
+		receiverType = "users"
+	} else if channel.Type == models.ChannelTypeGroupChat {
+		receiverType = "groups"
+	}
+
+	notifData := map[string]any{
+		"message": "You have a new message",
+		"link":    fmt.Sprintf("chat/%s/%d", receiverType, userID),
+	}
+
 	for _, user := range users {
-		if err := c.notifier.Notification(user.ID, "message", message); err != nil {
+		if err := c.notifier.Notification(user.ID, "message", notifData); err != nil {
 			log.Errorf("error sending notification: %s", err)
 		}
 	}
 
 	return message, nil
+}
+
+func (c Channel) GetMessages(channelID uint, limit int, skip int) ([]models.Message, error) {
+	return c.repo.GetMessages(channelID, limit, skip)
 }

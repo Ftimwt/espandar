@@ -39,6 +39,7 @@ export const useGetUserInfo = () => {
   return useQuery({
     queryKey: ['user'],
     queryFn: () => getUserInfo(token!),
+    retry: false,
   });
 };
 
@@ -55,7 +56,7 @@ export const useGetUserMessages = (userID: number) => {
   const { token } = useTokenStore();
 
   return useQuery({
-    queryKey: ['userMessages', userID],
+    queryKey: ['messages', 'user_messages', userID],
     queryFn: () => getUserMessages(token!, userID),
   });
 };

@@ -1,7 +1,6 @@
 package services
 
 import (
-	"encoding/json"
 	"errors"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/bcrypt"
@@ -20,13 +19,15 @@ type User struct {
 	repo     *repositories.User
 	jwt      *providers.Jwt
 	notifier *providers.Notifier
+	channel  *Channel
 }
 
-func NewUser(repo *repositories.User, jwt *providers.Jwt, notifier *providers.Notifier) *User {
+func NewUser(repo *repositories.User, jwt *providers.Jwt, notifier *providers.Notifier, service *Channel) *User {
 	return &User{
 		repo:     repo,
 		jwt:      jwt,
 		notifier: notifier,
+		channel:  service,
 	}
 }
 
@@ -129,26 +130,21 @@ func (u User) FindUserByID(id uint) (*models.User, error) {
 }
 
 func (u User) SendMessage(userID uint, targetID uint, req dto.Message) (*models.Message, error) {
-	message := &models.Message{
-		Text:     req.Text,
-		Files:    nil,
-		SenderID: userID,
+	channel, err := u.repo.GetPrivateChatChannel(userID, targetID)
+	if err != nil {
+		return nil, err
 	}
-	data := map[string]any{
-		"message":     message,
-		"receiver_id": targetID,
-	}
-	dataB, err := json.Marshal(data)
-	if err == nil {
-		if err := u.notifier.Send(targetID, dataB); err != nil {
-			log.WithError(err).Warn("error during send notification")
-		}
-	}
-	return message, u.repo.SendMessage(userID, targetID, message)
+
+	return u.channel.SendMessage(userID, channel.ID, &req)
 }
 
 func (u User) GetMessages(userID uint, targetID uint, limit int, skip int) ([]models.Message, error) {
-	return u.repo.GetMessages(userID, targetID, limit, skip)
+	channel, err := u.repo.GetPrivateChatChannel(userID, targetID)
+	if err != nil {
+		return nil, err
+	}
+
+	return u.channel.GetMessages(channel.ID, limit, skip)
 }
 
 type UsersListOption struct {

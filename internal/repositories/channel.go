@@ -90,6 +90,22 @@ func (c Channel) SendMessage(senderID, channelID uint, message string, files []m
 	return msg, err
 }
 
+// GetMessages returns messages
+func (u Channel) GetMessages(channelID uint, limit, skip int) ([]models.Message, error) {
+	var messages []models.Message
+	err := u.db.
+		Joins("JOIN channel_chat_messages ccm ON ccm.message_id = messages.id").
+		Where("ccm.channel_id = ?", channelID).
+		Order("messages.id DESC").
+		Preload("Sender").
+		Limit(limit).
+		Offset(skip).
+		Preload("Files"). // optional: if you want to include file data
+		Find(&messages).Error
+
+	return messages, err
+}
+
 func (c Channel) GetUsersInChannelByID(channelID uint) ([]models.User, error) {
 	var users []models.User
 	if err := c.db.
