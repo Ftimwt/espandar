@@ -24,10 +24,11 @@ func NewChannel(db *gorm.DB) *Channel {
 }
 
 func (c Channel) CreateByUserID(userID uint, name string, membersID []uint) (*models.Channel, error) {
-	members := make([]models.User, len(membersID))
+	members := make([]models.User, len(membersID)+1)
 
+	members[0] = models.User{ID: userID}
 	for i, id := range membersID {
-		members[i] = models.User{
+		members[i+1] = models.User{
 			ID: id,
 		}
 	}
@@ -88,6 +89,22 @@ func (c Channel) SendMessage(senderID, channelID uint, message string, files []m
 		Append(msg)
 
 	return msg, err
+}
+
+func (c Channel) SendAlert(channelID uint, message string) (*models.Message, error) {
+	channel := &models.Channel{
+		ID: channelID,
+	}
+
+	msg := &models.Message{
+		Text: message,
+		Type: models.AlertMessageType,
+	}
+
+	return msg, c.db.
+		Model(&channel).
+		Association("Messages").
+		Append(msg)
 }
 
 // GetMessages returns messages

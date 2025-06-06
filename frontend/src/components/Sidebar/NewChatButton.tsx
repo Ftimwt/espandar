@@ -1,12 +1,24 @@
 import React, { useState } from 'react';
-import { Button, List, Modal } from 'antd';
-import { MessageOutlined } from '@ant-design/icons';
+import { Button, Divider, List, Modal, Space } from 'antd';
+import { MessageOutlined, NotificationOutlined, TeamOutlined } from '@ant-design/icons';
 import { useGetUsersList } from '../../api/user.ts';
 import { getFullname } from '../../utils/user.ts';
 import UserAvatar from '../User/UserAvatar.tsx';
 import { useNavigate } from 'react-router';
+import CreateChatModal from './CreateChatModal.tsx';
+import { useCreateChannel } from '../../api/channels.ts';
 
 const NewChatButton: React.FC = () => {
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [groupType, setGroupType] = useState<'group' | 'channel' | null>(null);
+  const createChannel = useCreateChannel();
+
+  const handleCreateClick = (type: 'group' | 'channel') => {
+    setGroupType(type);
+    setOpen(false);
+    setCreateModalOpen(true);
+  };
+
   const [open, setOpen] = useState(false);
   const { data } = useGetUsersList();
   const navigate = useNavigate();
@@ -15,6 +27,21 @@ const NewChatButton: React.FC = () => {
     console.log('شروع چت با:', id);
     navigate(`/chat/${id}`);
     setOpen(false);
+  };
+
+  const handleCreateChat = (data: {
+    type: 'group' | 'channel';
+    name: string;
+    description?: string;
+    members: number[];
+  }) => {
+    console.log('Creating group/channel:', data);
+    if (data.type === 'channel') {
+      createChannel.mutate({
+        name: data.name,
+        members: data.members,
+      });
+    }
   };
 
   return (
@@ -29,6 +56,18 @@ const NewChatButton: React.FC = () => {
       />
 
       <Modal title="Create a new chat" open={open} onCancel={() => setOpen(false)} footer={null}>
+        {/* Action Buttons on Top */}
+        <Space className="mb-4">
+          <Button icon={<TeamOutlined />} onClick={() => handleCreateClick('group')}>
+            Create Group
+          </Button>
+          <Button icon={<NotificationOutlined />} onClick={() => handleCreateClick('channel')}>
+            Create Channel
+          </Button>
+        </Space>
+
+        <Divider className="my-2" />
+
         <List
           itemLayout="horizontal"
           dataSource={data?.data.users}
@@ -42,6 +81,16 @@ const NewChatButton: React.FC = () => {
           )}
         />
       </Modal>
+
+      <CreateChatModal
+        open={createModalOpen}
+        onClose={() => {
+          setCreateModalOpen(false);
+          setGroupType(null);
+        }}
+        onCreate={handleCreateChat}
+        type={groupType}
+      />
     </>
   );
 };

@@ -27,7 +27,16 @@ func NewChannel(repo *repositories.Channel, notifier *providers.Notifier) *Chann
 }
 
 func (c Channel) Create(userID uint, create dto.ChannelCreate) (*models.Channel, error) {
-	return c.repo.CreateByUserID(userID, create.Name, create.Members)
+	channel, err := c.repo.CreateByUserID(userID, create.Name, create.Members)
+	if err != nil {
+		return nil, err
+	}
+	_, err = c.repo.SendAlert(channel.ID, fmt.Sprintf("New channel created by %s", create.Name))
+	if err != nil {
+		log.Error(err)
+	}
+
+	return channel, nil
 }
 
 // GetUserChannels List retrieves all channels from the repository.
