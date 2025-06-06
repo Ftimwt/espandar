@@ -27,11 +27,11 @@ export const useGetUserInfo = () => {
   });
 };
 
-export const useGetUsersList = (req: UsersListRequest) => {
+export const useGetUsersList = (req?: UsersListRequest) => {
   const { token } = useTokenStore();
 
   return useQuery({
     queryKey: ['users', req],
-    queryFn: () => getUserListAPI(token!, req),
+    queryFn: () => getUserListAPI(token!, req || {}),
   });
 };

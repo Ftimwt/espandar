@@ -17,7 +17,8 @@ function App() {
           </Route>
           <Route path="/" element={<AuthLayout />}>
             <Route path="/" element={<ChatLayout />}>
-              <Route index element={<HomePage />} />
+              <Route index element={<div></div>} />
+              <Route path="/chat/:uuid" element={<HomePage />} />
             </Route>
           </Route>
         </Routes>

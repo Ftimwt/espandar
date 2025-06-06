@@ -12,9 +12,9 @@ interface UserInfoResponse {
 }
 
 interface UsersListRequest {
-  limit: number;
-  offset: number;
-  query: string;
+  limit?: number;
+  offset?: number;
+  query?: string;
 }
 
 interface UsersListResponse {
