@@ -1,10 +1,13 @@
 package models
 
+import "gorm.io/gorm"
+
 type Message struct {
-	ID       uint   `json:"id" gorm:"primaryKey"`
+	gorm.Model
 	Text     string `json:"text"`
 	Files    []File `json:"files,omitempty" gorm:"many2many:message_files;"`
-	SenderID uint   `json:"sender_id"`
+	SenderID uint   `json:"-"`
+	Sender   User   `json:"sender,omitempty" gorm:"foreignKey:SenderID"`
 }
 
 type File struct {

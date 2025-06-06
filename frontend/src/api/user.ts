@@ -10,6 +10,14 @@ export const getUserInfo = (token: string) => {
   );
 };
 
+export const getUserMessages = (token: string, userID: number) => {
+  return authClient(token).get<
+    MessageResponse,
+    AxiosResponse<MessageResponse>,
+    UserMessagesRequest
+  >(`/users/${userID}/messages`, {});
+};
+
 export const getUserListAPI = (token: string, req: UsersListRequest) => {
   return authClient(token).get<
     UsersListResponse,
@@ -33,5 +41,14 @@ export const useGetUsersList = (req?: UsersListRequest) => {
   return useQuery({
     queryKey: ['users', req],
     queryFn: () => getUserListAPI(token!, req || {}),
+  });
+};
+
+export const useGetUserMessages = (userID: number) => {
+  const { token } = useTokenStore();
+
+  return useQuery({
+    queryKey: ['userMessages', userID],
+    queryFn: () => getUserMessages(token!, userID),
   });
 };

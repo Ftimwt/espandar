@@ -1,7 +1,8 @@
+import type { AvatarProps } from 'antd';
 import { Avatar } from 'antd';
 import { useMemo } from 'react';
 
-interface Props {
+interface Props extends AvatarProps {
   user?: UserModel;
 }
 

@@ -72,13 +72,23 @@ func (u User) GetUsers() ([]models.User, error) {
 // GetPrivateChatChannel returns private chat channel
 func (u User) GetPrivateChatChannel(user1ID uint, user2ID uint) (*models.Channel, error) {
 	var channel models.Channel
-	tx := u.db.
-		Joins("INNER JOIN channel_users ON channels.id = channel_users.channel_id").
-		Where("channels.type = ?", models.ChannelTypePrivateChat).
-		Where("channel_users.user_id = ?", user1ID).
-		Where("channel_users.user_id = ?", user2ID).
-		Find(&channel)
-	return &channel, tx.Error
+
+	return &channel, u.db.Raw(`
+  SELECT c.*
+  FROM channels c
+  JOIN channel_users cu ON cu.channel_id = c.id
+  WHERE cu.user_id IN (?, ?)
+  GROUP BY c.id
+  HAVING COUNT(DISTINCT cu.user_id) = 2
+`, user1ID, user2ID).Find(&channel).Error
+	//
+	//tx := u.db.
+	//	Joins("INNER JOIN channel_users ON channels.id = channel_users.channel_id").
+	//	Where("channels.type = ?", models.ChannelTypePrivateChat).
+	//	Where("channel_users.user_id = ?", user1ID).
+	//	Where("channel_users.user_id = ?", user2ID).
+	//	Find(&channel)
+	//return &channel, tx.Error
 }
 
 // SendMessage sends message
@@ -126,6 +136,7 @@ func (u User) GetMessages(userID, targetUser uint, limit, skip int) ([]models.Me
 		Joins("JOIN channel_chat_messages ccm ON ccm.message_id = messages.id").
 		Where("ccm.channel_id = ?", channel.ID).
 		Order("messages.id DESC").
+		Preload("Sender").
 		Limit(limit).
 		Offset(skip).
 		Preload("Files"). // optional: if you want to include file data
