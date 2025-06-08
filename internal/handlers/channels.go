@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"v/internal/dto"
 	"v/internal/services"
+	"v/pkg/http/response"
 )
 
 type Channel struct {
@@ -64,4 +65,22 @@ func (h *Channel) SendMessage(ctx *fiber.Ctx) error {
 		return err
 	}
 	return ctx.Status(http.StatusOK).JSON(message)
+}
+
+func (h *Channel) GetMessages(ctx *fiber.Ctx) error {
+	user := getUser(ctx)
+	channelID, err := ctx.ParamsInt("channelID")
+	if err != nil {
+		return err
+	}
+	limit := ctx.QueryInt("limit", 10)
+	skip := ctx.QueryInt("skip", 0)
+	messages, err := h.service.GetMessages(user.ID, uint(channelID), limit, skip)
+	if err != nil {
+		return err
+	}
+	return response.
+		WithStatus(http.StatusOK).
+		WithField("messages", messages).
+		Send(ctx)
 }

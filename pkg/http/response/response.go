@@ -1,6 +1,8 @@
 package response
 
-import "github.com/gofiber/fiber/v2"
+import (
+	"github.com/gofiber/fiber/v2"
+)
 
 type Builder struct {
 	data   map[string]any
@@ -42,19 +44,22 @@ func (b *Builder) SendWithStatus(c *fiber.Ctx, status int) error {
 func WithStatus(status int) *Builder {
 	return &Builder{
 		status: status,
+		data:   map[string]any{},
 	}
 }
 
 // WithField - add data to response
 func WithField(key string, value any) *Builder {
 	return &Builder{
-		data: map[string]any{key: value},
+		data:   map[string]any{key: value},
+		status: fiber.StatusOK,
 	}
 }
 
 // WithMessage - add a message to response
 func WithMessage(message string) *Builder {
 	return &Builder{
+		status: fiber.StatusOK,
 		data: map[string]any{
 			"message": message,
 		},

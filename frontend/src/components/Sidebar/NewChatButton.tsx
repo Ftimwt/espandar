@@ -5,12 +5,14 @@ import { useGetUsersList } from '../../api/user.ts';
 import { getFullname } from '../../utils/user.ts';
 import UserAvatar from '../User/UserAvatar.tsx';
 import { useNavigate } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import CreateChatModal from './CreateChatModal.tsx';
 import { useCreateChannel } from '../../api/channels.ts';
 
 const NewChatButton: React.FC = () => {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [groupType, setGroupType] = useState<'group' | 'channel' | null>(null);
+  const queryClient = useQueryClient();
   const createChannel = useCreateChannel();
 
   const handleCreateClick = (type: 'group' | 'channel') => {
@@ -37,10 +39,18 @@ const NewChatButton: React.FC = () => {
   }) => {
     console.log('Creating group/channel:', data);
     if (data.type === 'channel') {
-      createChannel.mutate({
-        name: data.name,
-        members: data.members,
-      });
+      createChannel.mutate(
+        {
+          name: data.name,
+          members: data.members,
+        },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['chats'] }).then(() => {});
+            queryClient.invalidateQueries({ queryKey: ['messages'] }).then(() => {});
+          },
+        },
+      );
     }
   };
 

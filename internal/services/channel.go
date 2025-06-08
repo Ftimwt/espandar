@@ -92,6 +92,7 @@ func (c Channel) SendMessage(userID, channelID uint, messageDTO *dto.Message) (*
 	return message, nil
 }
 
-func (c Channel) GetMessages(channelID uint, limit int, skip int) ([]models.Message, error) {
+func (c Channel) GetMessages(userID, channelID uint, limit int, skip int) ([]models.Message, error) {
+	// TODO: check user access
 	return c.repo.GetMessages(channelID, limit, skip)
 }

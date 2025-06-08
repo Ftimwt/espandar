@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"gorm.io/gorm"
+	"time"
 	"v/pkg/models"
 )
 
@@ -34,10 +35,11 @@ func (c Channel) CreateByUserID(userID uint, name string, membersID []uint) (*mo
 	}
 
 	channel := models.Channel{
-		ID:        0,
-		Name:      name,
-		CreatorID: userID,
-		Members:   members,
+		Name:            name,
+		CreatorID:       userID,
+		Members:         members,
+		Type:            models.ChannelTypeChannel,
+		LastMessageTime: time.Now(),
 	}
 
 	if err := c.db.Create(&channel).Error; err != nil {
@@ -88,10 +90,26 @@ func (c Channel) SendMessage(senderID, channelID uint, message string, files []m
 		Association("Messages").
 		Append(msg)
 
-	return msg, err
+	if err != nil {
+		return nil, err
+	}
+	err = c.db.
+		Model(&models.Channel{}).
+		Where("id=?", channel.ID).
+		Update("last_message_time", time.Now()).
+		Error
+	if err != nil {
+		return nil, err
+	}
+
+	return msg, nil
 }
 
 func (c Channel) SendAlert(channelID uint, message string) (*models.Message, error) {
+	db := c.db.Begin()
+	defer func() {
+		db.Commit()
+	}()
 	channel := &models.Channel{
 		ID: channelID,
 	}
@@ -101,10 +119,23 @@ func (c Channel) SendAlert(channelID uint, message string) (*models.Message, err
 		Type: models.AlertMessageType,
 	}
 
-	return msg, c.db.
+	err := c.db.
 		Model(&channel).
 		Association("Messages").
 		Append(msg)
+
+	if err != nil {
+		db.Rollback()
+		return nil, err
+	}
+
+	err = c.db.Update("last_message_time", time.Now()).Error
+	if err != nil {
+		db.Rollback()
+		return nil, err
+	}
+
+	return msg, err
 }
 
 // GetMessages returns messages

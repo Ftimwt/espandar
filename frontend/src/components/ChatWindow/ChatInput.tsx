@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Input, message } from 'antd';
 import { AudioOutlined, SendOutlined, SmileOutlined } from '@ant-design/icons';
-import { useSendMessage } from '../../api/message.ts';
+import { type ChannelRouteType, useSendMessage } from '../../api/message.ts';
 import { useParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -11,9 +11,9 @@ const ChatInput: React.FC = () => {
 
   const queryClient = useQueryClient();
 
-  const { uuid } = useParams();
+  const { uuid, receiverType } = useParams();
 
-  const send = useSendMessage(Number.parseInt(uuid || '0'), 'users');
+  const send = useSendMessage(Number.parseInt(uuid || '0'), receiverType as ChannelRouteType);
 
   const handleSend = () => {
     if (msg.trim()) {
@@ -25,6 +25,7 @@ const ChatInput: React.FC = () => {
         {
           onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['messages'] }).then(() => {});
+            queryClient.invalidateQueries({ queryKey: ['chats'] }).then(() => {});
             setMsg('');
           },
           onError: (error) => {

@@ -14,7 +14,7 @@ export const useGetChatList = () => {
   const { token } = useTokenStore();
 
   return useQuery({
-    queryKey: ['chats'],
+    queryKey: ['chats', 'messages'],
     queryFn: () => getChatListAPI(token!),
   });
 };

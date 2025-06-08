@@ -3,6 +3,7 @@ interface Message {
   sender: UserModel;
   created_at: string;
   updated_at: string;
+  type: 'alert' | 'message';
 }
 
 interface MessageResponse {
@@ -21,4 +22,8 @@ interface SendMessageRequest {
 
 interface SendMessageResponse {
   message: string;
+}
+
+interface MessagesResponse {
+  messages: Message[];
 }

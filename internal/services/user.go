@@ -144,7 +144,7 @@ func (u User) GetMessages(userID uint, targetID uint, limit int, skip int) ([]mo
 		return nil, err
 	}
 
-	return u.channel.GetMessages(channel.ID, limit, skip)
+	return u.channel.GetMessages(userID, channel.ID, limit, skip)
 }
 
 type UsersListOption struct {

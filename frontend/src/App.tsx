@@ -20,7 +20,7 @@ function App() {
             <Route path="/" element={<NotificationLayout />}>
               <Route path="/" element={<ChatLayout />}>
                 <Route index element={<div></div>} />
-                <Route path="/chat/:uuid" element={<HomePage />} />
+                <Route path="/chat/:receiverType/:uuid" element={<HomePage />} />
               </Route>
             </Route>
           </Route>

@@ -35,8 +35,9 @@ func (c Chat) LatestChats(userID uint, option LatestChatsOption) ([]models.Chann
 		Offset(option.Offset).
 		Preload("Members", "id != ?", userID).
 		Joins("INNER JOIN channel_users ON channels.id = channel_users.channel_id").
-		Where("channel_users.user_id = ?", userID).
+		Where("channel_users.user_id = ? OR channels.creator_id = ?", userID, userID).
 		Order("last_message_time desc").
+		Group("channels.id").
 		Find(&channels).Error
 
 	return channels, err
