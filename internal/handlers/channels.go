@@ -84,3 +84,15 @@ func (h *Channel) GetMessages(ctx *fiber.Ctx) error {
 		WithField("messages", messages).
 		Send(ctx)
 }
+
+func (h *Channel) GetByID(ctx *fiber.Ctx) error {
+	channelID, err := ctx.ParamsInt("channelID")
+	if err != nil {
+		return err
+	}
+	channel, err := h.service.FindChannelByID(uint(channelID))
+	if err != nil {
+		return err
+	}
+	return response.WithField("channel", channel).Send(ctx)
+}

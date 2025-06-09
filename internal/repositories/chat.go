@@ -42,3 +42,15 @@ func (c Chat) LatestChats(userID uint, option LatestChatsOption) ([]models.Chann
 
 	return channels, err
 }
+
+func (c Chat) GetByID(chatType models.ChannelType, id uint) (*models.Channel, error) {
+	var channel models.Channel
+	err := c.db.Where("id=?", id).Find(&channel).Error
+	if err != nil {
+		return nil, err
+	}
+	if channel.ID == 0 {
+		return nil, nil
+	}
+	return &channel, nil
+}

@@ -3,28 +3,43 @@ import { Space, Typography } from 'antd';
 import { MoreOutlined, PaperClipOutlined, SearchOutlined } from '@ant-design/icons';
 import UserAvatar from '../User/UserAvatar.tsx';
 import { useParams } from 'react-router';
-import { useGetUserByID } from '../../api/user.ts';
 import { getFullname } from '../../utils/user.ts';
+import { useGetChatByID } from '../../api/chats.ts';
+import type { ChannelRouteType } from '../../api/message.ts';
+import ChatAvatar from '../Chat/ChatAvatar.tsx';
 
 const ChatHeader: React.FC = () => {
-  const { uuid } = useParams();
+  const { uuid, receiverType } = useParams();
 
-  const { data } = useGetUserByID(Number.parseInt(uuid!));
+  const { data } = useGetChatByID(receiverType as ChannelRouteType, Number.parseInt(uuid!));
 
-  const user = useMemo(() => data?.data.user, [data]);
+  const name = useMemo(() => {
+    if (!data?.data) return undefined;
+    let res = data.data;
+    if ('user' in res) {
+      return getFullname(res.user);
+    }
+    return res.channel.name;
+  }, [data]);
 
-  if (!user) return <></>;
+  if (!name || !data?.data) return <></>;
 
   return (
     <div className="py-2 px-3 bg-gray-100 flex justify-between items-center border-b">
       <div className="flex items-center">
-        <UserAvatar size="large" user={user} />
+        {'user' in data.data ? (
+          <UserAvatar user={data.data.user} />
+        ) : (
+          <ChatAvatar chat={data.data.channel} />
+        )}
         <div className="ml-4">
-          <Typography.Text strong>{getFullname(user)}</Typography.Text>
+          <Typography.Text strong>{name}</Typography.Text>
           {/*TODO group members*/}
-          {/*<Typography.Text className="block text-xs text-gray-500">*/}
-          {/*  Andrés, Tom, Harrison, Arnold, Sylvester*/}
-          {/*</Typography.Text>*/}
+          {'channel' in data.data && (
+            <Typography.Text className="block text-xs text-gray-500">
+              {data.data.channel.members.map((mem) => getFullname(mem)).join(', ')}
+            </Typography.Text>
+          )}
         </div>
       </div>
       <Space size="large">

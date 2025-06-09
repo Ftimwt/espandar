@@ -4,7 +4,7 @@ import { getChatAvatar, getChatName } from '../../utils/chat.ts';
 import { useMemo } from 'react';
 
 interface Props {
-  chat: ChatModel;
+  chat: ChatModel | ChannelModel;
 }
 
 const ChatAvatar = (props: Props) => {

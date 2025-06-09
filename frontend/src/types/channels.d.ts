@@ -3,12 +3,13 @@ interface ChannelModel {
   name: string;
   type: string;
   creator: UserModel;
+  avatar: string;
   last_message_time: string;
   members: UserModel[];
 }
 
 interface ChannelResponse {
-  data: ChannelModel;
+  channel: ChannelModel;
 }
 
 interface CreateChannelRequest {

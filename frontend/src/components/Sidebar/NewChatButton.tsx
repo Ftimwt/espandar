@@ -27,7 +27,7 @@ const NewChatButton: React.FC = () => {
 
   const handleSelect = (id: number) => {
     console.log('شروع چت با:', id);
-    navigate(`/chat/${id}`);
+    navigate(`/chat/users/${id}`);
     setOpen(false);
   };
 

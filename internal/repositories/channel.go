@@ -164,3 +164,8 @@ func (c Channel) GetUsersInChannelByID(channelID uint) ([]models.User, error) {
 	}
 	return users, nil
 }
+
+func (c Channel) Get(id uint) (*models.Channel, error) {
+	var model models.Channel
+	return &model, c.db.Preload("Members").First(&model, id).Error
+}
