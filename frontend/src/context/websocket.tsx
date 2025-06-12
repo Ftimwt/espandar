@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useEffect, useRef } from 'react';
+import React, {createContext, useContext, useEffect, useRef, useState} from 'react';
 
 type Callback = (data: any) => void;
 
 interface WebSocketContextType {
+  ws: WebSocket | null;
   subscribe: (type: string, callback: Callback) => void;
   unsubscribe: (type: string, callback: Callback) => void;
 }
@@ -10,14 +11,14 @@ interface WebSocketContextType {
 const WebSocketContext = createContext<WebSocketContextType | null>(null);
 
 export const WebSocketProvider = ({
-  userId,
-  children,
-}: {
+                                    userId,
+                                    children,
+                                  }: {
   userId: number;
   children: React.ReactNode;
 }) => {
-  const socketRef = useRef<WebSocket | null>(null);
   const listeners = useRef<Map<string, Set<Callback>>>(new Map());
+  const [ws, setWs] = useState<WebSocket | null>(null);
 
   useEffect(() => {
     const url = import.meta.env.VITE_API_PREFIX.replace('http://', 'ws://').replace(
@@ -25,7 +26,6 @@ export const WebSocketProvider = ({
       'wss://',
     );
     const socket = new WebSocket(`${url}/ws/${userId}`);
-    socketRef.current = socket;
 
     socket.onmessage = (event) => {
       try {
@@ -41,10 +41,11 @@ export const WebSocketProvider = ({
 
     socket.onclose = () => console.log('WebSocket closed');
     socket.onerror = (err) => console.error('WebSocket error', err);
+    setWs(socket);
 
     return () => {
       socket.close();
-      socketRef.current = null;
+      setWs(null);
     };
   }, [userId]);
 
@@ -60,7 +61,7 @@ export const WebSocketProvider = ({
   };
 
   return (
-    <WebSocketContext.Provider value={{ subscribe, unsubscribe }}>
+    <WebSocketContext.Provider value={{subscribe, unsubscribe, ws}}>
       {children}
     </WebSocketContext.Provider>
   );

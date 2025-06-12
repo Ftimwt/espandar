@@ -1,7 +1,6 @@
-// src/components/VideoCall/PeerVideo.tsx
-import React, { useEffect, useRef } from 'react';
+import {useEffect, useRef} from 'react';
 
-const PeerVideo = ({ stream }: { stream: MediaStream }) => {
+const PeerVideo = ({stream}: { stream: MediaStream }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -10,7 +9,9 @@ const PeerVideo = ({ stream }: { stream: MediaStream }) => {
     }
   }, [stream]);
 
-  return <video ref={videoRef} autoPlay playsInline className="rounded-xl border w-full" />;
+  return <div>
+    <video ref={videoRef} autoPlay playsInline className="rounded-xl border w-full"/>
+  </div>;
 };
 
 export default PeerVideo;

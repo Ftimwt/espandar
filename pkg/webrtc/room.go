@@ -65,7 +65,7 @@ func RoomConn(c *websocket.Conn, p *Peers) {
 		}
 	})
 
-	// If PeerConnection is closed remove it from global list
+	// If PeerConnection is closed remove it from a global list
 	peerConnection.OnConnectionStateChange(func(pp webrtc.PeerConnectionState) {
 		switch pp {
 		case webrtc.PeerConnectionStateFailed:
@@ -122,16 +122,26 @@ func RoomConn(c *websocket.Conn, p *Peers) {
 				log.Println(err)
 				return
 			}
-		case "answer":
-			answer := webrtc.SessionDescription{}
-			if err := json.Unmarshal([]byte(message.Data), &answer); err != nil {
+		case "offer":
+			offer := webrtc.SessionDescription{}
+			if err := json.Unmarshal([]byte(message.Data), &offer); err != nil {
 				log.Println(err)
 				return
 			}
 
-			if err := peerConnection.SetRemoteDescription(answer); err != nil {
+			if err := peerConnection.SetRemoteDescription(offer); err != nil {
 				log.Println(err)
 				return
+			}
+
+		case "answer":
+			answer := webrtc.SessionDescription{}
+			if err := json.Unmarshal([]byte(message.Data), &answer); err != nil {
+				log.Println(err)
+			}
+
+			if err := peerConnection.SetRemoteDescription(answer); err != nil {
+				log.Println(err)
 			}
 		}
 	}

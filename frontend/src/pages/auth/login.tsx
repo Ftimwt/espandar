@@ -4,21 +4,24 @@ import Page from '../page.tsx';
 import {useMutation} from '@tanstack/react-query';
 import {LoginRequest} from '../../api/auth.ts';
 import {useSetToken} from "../../utils/token.tsx";
+import {useNavigate} from "react-router";
 
 const {Title, Link} = Typography;
 
 const LoginAuthPage = () => {
   const [api, contextHolder] = notification.useNotification();
   const setToken = useSetToken();
+  const navigate = useNavigate();
 
   const loginReq = useMutation({
     mutationFn: LoginRequest,
     onSuccess: (res) => {
       setToken(res.data.token);
       api.success({message: 'خوش آمدید'});
+      navigate('/');
+      window.location.reload();
     },
     onError: (error) => {
-      console.log(error);
       api.error({message: error.message});
     },
   });

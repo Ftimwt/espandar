@@ -1,64 +1,62 @@
 // src/hooks/useWebRTC.ts
-import { useEffect, useRef, useState } from 'react';
+import {useEffect, useRef, useState} from 'react';
 
 const ICE_SERVERS: RTCConfiguration = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+  iceServers: [{urls: 'stun:stun.l.google.com:19302'}],
 };
 
 export const useWebRTC = (wsUrl: string, localStream: MediaStream | null) => {
-  const [remoteStreams, setRemoteStreams] = useState<MediaStream[]>([]);
+  const [remoteStreams, setRemoteStreams] = useState<readonly MediaStream[]>([]);
   const peerConnection = useRef<RTCPeerConnection | null>(null);
+  // const currentUserID = Number(uuid);
   const ws = useRef<WebSocket | null>(null);
+  const [_isOffer, setIsOffer] = useState(false);
+  const [startStream, setStartStream] = useState<(stream: MediaStream) => Promise<void>>();
+
 
   useEffect(() => {
     if (!localStream) return;
 
+    ws.current = new WebSocket(wsUrl);
     peerConnection.current = new RTCPeerConnection(ICE_SERVERS);
     localStream.getTracks().forEach((track) => {
-      peerConnection.current!.addTrack(track, localStream);
+      peerConnection.current?.addTrack(track, localStream);
     });
-
-    peerConnection.current.ontrack = (event) => {
-      const [stream] = event.streams;
-      setRemoteStreams((prev) => {
-        if (prev.find((s) => s.id === stream.id)) return prev;
-        return [...prev, stream];
-      });
-    };
-
-    peerConnection.current.onicecandidate = (event) => {
+    peerConnection.current.onicecandidate = event => {
       if (event.candidate) {
-        ws.current?.send(JSON.stringify({ type: 'ice', candidate: event.candidate }));
+        ws.current?.send(JSON.stringify({type: "candidate", candidate: event.candidate}));
       }
     };
 
-    ws.current = new WebSocket(wsUrl);
+    peerConnection.current.ontrack = event => {
+      setRemoteStreams(event.streams);
+    };
 
-    ws.current.onmessage = async (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'offer') {
-        await peerConnection.current!.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await peerConnection.current!.createAnswer();
-        await peerConnection.current!.setLocalDescription(answer);
-        ws.current!.send(JSON.stringify({ type: 'answer', answer }));
-      } else if (data.type === 'answer') {
-        await peerConnection.current!.setRemoteDescription(new RTCSessionDescription(data.answer));
-      } else if (data.type === 'ice') {
-        await peerConnection.current!.addIceCandidate(new RTCIceCandidate(data.candidate));
+
+    ws.current.onmessage = async (msg) => {
+      const data = JSON.parse(msg.data);
+      if (data.type === "offer") {
+        await peerConnection.current?.setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answer = await peerConnection.current?.createAnswer();
+        await peerConnection.current?.setLocalDescription(answer);
+        ws.current?.send(JSON.stringify({type: "answer", answer}));
+      } else if (data.type === "answer") {
+        await peerConnection.current?.setRemoteDescription(new RTCSessionDescription(data.answer));
+      } else if (data.type === "candidate") {
+        await peerConnection.current?.addIceCandidate(new RTCIceCandidate(data.candidate));
       }
     };
 
-    return () => {
-      peerConnection.current?.close();
-      ws.current?.close();
-    };
+    setStartStream(async (stream: MediaStream) => {
+      stream?.getTracks()?.forEach(track => peerConnection.current?.addTrack(track, stream));
+      setIsOffer(true);
+      peerConnection.current?.createOffer().then((offer: any) => {
+        peerConnection.current?.setLocalDescription(offer);
+        ws.current?.send(JSON.stringify({type: "offer", offer}));
+      });
+    })
+
   }, [localStream, wsUrl]);
 
-  const createOffer = async () => {
-    const offer = await peerConnection.current!.createOffer();
-    await peerConnection.current!.setLocalDescription(offer);
-    ws.current?.send(JSON.stringify({ type: 'offer', offer }));
-  };
-
-  return { remoteStreams, createOffer };
+  return {remoteStreams, startStream};
 };

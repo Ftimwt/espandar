@@ -89,6 +89,7 @@ func Run() error {
 
 	// مسیر WebSocket
 	app.Get("/ws/:userID", websocket.New(notifier.HandleWebSocket))
+	app.Get("/ws/webrtc/:code", websocket.New(handlers.HandleWebRTC))
 
 	app.Get("/", handlers.Welcome)
 	app.Get("/room/create", handlers.RoomCreate)

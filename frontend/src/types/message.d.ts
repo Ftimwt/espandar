@@ -1,8 +1,8 @@
 interface Message {
   text: string;
   sender: UserModel;
-  created_at: string;
-  updated_at: string;
+  CreatedAt: string;
+  UpdatedAt: string;
   type: 'alert' | 'message';
 }
 

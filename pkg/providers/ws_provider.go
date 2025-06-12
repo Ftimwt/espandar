@@ -2,6 +2,7 @@ package providers
 
 import (
 	"encoding/json"
+	log "github.com/sirupsen/logrus"
 	"strconv"
 	"sync"
 
@@ -58,9 +59,22 @@ func (notifier *Notifier) HandleWebSocket(c *websocket.Conn) {
 
 	// Keep connection alive
 	for {
-		if _, _, err := c.ReadMessage(); err != nil {
+		_, contentB, err := c.ReadMessage()
+		if err != nil {
 			break
 		}
+		var result map[string]any
+		err = json.Unmarshal(contentB, &result)
+		if err != nil {
+			log.Error(err)
+		}
+		if result["type"] == "ice" {
+			userID, ok := result["userID"].(float64)
+			if ok {
+				_ = notifier.Send(uint(userID), contentB)
+			}
+		}
+
 	}
 
 	// Cleanup after disconnect

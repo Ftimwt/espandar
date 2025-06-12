@@ -4,6 +4,7 @@ import MessageItem from './MessageItem.tsx';
 import { useUserStore } from '../../store/userStore.ts';
 import { type ChannelRouteType, useGetMessagesList } from '../../api/message.ts';
 import { useWebSocket } from '../../context/websocket.tsx';
+import moment from "moment";
 
 const ChatMessages: React.FC = () => {
   const { uuid, receiverType } = useParams();
@@ -37,7 +38,8 @@ const ChatMessages: React.FC = () => {
         ) : (
           <MessageItem
             message={m.text}
-            time={m.created_at}
+            time={moment(m.CreatedAt).format('HH:mm')}
+            sender={m.sender.username}
             key={i}
             isMe={m.sender.id == user?.id}
           />
