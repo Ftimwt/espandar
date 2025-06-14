@@ -4,6 +4,7 @@ interface Message {
   CreatedAt: string;
   UpdatedAt: string;
   type: 'alert' | 'message';
+  readers?: UserModel[];
 }
 
 interface MessageResponse {

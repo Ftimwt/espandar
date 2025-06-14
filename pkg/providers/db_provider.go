@@ -18,6 +18,7 @@ func LoadDatabase(cfg *config.Config) (*gorm.DB, error) {
 		&models.Channel{},
 		&models.Message{},
 		&models.File{},
+		&models.MessageReader{},
 	); err != nil {
 		return nil, err
 	}

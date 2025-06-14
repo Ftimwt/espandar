@@ -1,5 +1,6 @@
 // src/hooks/useWebRTC.ts
 import {useEffect, useRef, useState} from 'react';
+import {useUserStore} from "../store/userStore.ts";
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [{urls: 'stun:stun.l.google.com:19302'}],
@@ -12,6 +13,7 @@ export const useWebRTC = (wsUrl: string, localStream: MediaStream | null) => {
   const ws = useRef<WebSocket | null>(null);
   const [_isOffer, setIsOffer] = useState(false);
   const [startStream, setStartStream] = useState<(stream: MediaStream) => Promise<void>>();
+  const {user: currentUser} = useUserStore();
 
 
   useEffect(() => {
@@ -35,11 +37,12 @@ export const useWebRTC = (wsUrl: string, localStream: MediaStream | null) => {
 
     ws.current.onmessage = async (msg) => {
       const data = JSON.parse(msg.data);
+      console.log(data);
       if (data.type === "offer") {
         await peerConnection.current?.setRemoteDescription(new RTCSessionDescription(data.offer));
         const answer = await peerConnection.current?.createAnswer();
         await peerConnection.current?.setLocalDescription(answer);
-        ws.current?.send(JSON.stringify({type: "answer", answer}));
+        ws.current?.send(JSON.stringify({type: "answer", answer, user: currentUser?.id}));
       } else if (data.type === "answer") {
         await peerConnection.current?.setRemoteDescription(new RTCSessionDescription(data.answer));
       } else if (data.type === "candidate") {
@@ -52,7 +55,7 @@ export const useWebRTC = (wsUrl: string, localStream: MediaStream | null) => {
       setIsOffer(true);
       peerConnection.current?.createOffer().then((offer: any) => {
         peerConnection.current?.setLocalDescription(offer);
-        ws.current?.send(JSON.stringify({type: "offer", offer}));
+        ws.current?.send(JSON.stringify({type: "offer", offer, user: currentUser?.id}));
       });
     })
 

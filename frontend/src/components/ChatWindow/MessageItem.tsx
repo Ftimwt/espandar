@@ -1,5 +1,6 @@
 import React from 'react';
 import clsx from 'clsx';
+import type {ChannelRouteType} from "../../api/message.ts";
 
 type Props = {
   sender?: string;
@@ -7,9 +8,25 @@ type Props = {
   time: string;
   isMe?: boolean;
   color?: string;
+  chatType?: ChannelRouteType
+  status?: 'read' | 'delivered' | 'sent';
 };
 
-const MessageItem: React.FC<Props> = ({ sender, message, time, isMe = false, color = 'text-gray-700' }) => {
+const MessageItem: React.FC<Props> = ({sender, message, time, isMe = false, color = 'text-gray-700', chatType, status}) => {
+  const renderStatus = () => {
+    if (!isMe || !status) return null;
+    switch (status) {
+      case 'sent':
+        return '✓ Sent';
+      case 'delivered':
+        return '✓✓ Delivered';
+      case 'read':
+        return '✓✓ Read';
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className={clsx('flex mb-2', isMe && 'justify-end')}>
       <div
@@ -18,9 +35,18 @@ const MessageItem: React.FC<Props> = ({ sender, message, time, isMe = false, col
           isMe ? 'bg-green-100' : 'bg-gray-100'
         )}
       >
-        {!isMe && sender && <p className={`text-sm font-medium ${color}`}>{sender}</p>}
+        {!isMe && sender && chatType !== 'users' && <p className={`text-sm font-medium ${color}`}>{sender}</p>}
         <p className="text-sm mt-1">{message}</p>
-        <p className="text-xs text-gray-400 text-right mt-1">{time}</p>
+        <p className="text-xs text-gray-400 text-right mt-1">
+          {time}
+
+          {isMe && status && (
+            <>
+              {' '}
+              • <span className="text-blue-500">{renderStatus()}</span>
+            </>
+          )}
+        </p>
       </div>
     </div>
   );

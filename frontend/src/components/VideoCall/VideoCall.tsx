@@ -1,6 +1,5 @@
 import {useEffect, useRef, useState} from 'react';
-import {Button, Spin} from 'antd';
-import {VideoCameraOutlined} from '@ant-design/icons';
+import {Spin} from 'antd';
 import PeerVideo from './PeerVideo';
 import {useWebRTC} from '../../hooks/useWebRTC.ts.tsx';
 

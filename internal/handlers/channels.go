@@ -96,3 +96,39 @@ func (h *Channel) GetByID(ctx *fiber.Ctx) error {
 	}
 	return response.WithField("channel", channel).Send(ctx)
 }
+
+// MarkAllAsRead marks all messages in the specified channel as read by the given user.
+// It expects the channel ID in the route path.
+// It returns an error if any occurs during the operation.
+func (h *Channel) MarkAllAsRead(ctx *fiber.Ctx) error {
+	user := getUser(ctx)
+	channelID, err := ctx.ParamsInt("channelID")
+	if err != nil {
+		return err
+	}
+	_, err = h.service.MarkAllAsRead(user.ID, uint(channelID))
+	if err != nil {
+		return err
+	}
+	return response.WithStatus(http.StatusOK).Send(ctx)
+}
+
+// MarkAsRead marks the specified message as read by the given user.
+// It expects the channel ID and message ID in the route path.
+// It returns an error if any occurs during the operation.
+func (h *Channel) MarkAsRead(ctx *fiber.Ctx) error {
+	user := getUser(ctx)
+	channelID, err := ctx.ParamsInt("channelID")
+	if err != nil {
+		return err
+	}
+	messageID, err := ctx.ParamsInt("messageID")
+	if err != nil {
+		return err
+	}
+	_, err = h.service.MarkAsRead(user.ID, uint(channelID), uint(messageID))
+	if err != nil {
+		return err
+	}
+	return response.WithStatus(http.StatusOK).Send(ctx)
+}

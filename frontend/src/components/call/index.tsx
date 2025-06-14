@@ -13,16 +13,16 @@ const CallProvider = () => {
   }
 
   return <div className="call">
-    {user && targetID &&
-        <Modal
-            title="تماس تصویری"
-            closable={{'aria-label': 'بستن'}}
-            open={targetID !== 0}
-            onCancel={handleCancel}
-            cancelText="قطع تماس"
-        >
-            <VideoCall targetID={targetID} userID={user.id}/>
-        </Modal>
+    {user && targetID ?
+      <Modal
+        title="تماس تصویری"
+        closable={{'aria-label': 'بستن'}}
+        open={targetID !== 0}
+        onCancel={handleCancel}
+        cancelText="قطع تماس"
+      >
+        <VideoCall targetID={targetID} userID={user.id}/>
+      </Modal> : <></>
     }
     <Outlet/>
   </div>;

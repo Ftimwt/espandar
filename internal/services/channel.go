@@ -96,3 +96,22 @@ func (c Channel) GetMessages(userID, channelID uint, limit int, skip int) ([]mod
 	// TODO: check user access
 	return c.repo.GetMessages(channelID, limit, skip)
 }
+
+// MarkAsRead marks the specified messages as read by the given user.
+func (c Channel) MarkAsRead(userID uint, messageIDs ...uint) (int64, error) {
+	count, err := c.repo.MarkAsRead(userID, messageIDs...)
+	if err != nil {
+		return 0, err
+	}
+	if count > 0 {
+		if err := c.notifier.Notification(userID, "message", messageIDs); err != nil {
+			log.Errorf("error sending notification: %s", err)
+		}
+	}
+	return count, nil
+}
+
+// MarkAllAsRead marks all messages in the specified channel as read by the given user.
+func (c Channel) MarkAllAsRead(userID, channelID uint) (int64, error) {
+	return c.repo.MarkAllAsRead(userID, channelID)
+}

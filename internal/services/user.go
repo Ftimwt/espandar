@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/bcrypt"
 	"v/internal/dto"
@@ -166,4 +167,26 @@ func (u User) GetUsersList(option UsersListOption) ([]models.User, error) {
 		log.WithError(err).Error("error during retrieve users")
 	}
 	return users, err
+}
+
+func (u User) MarkAllAsRead(userID, targetID uint) (int64, error) {
+	channel, err := u.repo.GetPrivateChatChannel(userID, targetID)
+
+	defer func() {
+
+	}()
+
+	if err != nil {
+		return 0, err
+	}
+	if channel == nil {
+		return 0, err
+	}
+	count, err := u.channel.MarkAllAsRead(userID, channel.ID)
+	if err != nil {
+		if err := u.notifier.Notification(targetID, fmt.Sprintf("message_users_%d", targetID), targetID); err != nil {
+			log.Errorf("error sending notification: %s", err)
+		}
+	}
+	return count, err
 }

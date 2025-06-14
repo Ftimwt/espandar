@@ -1,6 +1,9 @@
 package models
 
-import "gorm.io/gorm"
+import (
+	"gorm.io/gorm"
+	"time"
+)
 
 type MessageType string
 
@@ -16,6 +19,13 @@ type Message struct {
 	SenderID uint        `json:"-"`
 	Sender   User        `json:"sender,omitempty" gorm:"foreignKey:SenderID"`
 	Type     MessageType `gorm:"default:text" json:"type"`
+	Readers  []User      `json:"readers,omitempty" gorm:"many2many:message_readers;"`
+}
+
+type MessageReader struct {
+	UserID    uint `json:"user_id"`
+	MessageID uint `json:"message_id"`
+	ReadAt    time.Time
 }
 
 type File struct {

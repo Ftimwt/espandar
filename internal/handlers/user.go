@@ -90,3 +90,18 @@ func (u User) GetUserByID(c *fiber.Ctx) error {
 	}
 	return response.WithField("user", users).SendWithStatus(c, fiber.StatusOK)
 }
+
+func (u User) MarkAllAsRead(c *fiber.Ctx) error {
+	user := getUser(c)
+	targetID, err := c.ParamsInt("targetID")
+	if err != nil {
+		return err
+	}
+	_, err = u.service.MarkAllAsRead(user.ID, uint(targetID))
+	if err != nil {
+		return err
+	}
+	return response.
+		WithStatus(http.StatusOK).
+		Send(c)
+}

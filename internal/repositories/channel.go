@@ -139,13 +139,14 @@ func (c Channel) SendAlert(channelID uint, message string) (*models.Message, err
 }
 
 // GetMessages returns messages
-func (u Channel) GetMessages(channelID uint, limit, skip int) ([]models.Message, error) {
+func (c Channel) GetMessages(channelID uint, limit, skip int) ([]models.Message, error) {
 	var messages []models.Message
-	err := u.db.
+	err := c.db.
 		Joins("JOIN channel_chat_messages ccm ON ccm.message_id = messages.id").
 		Where("ccm.channel_id = ?", channelID).
 		Order("messages.id DESC").
 		Preload("Sender").
+		Preload("Readers").
 		Limit(limit).
 		Offset(skip).
 		Preload("Files"). // optional: if you want to include file data
@@ -168,4 +169,38 @@ func (c Channel) GetUsersInChannelByID(channelID uint) ([]models.User, error) {
 func (c Channel) Get(id uint) (*models.Channel, error) {
 	var model models.Channel
 	return &model, c.db.Preload("Members").First(&model, id).Error
+}
+
+func (c Channel) MarkAsRead(userID uint, messages ...uint) (int64, error) {
+	var count int64
+	for _, m := range messages {
+		model := models.MessageReader{ReadAt: time.Now()}
+		tx := c.db.Model(&models.MessageReader{}).Where("message_id = ? and user_id = ?", m, userID).FirstOrCreate(&model, &models.MessageReader{
+			UserID:    userID,
+			MessageID: m,
+		})
+		if err := tx.Error; err != nil {
+			return 0, err
+		}
+		count += tx.RowsAffected
+	}
+	return count, nil
+}
+
+// MarkAllAsRead marks all messages in the specified channel as read by the given user.
+// It retrieves all message IDs in the channel and calls MarkAsRead for each message.
+// Returns an error if there is an issue retrieving messages or marking them as read.
+func (c Channel) MarkAllAsRead(userID uint, channelID uint) (int64, error) {
+	var messages []uint
+	err := c.db.
+		Model(&models.Message{}).
+		Select("messages.id").
+		Joins("JOIN channel_chat_messages ccm ON ccm.message_id = messages.id").
+		Where("ccm.channel_id = ?", channelID).
+		Where("messages.sender_id != ?", userID).
+		Find(&messages).Error
+	if err != nil {
+		return 0, err
+	}
+	return c.MarkAsRead(userID, messages...)
 }

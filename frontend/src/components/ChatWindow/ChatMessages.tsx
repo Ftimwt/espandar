@@ -1,28 +1,42 @@
-import React, { useEffect } from 'react';
-import { useParams } from 'react-router';
+import React, {useEffect} from 'react';
+import {useParams} from 'react-router';
 import MessageItem from './MessageItem.tsx';
-import { useUserStore } from '../../store/userStore.ts';
-import { type ChannelRouteType, useGetMessagesList } from '../../api/message.ts';
-import { useWebSocket } from '../../context/websocket.tsx';
+import {useUserStore} from '../../store/userStore.ts';
+import {type ChannelRouteType, useGetMessagesList, useMarkAllAsRead} from '../../api/message.ts';
+import {useWebSocket} from '../../context/websocket.tsx';
 import moment from "moment";
 
 const ChatMessages: React.FC = () => {
-  const { uuid, receiverType } = useParams();
+  const {uuid, receiverType} = useParams();
 
-  const { data, refetch } = useGetMessagesList(
+  const {mutate, data: readResponse} = useMarkAllAsRead(Number.parseInt(uuid!), receiverType as ChannelRouteType);
+
+  const {data, refetch} = useGetMessagesList(
     receiverType as ChannelRouteType,
     Number.parseInt(uuid!),
   );
 
-  const { subscribe, unsubscribe } = useWebSocket();
+  useEffect(() => {
+    if (!readResponse) return;
+  }, [readResponse]);
+
+  useEffect(() => {
+    mutate();
+  }, [mutate, data]);
+
+  const {subscribe, unsubscribe} = useWebSocket();
 
   useEffect(() => {
     subscribe('notification', function () {
       refetch?.();
     });
+
+    subscribe(`messages_${receiverType}_${uuid}`, function () {
+      refetch?.();
+    });
   }, [subscribe, unsubscribe]);
 
-  const { user } = useUserStore();
+  const {user} = useUserStore();
 
   let msg = data?.data.messages || [];
   msg = [...msg].reverse();
@@ -41,7 +55,9 @@ const ChatMessages: React.FC = () => {
             time={moment(m.CreatedAt).format('HH:mm')}
             sender={m.sender.username}
             key={i}
+            chatType={receiverType as ChannelRouteType}
             isMe={m.sender.id == user?.id}
+            status={m.readers?.length && m.readers.length > 0 ? 'read' : 'sent'}
           />
         ),
       )}
