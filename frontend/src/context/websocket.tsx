@@ -1,4 +1,7 @@
-import React, {createContext, useContext, useEffect, useRef, useState} from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { userCallStore } from '../store/callStore';
+import { useUserStore } from '../store/userStore';
+
 
 type Callback = (data: any) => void;
 
@@ -11,9 +14,9 @@ interface WebSocketContextType {
 const WebSocketContext = createContext<WebSocketContextType | null>(null);
 
 export const WebSocketProvider = ({
-                                    userId,
-                                    children,
-                                  }: {
+  userId,
+  children,
+}: {
   userId: number;
   children: React.ReactNode;
 }) => {
@@ -21,11 +24,11 @@ export const WebSocketProvider = ({
   const [ws, setWs] = useState<WebSocket | null>(null);
 
   useEffect(() => {
-    const url = import.meta.env.VITE_API_PREFIX.replace('http://', 'ws://').replace(
-      'https://',
-      'wss://',
-    );
+    const url = import.meta.env.VITE_API_PREFIX.replace('http://', 'ws://').replace('https://', 'wss://');
     const socket = new WebSocket(`${url}/ws/${userId}`);
+
+    // global access
+    window.ws = socket;
 
     socket.onmessage = (event) => {
       try {
@@ -33,6 +36,23 @@ export const WebSocketProvider = ({
         const callbacks = listeners.current.get(type);
         if (callbacks) {
           callbacks.forEach((cb) => cb(payload));
+        }
+
+        if (type === 'incoming_call') {
+          const { user } = useUserStore.getState();
+          if (user?.id !== payload.from) {
+            userCallStore.getState().receiveCall(payload.from, payload.room);
+          }
+
+        }
+
+        if (type === 'call_accepted') {
+            userCallStore.getState().startCall(payload.from, payload.room);
+        }
+
+        if (type === 'call_rejected') {
+          console.log('تماس رد شد');
+          userCallStore.getState().cancelCall();
         }
       } catch (err) {
         console.error('Invalid message', err);
@@ -61,7 +81,7 @@ export const WebSocketProvider = ({
   };
 
   return (
-    <WebSocketContext.Provider value={{subscribe, unsubscribe, ws}}>
+    <WebSocketContext.Provider value={{ subscribe, unsubscribe, ws }}>
       {children}
     </WebSocketContext.Provider>
   );

@@ -1,31 +1,57 @@
-import {Outlet} from "react-router";
-import {userCallStore} from "../../store/callStore.ts";
+import { Outlet } from "react-router";
+import { Modal, Button } from "antd";
+import { userCallStore } from "../../store/callStore.ts";
 import VideoCall from "../VideoCall/VideoCall.tsx";
-import {useUserStore} from "../../store/userStore.ts";
-import {Modal} from "antd";
+import { useUserStore } from "../../store/userStore.ts";
 
 const CallProvider = () => {
-  const {targetID, cancelCall} = userCallStore();
-  const {user} = useUserStore();
+  const { user } = useUserStore();
+  const {
+    targetID,
+    room,
+    incoming,
+    cancelCall,
+    acceptCall,
+    rejectCall,
+    startCall, // ✅ اضافه شده
+  } = userCallStore();
 
   function handleCancel() {
     cancelCall();
   }
 
-  return <div className="call">
-    {user && targetID ?
-      <Modal
-        title="تماس تصویری"
-        closable={{'aria-label': 'بستن'}}
-        open={targetID !== 0}
-        onCancel={handleCancel}
-        cancelText="قطع تماس"
-      >
-        <VideoCall targetID={targetID} userID={user.id}/>
-      </Modal> : <></>
-    }
-    <Outlet/>
-  </div>;
+  return (
+    <div className="call">
+      {user && targetID ? (
+        <Modal
+          title={incoming ? "تماس ورودی" : "تماس تصویری"}
+          closable={{ 'aria-label': 'بستن' }}
+          open={targetID !== 0}
+          onCancel={handleCancel}
+          footer={
+            incoming ? [
+              <Button key="reject" danger onClick={rejectCall}>رد تماس</Button>,
+              <Button
+                key="accept"
+                type="primary"
+                onClick={() => {
+                  acceptCall();
+                  startCall(targetID, room); 
+                }}
+              >
+                پذیرفتن
+              </Button>,
+            ] : [
+              <Button key="cancel" onClick={handleCancel}>قطع تماس</Button>
+            ]
+          }
+        >
+          {!incoming && <VideoCall targetID={targetID} userID={user.id} />}
+        </Modal>
+      ) : null}
+      <Outlet />
+    </div>
+  );
 };
 
 export default CallProvider;

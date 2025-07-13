@@ -26,7 +26,7 @@ const LoginAuthPage = () => {
     },
   });
 
-  const onFinish = (values: any) => {
+  const onFinish = (values: LoginRequest) => {
     console.log('Login data:', values);
     loginReq.mutate({
       username: values.username,
@@ -93,8 +93,8 @@ const LoginAuthPage = () => {
 
           <p className="mt-10 text-center text-sm text-gray-500">
             Not a member?{' '}
-            <Link href="#" className="text-indigo-600 hover:text-indigo-500">
-              Start a 14 day free trial
+            <Link href="/auth/signup" className="text-indigo-600 hover:text-indigo-500">
+              Create new account
             </Link>
           </p>
         </div>

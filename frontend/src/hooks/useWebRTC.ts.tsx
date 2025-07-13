@@ -1,65 +1,103 @@
-// src/hooks/useWebRTC.ts
-import {useEffect, useRef, useState} from 'react';
-import {useUserStore} from "../store/userStore.ts";
+import { useEffect, useRef, useState } from 'react';
+import { useUserStore } from '../store/userStore.ts';
 
 const ICE_SERVERS: RTCConfiguration = {
-  iceServers: [{urls: 'stun:stun.l.google.com:19302'}],
+  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
 };
 
 export const useWebRTC = (wsUrl: string, localStream: MediaStream | null) => {
   const [remoteStreams, setRemoteStreams] = useState<readonly MediaStream[]>([]);
+  const [startStream, setStartStream] = useState<((stream: MediaStream) => Promise<void>) | null>(null);
   const peerConnection = useRef<RTCPeerConnection | null>(null);
-  // const currentUserID = Number(uuid);
   const ws = useRef<WebSocket | null>(null);
-  const [_isOffer, setIsOffer] = useState(false);
-  const [startStream, setStartStream] = useState<(stream: MediaStream) => Promise<void>>();
-  const {user: currentUser} = useUserStore();
-
+  const { user: currentUser } = useUserStore();
 
   useEffect(() => {
-    if (!localStream) return;
+    if (!wsUrl || ws.current) return;
 
-    ws.current = new WebSocket(wsUrl);
-    peerConnection.current = new RTCPeerConnection(ICE_SERVERS);
-    localStream.getTracks().forEach((track) => {
-      peerConnection.current?.addTrack(track, localStream);
-    });
-    peerConnection.current.onicecandidate = event => {
-      if (event.candidate) {
-        ws.current?.send(JSON.stringify({type: "candidate", candidate: event.candidate}));
+    const socket = new WebSocket(wsUrl);
+    ws.current = socket;
+
+    let pc: RTCPeerConnection;
+
+    socket.onopen = () => {
+      pc = new RTCPeerConnection(ICE_SERVERS);
+      peerConnection.current = pc;
+
+      if (localStream) {
+        localStream.getTracks().forEach((track) => {
+          pc.addTrack(track, localStream);
+        });
       }
-    };
 
-    peerConnection.current.ontrack = event => {
-      setRemoteStreams(event.streams);
-    };
+      pc.onicecandidate = (event) => {
+        if (event.candidate && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: 'candidate', candidate: event.candidate }));
+        }
+      };
 
+      pc.ontrack = (event) => {
+        setRemoteStreams(event.streams);
+      };
 
-    ws.current.onmessage = async (msg) => {
-      const data = JSON.parse(msg.data);
-      console.log(data);
-      if (data.type === "offer") {
-        await peerConnection.current?.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await peerConnection.current?.createAnswer();
-        await peerConnection.current?.setLocalDescription(answer);
-        ws.current?.send(JSON.stringify({type: "answer", answer, user: currentUser?.id}));
-      } else if (data.type === "answer") {
-        await peerConnection.current?.setRemoteDescription(new RTCSessionDescription(data.answer));
-      } else if (data.type === "candidate") {
-        await peerConnection.current?.addIceCandidate(new RTCIceCandidate(data.candidate));
-      }
-    };
+      socket.onmessage = async (msg) => {
+        try {
+          const data = JSON.parse(msg.data);
+          if (!pc) return;
 
-    setStartStream(async (stream: MediaStream) => {
-      stream?.getTracks()?.forEach(track => peerConnection.current?.addTrack(track, stream));
-      setIsOffer(true);
-      peerConnection.current?.createOffer().then((offer: any) => {
-        peerConnection.current?.setLocalDescription(offer);
-        ws.current?.send(JSON.stringify({type: "offer", offer, user: currentUser?.id}));
+          if (data.type === 'offer') {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.send(JSON.stringify({ type: 'answer', answer, user: currentUser?.id }));
+          } else if (data.type === 'answer') {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+          } else if (data.type === 'candidate') {
+            await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+          }
+        } catch (e) {
+          console.error('[WebRTC] Error handling message:', e);
+        }
+      };
+
+      setStartStream(() => async (stream: MediaStream) => {
+        if (!(stream instanceof MediaStream)) {
+          console.warn('[WebRTC] Invalid stream passed to startStream');
+          return;
+        }
+
+        stream.getTracks().forEach((track) => {
+          pc.addTrack(track, stream);
+        });
+
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'offer', offer, user: currentUser?.id }));
+          } else {
+            console.warn('[WebRTC] WebSocket not open while sending offer');
+          }
+        } catch (err) {
+          console.error('[WebRTC] Failed to create/send offer:', err);
+        }
       });
-    })
+    };
 
-  }, [localStream, wsUrl]);
+    socket.onerror = (err) => {
+      console.error('[WebRTC] WebSocket error:', err);
+    };
 
-  return {remoteStreams, startStream};
+    socket.onclose = () => {
+      console.warn('[WebRTC] WebSocket closed');
+    };
+
+    return () => {
+      socket.close();
+      peerConnection.current?.close();
+      ws.current = null;
+    };
+  }, [wsUrl]);
+
+  return { remoteStreams, startStream };
 };

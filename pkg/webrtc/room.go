@@ -143,6 +143,31 @@ func RoomConn(c *websocket.Conn, p *Peers) {
 			if err := peerConnection.SetRemoteDescription(answer); err != nil {
 				log.Println(err)
 			}
+
+	offer, err := peerConnection.CreateOffer(nil)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	if err = peerConnection.SetLocalDescription(offer); err != nil {
+		log.Println(err)
+		return
+	}
+
+	offerString, err := json.Marshal(offer)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	if err = newPeer.Websocket.WriteJSON(&websocketMessage{
+		Event: "offer",
+		Data:  string(offerString),
+	}); err != nil {
+		log.Println(err)
+		return
+	}
+
 		}
 	}
 }

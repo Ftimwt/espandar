@@ -25,7 +25,7 @@ func getOrCreateRoom(roomID string) *RoomRTC {
 }
 
 func HandleWebRTC(conn *websocket.Conn) {
-	roomID := conn.Params("roomId")
+	roomID := conn.Params("code")
 	defer conn.Close()
 
 	room := getOrCreateRoom(roomID)

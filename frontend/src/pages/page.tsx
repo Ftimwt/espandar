@@ -1,6 +1,6 @@
 import React, {useEffect} from 'react';
 import {useGetUserInfo} from "../api/user.ts";
-import {useNavigate} from "react-router";
+import {useLocation, useNavigate} from "react-router";
 
 interface Props extends React.PropsWithChildren {
   title?: string;
@@ -9,10 +9,13 @@ interface Props extends React.PropsWithChildren {
 const Page = (props: Props) => {
   const {data, error} = useGetUserInfo();
   const navigate = useNavigate();
+  const {pathname} = useLocation();
 
   useEffect(() => {
     if (error) {
       console.log(error)
+      const re = /\/auth\/.*/
+      if (re.test(pathname)) return;
       navigate('/auth')
     } else {
       console.log(data);

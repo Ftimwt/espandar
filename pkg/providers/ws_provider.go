@@ -28,6 +28,14 @@ func NewNotifier() *Notifier {
 	}
 }
 
+type WSMessage struct {
+	Type   string `json:"type"`
+	To     uint   `json:"to,omitempty"`
+	From   uint   `json:"from,omitempty"`
+	Room   string `json:"room,omitempty"`
+	Status string `json:"status,omitempty"`
+}
+
 // HandleWebSocket handles new websocket connections
 func (notifier *Notifier) HandleWebSocket(c *websocket.Conn) {
 	userIDStr := c.Params("userID")
@@ -59,23 +67,41 @@ func (notifier *Notifier) HandleWebSocket(c *websocket.Conn) {
 
 	// Keep connection alive
 	for {
-		_, contentB, err := c.ReadMessage()
-		if err != nil {
-			break
-		}
-		var result map[string]any
-		err = json.Unmarshal(contentB, &result)
-		if err != nil {
-			log.Error(err)
-		}
-		if result["type"] == "ice" {
-			userID, ok := result["userID"].(float64)
-			if ok {
-				_ = notifier.Send(uint(userID), contentB)
-			}
+	_, contentB, err := c.ReadMessage()
+	if err != nil {
+		break
+	}
+
+	var msg WSMessage
+	if err := json.Unmarshal(contentB, &msg); err != nil {
+		log.Error("Invalid message:", err)
+		continue
+	}
+
+	switch msg.Type {
+	case "ice":
+		if msg.To != 0 {
+			_ = notifier.Send(msg.To, contentB)
 		}
 
+	case "call_request":
+		notifier.Emit(msg.To, "incoming_call", map[string]interface{}{
+			"from": msg.From,
+			"room": msg.Room,
+		})
+
+	case "call_response":
+		if msg.Status == "accepted" {
+			notifier.Emit(msg.From, "call_accepted", map[string]interface{}{
+				"room": msg.Room,
+			})
+		} else {
+			notifier.Emit(msg.From, "call_rejected", map[string]interface{}{
+				"room": msg.Room,
+			})
+		}
 	}
+}
 
 	// Cleanup after disconnect
 	notifier.cleanup(userID, wrapper)

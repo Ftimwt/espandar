@@ -1,42 +1,58 @@
-import {useEffect, useRef, useState} from 'react';
-import {Spin} from 'antd';
+import { useEffect, useRef, useState } from 'react';
+import { Spin } from 'antd';
 import PeerVideo from './PeerVideo';
-import {useWebRTC} from '../../hooks/useWebRTC.ts.tsx';
+import { useWebRTC } from '../../hooks/useWebRTC.ts.tsx';
 
-const VideoCall = ({userID, targetID}: { targetID: number, userID: number }) => {
+const VideoCall = ({ userID, targetID }: { targetID: number, userID: number }) => {
   const localVideoRef = useRef<HTMLVideoElement>(null);
-  const [loading, setLoading] = useState(true);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const url = import.meta.env.VITE_API_PREFIX.replace('http://', 'ws://').replace(
-    'https://',
-    'wss://',
-  );
+  const [loading, setLoading] = useState(true);
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  //
-  const {
-    remoteStreams,
-    startStream
-  } = useWebRTC(url + `/ws/webrtc/${[userID, targetID].sort().join('-')}`, localStream);
-
+  const url = import.meta.env.VITE_API_PREFIX.replace('http://', 'ws://').replace('https://', 'wss://');
+  const signalingUrl = url + `/ws/webrtc/${[userID, targetID].sort().join('-')}`;
+  const { remoteStreams, startStream } = useWebRTC(signalingUrl, localStream);
 
   useEffect(() => {
     const start = async () => {
-      const stream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
-      }
-      startStream?.(stream);
-      setLocalStream(stream);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
 
-      setLoading(false);
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+        }
+
+        setLocalStream(stream);
+
+        const waitAndStart = () => {
+          if (typeof startStream === 'function') {
+            startStream(stream);
+            retryRef.current && clearTimeout(retryRef.current); // توقف retry
+          } else {
+            retryRef.current = setTimeout(waitAndStart, 200); // تا گرفتن startStream صبر کن
+          }
+        };
+
+        waitAndStart();
+        setLoading(false);
+      } catch (err) {
+        console.error('[VideoCall] Error starting media:', err);
+        setLoading(false);
+      }
     };
+
     start();
-  }, [startStream]);
+
+    // 👇 cleanup تایمر در خروج از کامپوننت
+    return () => {
+      if (retryRef.current) clearTimeout(retryRef.current);
+    };
+  }, [startStream]); // 👈 وابستگی تنها به startStream
 
   return (
     <div className="flex flex-col items-center gap-4 p-4">
       {loading ? (
-        <Spin tip="Connecting..."/>
+        <div className="text-center text-lg">⏳ در حال اتصال تماس...</div>
       ) : (
         <>
           <video
@@ -48,7 +64,7 @@ const VideoCall = ({userID, targetID}: { targetID: number, userID: number }) => 
           />
           <div className="grid grid-cols-2 gap-4 w-full">
             {remoteStreams.map((stream, i) => (
-              <PeerVideo key={i} stream={stream}/>
+              <PeerVideo key={i} stream={stream} />
             ))}
           </div>
         </>

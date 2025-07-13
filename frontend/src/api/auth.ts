@@ -6,3 +6,10 @@ export const LoginRequest = async (req: LoginRequest) => {
     ...req,
   });
 };
+
+
+export const SignupRequest = async (req: SignupRequest) => {
+  return apiClient.post<SignupResponse, AxiosResponse<SignupResponse>, SignupRequest>('/auth/signup', {
+    ...req,
+  });
+};
