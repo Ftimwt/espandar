@@ -22,7 +22,7 @@ export const useGetChatList = () => {
 
 export const useGetChatByID = <
   T extends ChannelRouteType,
-  R = T extends 'users' ? UserResponse : ChannelResponse,
+  R = T extends 'users' ? UserResponse : T extends 'channels' ? ChannelResponse : GroupResponse,
 >(
   receiverType: T,
   id: number,

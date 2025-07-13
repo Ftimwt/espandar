@@ -15,6 +15,7 @@ type Channel struct {
 	Name            string      `json:"name"`
 	CreatorID       uint        `json:"-"`
 	Creator         User        `json:"creator,omitempty" gorm:"foreignKey:CreatorID"`
+	Description     string      `json:"description"`
 	Members         []User      `json:"members,omitempty" gorm:"many2many:channel_users;"`
 	Messages        []Message   `json:"messages,omitempty" gorm:"many2many:channel_chat_messages;"`
 	Type            ChannelType `json:"type"`

@@ -75,6 +75,7 @@ func Run() error {
 		map[string]func(routes fiber.Router, option routes.Option){
 			"/auth":     routes.SetupAuth,
 			"/channels": routes.SetupChannel,
+			"/groups":   routes.SetupGroup,
 			"/users":    routes.SetupUser,
 			"/chats":    routes.SetupChat,
 		},

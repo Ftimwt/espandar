@@ -8,12 +8,14 @@ import { useNavigate } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import CreateChatModal from './CreateChatModal.tsx';
 import { useCreateChannel } from '../../api/channels.ts';
+import { useCreateGroup } from '../../api/groups.ts';
 
 const NewChatButton: React.FC = () => {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [groupType, setGroupType] = useState<'group' | 'channel' | null>(null);
   const queryClient = useQueryClient();
   const createChannel = useCreateChannel();
+  const createGroup = useCreateGroup();
 
   const handleCreateClick = (type: 'group' | 'channel') => {
     setGroupType(type);
@@ -42,6 +44,20 @@ const NewChatButton: React.FC = () => {
       createChannel.mutate(
         {
           name: data.name,
+          members: data.members,
+        },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['chats'] }).then(() => {});
+            queryClient.invalidateQueries({ queryKey: ['messages'] }).then(() => {});
+          },
+        },
+      );
+    } else if (data.type === 'group') {
+      createGroup.mutate(
+        {
+          name: data.name,
+          description: data.description,
           members: data.members,
         },
         {
