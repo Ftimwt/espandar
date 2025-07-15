@@ -5,6 +5,8 @@ interface Message {
   UpdatedAt: string;
   type: 'alert' | 'message';
   readers?: UserModel[];
+   file_url?: string;  
+  file_type?: string;
 }
 
 interface MessageResponse {

@@ -20,6 +20,8 @@ type Message struct {
 	Sender   User        `json:"sender,omitempty" gorm:"foreignKey:SenderID"`
 	Type     MessageType `gorm:"default:text" json:"type"`
 	Readers  []User      `json:"readers,omitempty" gorm:"many2many:message_readers;"`
+	FileURL  string `json:"file_url,omitempty"`
+    FileType string `json:"file_type,omitempty"`
 }
 
 type MessageReader struct {

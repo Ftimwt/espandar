@@ -70,6 +70,7 @@ func Run() error {
 		AllowOrigins: "http://localhost:5173",
 		AllowHeaders: "Origin, Content-Type, Accept",
 	}))
+    app.Static("/uploads", "./uploads")
 
 	routes.SetupRoutes(app, db, jwt, notifier,
 		map[string]func(routes fiber.Router, option routes.Option){

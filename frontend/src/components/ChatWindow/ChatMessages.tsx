@@ -58,6 +58,8 @@ const ChatMessages: React.FC = () => {
             chatType={receiverType as ChannelRouteType}
             isMe={m.sender.id == user?.id}
             status={m.readers?.length && m.readers.length > 0 ? 'read' : 'sent'}
+            fileURL={m.file_url}    
+            fileType={m.file_type}
           />
         ),
       )}

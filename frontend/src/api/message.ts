@@ -5,6 +5,12 @@ import {useMutation, useQuery} from '@tanstack/react-query';
 
 type ReceiverType = 'users' | 'channels' | 'groups';
 
+export interface SendMessageRequest {
+  text: string;
+  file_url?: string;
+  file_type?: string;
+}
+
 export const sendMessageAPI = async (
   token: string,
   data: SendMessageRequest,
