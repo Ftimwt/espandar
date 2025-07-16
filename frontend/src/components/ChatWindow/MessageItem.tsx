@@ -1,6 +1,6 @@
 import React from 'react';
 import clsx from 'clsx';
-import type { ChannelRouteType } from "../../api/message.ts";
+import type { ChannelRouteType } from '../../api/message.ts';
 
 type Props = {
   sender?: string;
@@ -14,7 +14,17 @@ type Props = {
   fileType?: string;
 };
 
-const MessageItem: React.FC<Props> = ({ sender, message, time, isMe = false, color = 'text-gray-700', chatType, status, fileURL, fileType }) => {
+const MessageItem: React.FC<Props> = ({
+  sender,
+  message,
+  time,
+  isMe = false,
+  color = 'text-gray-700',
+  chatType,
+  status,
+  fileURL,
+  fileType,
+}) => {
   const renderStatus = () => {
     if (!isMe || !status) return null;
     switch (status) {
@@ -32,7 +42,10 @@ const MessageItem: React.FC<Props> = ({ sender, message, time, isMe = false, col
   return (
     <div className={clsx('flex mb-2', isMe && 'justify-end')}>
       <div className={clsx('rounded px-3 py-2 max-w-md', isMe ? 'bg-green-100' : 'bg-gray-100')}>
-        {!isMe && sender && chatType !== 'users' && <p className={`text-sm font-medium ${color}`}>{sender}</p>}
+        {!isMe && sender && chatType !== 'users' && (
+          <p className={`text-sm font-medium ${color}`}>{sender}</p>
+        )}
+
         {message && <p className="text-sm mt-1">{message}</p>}
 
         {/* نمایش عکس */}
@@ -45,8 +58,13 @@ const MessageItem: React.FC<Props> = ({ sender, message, time, isMe = false, col
           <video src={fileURL} controls className="mt-2 max-w-xs rounded" />
         )}
 
-        {/* نمایش لینک برای فایل‌های دیگر */}
-        {fileURL && !fileType?.startsWith('image') && !fileType?.startsWith('video') && (
+        {/* نمایش ویس (فایل صوتی) */}
+        {fileType?.startsWith('audio') && fileURL && (
+          <audio src={fileURL} controls className="mt-2 w-full" />
+        )}
+
+        {/* نمایش لینک برای سایر فایل‌ها */}
+        {fileURL && !fileType?.startsWith('image') && !fileType?.startsWith('video') && !fileType?.startsWith('audio') && (
           <a href={fileURL} target="_blank" rel="noreferrer" className="text-blue-500 text-sm mt-2 block">
             دانلود فایل
           </a>
