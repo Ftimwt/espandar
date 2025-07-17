@@ -20,8 +20,8 @@ type Message struct {
 	Sender   User        `json:"sender,omitempty" gorm:"foreignKey:SenderID"`
 	Type     MessageType `gorm:"default:text" json:"type"`
 	Readers  []User      `json:"readers,omitempty" gorm:"many2many:message_readers;"`
-	FileURL  string `json:"file_url,omitempty"`
-    FileType string `json:"file_type,omitempty"`
+	FileURL  string      `json:"file_url,omitempty"`
+	FileType string      `json:"file_type,omitempty"`
 }
 
 type MessageReader struct {
@@ -30,8 +30,19 @@ type MessageReader struct {
 	ReadAt    time.Time
 }
 
+type FileType string
+
+const (
+	FileTypeImage FileType = "image"
+	FileTypeAudio FileType = "audio"
+	FileTypeVideo FileType = "video"
+	FileTypeText  FileType = "text"
+	FileTypeFile  FileType = "file"
+)
+
 type File struct {
-	ID   uint   `json:"id" gorm:"primaryKey"`
-	Name string `json:"name"`
-	Path string `json:"path"`
+	ID   uint     `json:"id" gorm:"primaryKey"`
+	Name string   `json:"name"`
+	Path string   `json:"path"`
+	Type FileType `json:"type"`
 }

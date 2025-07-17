@@ -11,5 +11,5 @@ func SetupChat(routes fiber.Router, option Option) {
 
 	protected := routes.Use(middlewares.IsAuthenticated(option.userService, option.jwt))
 	protected.Get("/latest", handler.LatestChats)
-	protected.Post("/upload", handlers.UploadFile)
+	protected.Post("/upload", handlers.UploadFile(option.db))
 }

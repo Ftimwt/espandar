@@ -1,11 +1,12 @@
 interface Message {
   text: string;
   sender: UserModel;
+  files: FileModel[];
   CreatedAt: string;
   UpdatedAt: string;
   type: 'alert' | 'message';
   readers?: UserModel[];
-   file_url?: string;  
+  file_url?: string;
   file_type?: string;
 }
 
@@ -29,4 +30,16 @@ interface SendMessageResponse {
 
 interface MessagesResponse {
   messages: Message[];
+}
+
+interface FileRequest {
+  file: Blob;
+  name: string;
+}
+
+interface FileModel {
+  id: number;
+  name: string;
+  path: string;
+  type: 'image' | 'audio' | 'video' | 'text' | 'file';
 }

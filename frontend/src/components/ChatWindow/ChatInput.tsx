@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Input, message, Upload, Button } from 'antd';
+import { Button, Input, message, Upload } from 'antd';
 import { AudioOutlined, SendOutlined, UploadOutlined } from '@ant-design/icons';
-import { type ChannelRouteType, useSendMessage } from '../../api/message.ts';
+import { type ChannelRouteType, useSendMessage, useUploadFile } from '../../api/message.ts';
 import { useParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import EmojiPickerButton from './EmojiPickerButton';
@@ -21,7 +21,7 @@ const ChatInput: React.FC = () => {
   const { uuid, receiverType } = useParams();
   const { token } = useTokenStore();
   const send = useSendMessage(Number.parseInt(uuid || '0'), receiverType as ChannelRouteType);
-
+  const { mutate: uploadFileMutate } = useUploadFile();
 
   const startRecording = async (e: React.MouseEvent) => {
     setCanceled(false);
@@ -41,13 +41,13 @@ const ChatInput: React.FC = () => {
     };
 
     recorder.onstop = () => {
-  console.log('onstop triggered');
-  if (!canceled) {
-    const blob = new Blob(chunks, { type: 'audio/webm' });
-    setAudioBlob(blob);
-    setTimeout(() => handleSendWithBlob(blob), 300);
-  }
-  setRecording(false);
+      console.log('onstop triggered');
+      if (!canceled) {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        setAudioBlob(blob);
+        setTimeout(() => handleSendWithBlob(blob), 300);
+      }
+      setRecording(false);
     };
 
     window.onmousemove = (e) => {
@@ -67,86 +67,32 @@ const ChatInput: React.FC = () => {
   };
 
   const handleSendWithBlob = async (blob: Blob) => {
-  let fileURL = '';
-
-  const formData = new FormData();
-  formData.append('file', blob, 'voice.webm');
-  try {
-    const response = await axios.post('http://localhost:8080/chats/upload', formData, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    fileURL = response.data.file_url;
-  } catch (err) {
-    message.error('خطا در آپلود ویس').then();
-    return;
-  }
-
-  send.mutate(
-    {
-      text: '',
-      file_url: fileURL,
-      file_type: 'audio/webm',
-    },
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['messages'] }).then(() => {});
-        queryClient.invalidateQueries({ queryKey: ['chats'] }).then(() => {});
-        setAudioBlob(null);
+    uploadFileMutate(
+      { file: blob, name: 'voice.webm' },
+      {
+        onSuccess: (res) => {
+          sendMessage(res.data.id);
+        },
+        onError: (error) => {
+          console.error('error during uploading file', error);
+          message.error('error during sending message').then();
+        },
       },
-      onError: (error) => {
-        console.log(error);
-        message.error('error during sending message').then();
-      },
-    }
-  );
-};
+    );
+  };
 
   const stopRecording = () => {
-  console.log('stopRecording called');
-  mediaRecorder?.stop();
-  mediaStream?.getTracks().forEach((track) => track.stop());
-  setMediaStream(null);
-};
+    console.log('stopRecording called');
+    mediaRecorder?.stop();
+    mediaStream?.getTracks().forEach((track) => track.stop());
+    setMediaStream(null);
+  };
 
-  const handleSend = async () => {
-    if (!msg.trim() && !file && !audioBlob) {
-      console.log('چیزی برای ارسال نیست');
-      return;
-    }
-
-    let fileURL = '';
-
-    if (file) {
-      const formData = new FormData();
-      formData.append('file', file);
-      try {
-        const response = await axios.post('http://localhost:8080/chats/upload', formData, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        fileURL = response.data.file_url;
-      } catch (err) {
-        message.error('خطا در آپلود فایل').then();
-        return;
-      }
-    } else if (audioBlob) {
-      const formData = new FormData();
-      formData.append('file', audioBlob, 'voice.webm');
-      try {
-        const response = await axios.post('http://localhost:8080/chats/upload', formData, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        fileURL = response.data.file_url;
-      } catch (err) {
-        message.error('خطا در آپلود ویس').then();
-        return;
-      }
-    }
-
+  function sendMessage(fileID: number) {
     send.mutate(
       {
         text: msg,
-        file_url: fileURL,
-        file_type: file ? file.type : audioBlob ? 'audio/webm' : '',
+        files: [fileID],
       },
       {
         onSuccess: () => {
@@ -160,8 +106,36 @@ const ChatInput: React.FC = () => {
           console.log(error);
           message.error('error during sending message').then();
         },
-      }
+      },
     );
+  }
+
+  const handleSend = async () => {
+    if (!msg.trim() && !file && !audioBlob) {
+      console.log('چیزی برای ارسال نیست');
+      return;
+    }
+
+    if (file) {
+    }
+    let fileID = 0;
+    if (file) {
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const response = await axios.post('http://localhost:8080/chats/upload', formData, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        fileID = Number.parseInt(response.data.id);
+      } catch (err) {
+        message.error('خطا در آپلود فایل').then();
+        return;
+      }
+    }
+
+    sendMessage(fileID);
   };
 
   return (
@@ -173,7 +147,7 @@ const ChatInput: React.FC = () => {
           setFile(file);
           return false;
         }}
-        showUploadList={file ? true : false}
+        showUploadList={!!file}
       >
         <Button icon={<UploadOutlined />} />
       </Upload>

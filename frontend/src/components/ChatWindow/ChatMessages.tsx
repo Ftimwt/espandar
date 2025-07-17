@@ -1,17 +1,20 @@
-import React, {useEffect} from 'react';
-import {useParams} from 'react-router';
+import React, { useEffect } from 'react';
+import { useParams } from 'react-router';
 import MessageItem from './MessageItem.tsx';
-import {useUserStore} from '../../store/userStore.ts';
-import {type ChannelRouteType, useGetMessagesList, useMarkAllAsRead} from '../../api/message.ts';
-import {useWebSocket} from '../../context/websocket.tsx';
-import moment from "moment";
+import { useUserStore } from '../../store/userStore.ts';
+import { type ChannelRouteType, useGetMessagesList, useMarkAllAsRead } from '../../api/message.ts';
+import { useWebSocket } from '../../context/websocket.tsx';
+import moment from 'moment';
 
 const ChatMessages: React.FC = () => {
-  const {uuid, receiverType} = useParams();
+  const { uuid, receiverType } = useParams();
 
-  const {mutate, data: readResponse} = useMarkAllAsRead(Number.parseInt(uuid!), receiverType as ChannelRouteType);
+  const { mutate, data: readResponse } = useMarkAllAsRead(
+    Number.parseInt(uuid!),
+    receiverType as ChannelRouteType,
+  );
 
-  const {data, refetch} = useGetMessagesList(
+  const { data, refetch } = useGetMessagesList(
     receiverType as ChannelRouteType,
     Number.parseInt(uuid!),
   );
@@ -24,7 +27,7 @@ const ChatMessages: React.FC = () => {
     mutate();
   }, [mutate, data]);
 
-  const {subscribe, unsubscribe} = useWebSocket();
+  const { subscribe, unsubscribe } = useWebSocket();
 
   useEffect(() => {
     subscribe('notification', function () {
@@ -36,7 +39,7 @@ const ChatMessages: React.FC = () => {
     });
   }, [subscribe, unsubscribe]);
 
-  const {user} = useUserStore();
+  const { user } = useUserStore();
 
   let msg = data?.data.messages || [];
   msg = [...msg].reverse();
@@ -52,13 +55,14 @@ const ChatMessages: React.FC = () => {
         ) : (
           <MessageItem
             message={m.text}
+            files={m.files}
             time={moment(m.CreatedAt).format('HH:mm')}
             sender={m.sender.username}
             key={i}
             chatType={receiverType as ChannelRouteType}
             isMe={m.sender.id == user?.id}
             status={m.readers?.length && m.readers.length > 0 ? 'read' : 'sent'}
-            fileURL={m.file_url}    
+            fileURL={m.file_url}
             fileType={m.file_type}
           />
         ),

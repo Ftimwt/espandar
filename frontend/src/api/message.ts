@@ -1,14 +1,13 @@
-import type {AxiosResponse} from 'axios';
-import {authClient} from './api.ts';
-import {useTokenStore} from '../store/useToken.ts';
-import {useMutation, useQuery} from '@tanstack/react-query';
+import type { AxiosResponse } from 'axios';
+import { authClient } from './api.ts';
+import { useTokenStore } from '../store/useToken.ts';
+import { useMutation, useQuery } from '@tanstack/react-query';
 
 type ReceiverType = 'users' | 'channels' | 'groups';
 
 export interface SendMessageRequest {
   text: string;
-  file_url?: string;
-  file_type?: string;
+  files?: number[];
 }
 
 export const sendMessageAPI = async (
@@ -38,6 +37,16 @@ export const getMessagesListAPI = async (
   );
 };
 
+export const uploadFileAPI = async (token: string, blob: Blob, fileName: string) => {
+  const formData = new FormData();
+  formData.append('file', blob, fileName);
+  return authClient(token).post<FileModel, AxiosResponse<FileModel>, FormData>(
+    '/chats/upload',
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
+};
+
 export const markAllAsRead = (token: string, target: number, receiverType: ReceiverType) => {
   return authClient(token).put<void, AxiosResponse<void>, void>(
     `/${receiverType}/${target}/messages/read`,
@@ -45,7 +54,7 @@ export const markAllAsRead = (token: string, target: number, receiverType: Recei
 };
 
 export const useSendMessage = (target: number, receiverType: ReceiverType) => {
-  const {token} = useTokenStore();
+  const { token } = useTokenStore();
 
   return useMutation<AxiosResponse<SendMessageResponse>, unknown, SendMessageRequest>({
     mutationKey: [`message_${receiverType}_${target}`],
@@ -54,7 +63,7 @@ export const useSendMessage = (target: number, receiverType: ReceiverType) => {
 };
 
 export const useGetMessagesList = (channelType: ChannelRouteType, targetID: number) => {
-  const {token} = useTokenStore();
+  const { token } = useTokenStore();
 
   return useQuery({
     queryKey: ['messages', `messages_${channelType}_${targetID}`],
@@ -63,10 +72,17 @@ export const useGetMessagesList = (channelType: ChannelRouteType, targetID: numb
 };
 
 export const useMarkAllAsRead = (target: number, receiverType: ReceiverType) => {
-  const {token} = useTokenStore();
+  const { token } = useTokenStore();
 
   return useMutation<AxiosResponse<void>, unknown, void>({
     mutationKey: ['messages', `messages_${receiverType}_${target}`],
     mutationFn: () => markAllAsRead(token!, target, receiverType),
+  });
+};
+
+export const useUploadFile = () => {
+  const { token } = useTokenStore();
+  return useMutation<AxiosResponse<FileModel>, unknown, FileRequest>({
+    mutationFn: (data) => uploadFileAPI(token!, data.file, data.name),
   });
 };

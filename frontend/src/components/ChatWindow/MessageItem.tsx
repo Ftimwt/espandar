@@ -1,6 +1,7 @@
 import React from 'react';
 import clsx from 'clsx';
 import type { ChannelRouteType } from '../../api/message.ts';
+import MessageFile from './MesssageFile.tsx';
 
 type Props = {
   sender?: string;
@@ -8,6 +9,7 @@ type Props = {
   time: string;
   isMe?: boolean;
   color?: string;
+  files?: FileModel[];
   chatType?: ChannelRouteType;
   status?: 'read' | 'delivered' | 'sent';
   fileURL?: string;
@@ -22,8 +24,7 @@ const MessageItem: React.FC<Props> = ({
   color = 'text-gray-700',
   chatType,
   status,
-  fileURL,
-  fileType,
+  files,
 }) => {
   const renderStatus = () => {
     if (!isMe || !status) return null;
@@ -45,30 +46,40 @@ const MessageItem: React.FC<Props> = ({
         {!isMe && sender && chatType !== 'users' && (
           <p className={`text-sm font-medium ${color}`}>{sender}</p>
         )}
-
         {message && <p className="text-sm mt-1">{message}</p>}
 
-        {/* نمایش عکس */}
-        {fileType?.startsWith('image') && fileURL && (
-          <img src={fileURL} alt="uploaded" className="mt-2 max-w-xs rounded" />
-        )}
+        {/*/!* نمایش عکس *!/*/}
+        {/*{fileType?.startsWith('image') && fileURL && (*/}
+        {/*  <img src={fileURL} alt="uploaded" className="mt-2 max-w-xs rounded" />*/}
+        {/*)}*/}
 
-        {/* نمایش ویدیو */}
-        {fileType?.startsWith('video') && fileURL && (
-          <video src={fileURL} controls className="mt-2 max-w-xs rounded" />
-        )}
+        {/*/!* نمایش ویدیو *!/*/}
+        {/*{fileType?.startsWith('video') && fileURL && (*/}
+        {/*  <video src={fileURL} controls className="mt-2 max-w-xs rounded" />*/}
+        {/*)}*/}
 
+        {/*/!* نمایش لینک برای فایل‌های دیگر *!/*/}
+        {/*{fileURL && !fileType?.startsWith('image') && !fileType?.startsWith('video') && (*/}
+        {/*  <a href={fileURL} target="_blank" rel="noreferrer" className="text-blue-500 text-sm mt-2 block">*/}
+        {/*    دانلود فایل*/}
+        {/*  </a>*/}
+        {/*)}*/}
+        {files?.length ? (
+          files.map((file) => <MessageFile file={file} key={`file-${file.id}`} />)
+        ) : (
+          <></>
+        )}
         {/* نمایش ویس (فایل صوتی) */}
-        {fileType?.startsWith('audio') && fileURL && (
-          <audio src={fileURL} controls className="mt-2 w-full" />
-        )}
+        {/*{fileType?.startsWith('audio') && fileURL && (*/}
+        {/*  <audio src={fileURL} controls className="mt-2 w-full" />*/}
+        {/*)}*/}
 
-        {/* نمایش لینک برای سایر فایل‌ها */}
-        {fileURL && !fileType?.startsWith('image') && !fileType?.startsWith('video') && !fileType?.startsWith('audio') && (
-          <a href={fileURL} target="_blank" rel="noreferrer" className="text-blue-500 text-sm mt-2 block">
-            دانلود فایل
-          </a>
-        )}
+        {/*/!* نمایش لینک برای سایر فایل‌ها *!/*/}
+        {/*{fileURL && !fileType?.startsWith('image') && !fileType?.startsWith('video') && !fileType?.startsWith('audio') && (*/}
+        {/*  <a href={fileURL} target="_blank" rel="noreferrer" className="text-blue-500 text-sm mt-2 block">*/}
+        {/*    دانلود فایل*/}
+        {/*  </a>*/}
+        {/*)}*/}
 
         <p className="text-xs text-gray-400 text-right mt-1">
           {time}

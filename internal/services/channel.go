@@ -66,7 +66,7 @@ func (c Channel) SendMessage(userID, channelID uint, messageDTO *dto.Message) (*
 	if err != nil {
 		return nil, err
 	}
-	message, err := c.repo.SendMessage(userID, channelID, messageDTO.Text, nil)
+	message, err := c.repo.SendMessage(userID, channelID, messageDTO.Text, messageDTO.Files)
 	if err != nil {
 		return nil, err
 	}

@@ -52,7 +52,7 @@ func (g Group) FindGroupByID(userID uint, groupID uint) (*models.Channel, error)
 	return g.repoChannel.Get(groupID)
 }
 
-func (g Group) SendMessage(userID uint, channelID uint, message string, files []models.File) (*models.Message, error) {
+func (g Group) SendMessage(userID uint, channelID uint, message string, files []uint) (*models.Message, error) {
 	// TODO: check user access
 	return g.repoChannel.SendMessage(userID, channelID, message, files)
 }

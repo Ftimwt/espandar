@@ -74,9 +74,16 @@ func (c Channel) GetUserChannels(userID uint) ([]models.Channel, error) {
 }
 
 // SendMessage sends message
-func (c Channel) SendMessage(senderID, channelID uint, message string, files []models.File) (*models.Message, error) {
+func (c Channel) SendMessage(senderID, channelID uint, message string, filesID []uint) (*models.Message, error) {
 	channel := &models.Channel{
 		ID: channelID,
+	}
+
+	files := make([]models.File, len(filesID))
+	for i, id := range filesID {
+		files[i] = models.File{
+			ID: id,
+		}
 	}
 
 	msg := &models.Message{
@@ -93,6 +100,15 @@ func (c Channel) SendMessage(senderID, channelID uint, message string, files []m
 	if err != nil {
 		return nil, err
 	}
+
+	err = c.db.
+		Model(msg).
+		Association("Files").
+		Append(files)
+	if err != nil {
+		return nil, err
+	}
+
 	err = c.db.
 		Model(&models.Channel{}).
 		Where("id=?", channel.ID).
