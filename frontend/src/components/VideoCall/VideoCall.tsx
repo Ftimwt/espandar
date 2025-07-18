@@ -1,8 +1,14 @@
-import { useMemo, useRef, useState } from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import PeerVideo from './PeerVideo';
-import { Button, Typography } from 'antd';
+import {Button, Flex, Typography} from 'antd';
+import {userCallStore} from "../../store/callStore.ts";
+import {useUserStore} from "../../store/userStore.ts";
 
-const VideoCall = ({ userID, targetID }: { targetID: number; userID: number }) => {
+
+const VideoCall = () => {
+  const {room, cancelCall} = userCallStore();
+  const {user} = useUserStore();
+
   const localStream = useRef<MediaStream>(null);
   const [mediaStream, setMediaStream] = useState<MediaStream[]>([]);
   const peerConnection = useRef<RTCPeerConnection>(null);
@@ -14,25 +20,31 @@ const VideoCall = ({ userID, targetID }: { targetID: number; userID: number }) =
   const [isInitiator, setInitiator] = useState<boolean>(false);
   const [isLoading, setLoading] = useState<boolean>(false);
 
+  const hasRun = useRef(false);
+
+  useEffect(() => {
+    console.log('room', room);
+  }, [room]);
+
+
   // todo: move to env
   const servers = useMemo(
     () => ({
-      iceServers: [{ urls: 'stun:' + window.location.hostname + ':3478' }],
+      iceServers: [{urls: 'stun:' + window.location.hostname + ':3478'}],
     }),
     [],
   );
 
-  console.log(servers);
-
   const [status, updateStatus] = useState<string>('');
 
   const startCall = async () => {
+    console.log('starting call...')
     try {
       updateStatus('Getting camera and microphone...');
 
       localStream.current = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480 },
-        // audio: true,
+        video: {width: 640, height: 480},
+        audio: true,
       });
       if (localVideo.current) {
         localVideo.current.srcObject = localStream.current;
@@ -75,11 +87,7 @@ const VideoCall = ({ userID, targetID }: { targetID: number; userID: number }) =
       updateStatus('Connecting to signaling server...');
       socket.current = new WebSocket(
         //  todo move to env
-        // 'ws://' + window.location.host + '/ws?room=' + roomId + '&user=' + userId,
-        'ws://localhost:8080/ws/peer?room=' +
-          [userID, targetID].sort().join('-') +
-          '&user=' +
-          userID,
+        `ws://localhost:8080/ws/peer?room=${room}&user=${user?.id}`,
       );
 
       socket.current.onopen = () => {
@@ -136,9 +144,6 @@ const VideoCall = ({ userID, targetID }: { targetID: number; userID: number }) =
           case 'user-left':
             updateStatus('User left: ' + message.content);
             // todo: handle user left
-            // if (remoteVideo.srcObject) {
-            //   remoteVideo.srcObject = null;
-            // }
             break;
         }
       };
@@ -147,15 +152,29 @@ const VideoCall = ({ userID, targetID }: { targetID: number; userID: number }) =
         updateStatus('Socket error: ' + error);
       };
 
-      // startBtn.disabled = true;
-      // endBtn.disabled = false;
-      // muteBtn.disabled = false;
-      // videoBtn.disabled = false;
+      setLoading(false);
     } catch (error) {
       updateStatus('Error: ' + error);
       console.error('Error initializing connection:', error);
     }
   };
+
+  const endCall = () => {
+    console.log('ending call')
+    if (peerConnection.current) peerConnection.current.close();
+    if (socket.current) socket.current.close();
+    cancelCall();
+    hasRun.current = false;
+    localStream.current?.getTracks().forEach((track) => track.stop());
+  }
+
+  useEffect(() => {
+    if (hasRun.current) {
+      return
+    }
+    hasRun.current = true
+    startCall().then()
+  }, []);
 
   return (
     <div className="flex flex-col items-center gap-4 p-4">
@@ -164,14 +183,15 @@ const VideoCall = ({ userID, targetID }: { targetID: number; userID: number }) =
         <div className="text-center text-lg">⏳ در حال اتصال تماس...</div>
       ) : (
         <>
-          <video ref={localVideo} autoPlay playsInline muted className="rounded-xl w-1/2 border" />
+          <video ref={localVideo} autoPlay playsInline muted className="rounded-xl w-1/2 border"/>
           <div className="grid grid-cols-2 gap-4 w-full">
-            <Typography>Clients</Typography>
-            {mediaStream?.map((stream, i) => <PeerVideo key={i} stream={stream} />)}
+            {mediaStream?.map((stream, i) => <PeerVideo key={i} stream={stream}/>)}
           </div>
         </>
       )}
-      <Button onClick={startCall}>Start call</Button>
+      <Flex>
+        <Button color="danger" variant="filled" onClick={endCall}>End call</Button>
+      </Flex>
     </div>
   );
 };

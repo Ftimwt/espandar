@@ -22,7 +22,7 @@ export const userCallStore = create<CallState>((set, get) => ({
     const { user } = useUserStore.getState();
     if (!user) return;
 
-    const room = `room-${Date.now()}-${targetID}`;
+    const room = `room-${Date.now()}_${targetID}`;
     set({ targetID, room, incoming: false });
 
     window.ws?.send(JSON.stringify({
