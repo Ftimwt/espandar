@@ -32,10 +32,12 @@ const CallProvider = () => {
         <Typography>
 
         </Typography>
-        {incoming ? <Flex>
-            <Button variant="solid" onClick={acceptCall}>Accept</Button>
-            <Button variant="text" onClick={rejectCall}>Reject</Button>
-          </Flex> :
+        {incoming ? <Flex vertical gap={20}>
+          <Typography>You have a new call request...</Typography>
+            <Flex justify="center">
+            <Button variant="solid" color="primary" onClick={acceptCall}>Accept</Button>
+            <Button variant="text" color="danger" onClick={rejectCall}>Reject</Button>
+          </Flex> </Flex> :
           <VideoCall key={room}/>
         }
       </Modal>

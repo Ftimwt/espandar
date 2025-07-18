@@ -1,8 +1,9 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 import PeerVideo from './PeerVideo';
-import {Button, Flex, Typography} from 'antd';
+import {Button, Flex} from 'antd';
 import {userCallStore} from "../../store/callStore.ts";
 import {useUserStore} from "../../store/userStore.ts";
+import {AudioMutedOutlined, AudioOutlined, PhoneOutlined, VideoCameraOutlined} from "@ant-design/icons";
 
 
 const VideoCall = () => {
@@ -20,11 +21,10 @@ const VideoCall = () => {
   const [isInitiator, setInitiator] = useState<boolean>(false);
   const [isLoading, setLoading] = useState<boolean>(false);
 
-  const hasRun = useRef(false);
+  const [videoOn, setVideoOn] = useState<boolean>(true);
+  const [micOn, setMicOn] = useState<boolean>(true);
 
-  useEffect(() => {
-    console.log('room', room);
-  }, [room]);
+  const hasRun = useRef(false);
 
 
   // todo: move to env
@@ -35,7 +35,7 @@ const VideoCall = () => {
     [],
   );
 
-  const [status, updateStatus] = useState<string>('');
+  const [_status, updateStatus] = useState<string>('');
 
   const startCall = async () => {
     console.log('starting call...')
@@ -144,6 +144,7 @@ const VideoCall = () => {
           case 'user-left':
             updateStatus('User left: ' + message.content);
             // todo: handle user left
+            setMediaStream([]);
             break;
         }
       };
@@ -176,9 +177,26 @@ const VideoCall = () => {
     startCall().then()
   }, []);
 
+  function muteToggle() {
+    setMicOn((prev) => {
+      localStream.current?.getAudioTracks().forEach((track) => {
+        track.enabled = !prev;
+      });
+      return !prev;
+    });
+  }
+
+  function videoOffToggle() {
+    setVideoOn((prev) => {
+      localStream.current?.getVideoTracks().forEach((track) => {
+        track.enabled = !prev;
+      });
+      return !prev;
+    });
+  }
+
   return (
     <div className="flex flex-col items-center gap-4 p-4">
-      <Typography>{status}</Typography>
       {isLoading ? (
         <div className="text-center text-lg">⏳ در حال اتصال تماس...</div>
       ) : (
@@ -189,8 +207,18 @@ const VideoCall = () => {
           </div>
         </>
       )}
-      <Flex>
-        <Button color="danger" variant="filled" onClick={endCall}>End call</Button>
+      <Flex gap={10}>
+        <Button
+          type="primary"
+          danger
+          shape="circle"
+          icon={<PhoneOutlined style={{transform: 'rotate(135deg)'}}/>}
+          onClick={endCall}
+        />
+        <Button icon={micOn ? <AudioMutedOutlined/> : <AudioOutlined/>} danger={!micOn} shape="circle"
+                onClick={muteToggle}/>
+        <Button icon={micOn ? <VideoCameraOutlined/> : <VideoCameraOutlined/>} danger={!videoOn} shape="circle"
+                onClick={videoOffToggle}/>
       </Flex>
     </div>
   );
