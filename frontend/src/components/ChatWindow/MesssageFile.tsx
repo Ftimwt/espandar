@@ -16,7 +16,7 @@ const MessageFile = (props: MessageFileProps) => {
   }
   return (
     <a href={fileURL} download>
-      download
+      {`Download file {${file.name}}`}
     </a>
   );
 };

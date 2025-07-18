@@ -76,7 +76,7 @@ func (g *Group) Send(ctx *fiber.Ctx) error {
 	if err := ctx.BodyParser(&body); err != nil {
 		return err
 	}
-	_, err = g.service.SendMessage(user.ID, uint(channelID), body.Text, nil)
+	_, err = g.service.SendMessage(user.ID, uint(channelID), &body)
 	if err != nil {
 		return err
 	}
@@ -92,11 +92,7 @@ func (g *Group) MarkAsRead(ctx *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	messageID, err := ctx.ParamsInt("messageID")
-	if err != nil {
-		return err
-	}
-	_, err = g.service.MarkAsRead(user.ID, uint(channelID), uint(messageID))
+	_, err = g.service.MarkAsRead(user.ID, uint(channelID))
 	if err != nil {
 		return err
 	}

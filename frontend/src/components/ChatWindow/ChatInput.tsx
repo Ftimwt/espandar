@@ -88,11 +88,11 @@ const ChatInput: React.FC = () => {
     setMediaStream(null);
   };
 
-  function sendMessage(fileID: number) {
+  function sendMessage(fileID?: number) {
     send.mutate(
       {
         text: msg,
-        files: [fileID],
+        files: fileID ? [fileID] : undefined,
       },
       {
         onSuccess: () => {
@@ -116,13 +116,23 @@ const ChatInput: React.FC = () => {
       return;
     }
 
-    if (file) {
-    }
     let fileID = 0;
     if (file) {
       const formData = new FormData();
       formData.append('file', file);
       try {
+        uploadFileMutate(
+          { file, name: file.name },
+          {
+            onSuccess: (res) => {
+              fileID = res.data.id;
+            },
+            onError: (error) => {
+              console.error('error during uploading file', error);
+              message.error('error during sending message').then();
+            },
+          },
+        );
         const response = await axios.post('http://localhost:8080/chats/upload', formData, {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -147,6 +157,10 @@ const ChatInput: React.FC = () => {
           setFile(file);
           return false;
         }}
+        onRemove={() => {
+          setFile(null);
+        }}
+        maxCount={1}
         showUploadList={!!file}
       >
         <Button icon={<UploadOutlined />} />

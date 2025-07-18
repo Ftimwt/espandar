@@ -28,7 +28,7 @@ func SetupRoutes(routes fiber.Router, db *gorm.DB, jwt *providers.Jwt, notifier 
 	chatRepo := repositories.NewChat(db)
 	groupRepo := repositories.NewGroup(db)
 	channelService := services.NewChannel(channelRepo, notifier)
-	groupSerivce := services.NewGroup(groupRepo, channelRepo, userRepo)
+	groupSerivce := services.NewGroup(channelService, groupRepo, channelRepo, userRepo)
 	option := Option{
 		userRepo:       userRepo,
 		userService:    services.NewUser(userRepo, jwt, notifier, channelService),

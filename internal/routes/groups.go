@@ -11,7 +11,7 @@ func SetupGroup(routes fiber.Router, option Option) {
 	protected := routes.Use(middlewares.IsAuthenticated(option.userService, option.jwt))
 
 	protected.Get("/:groupID/messages", handler.Messages)
-	protected.Put("/:groupID/messages/read", handler.Messages)
+	protected.Put("/:groupID/messages/read", handler.MarkAsRead)
 	protected.Post("/:groupID/send", handler.Send)
 	protected.Get("/:groupID", handler.GroupByID)
 	protected.Post("/", handler.CreateGroup)

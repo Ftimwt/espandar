@@ -10,6 +10,7 @@ import (
 	"time"
 	"v/internal/handlers"
 	"v/internal/routes"
+	"v/internal/stun"
 	"v/pkg/config"
 	"v/pkg/providers"
 
@@ -27,7 +28,16 @@ var (
 	key  = flag.String("key", "", "")
 )
 
+var hub *stun.Hub
+
 func Run() error {
+	stunServer := stun.NewSTUNServer(3478)
+	if err := stunServer.Start(); err != nil {
+		log.Fatal("Failed to start STUN server:", err)
+	}
+	hub = stun.NewHub()
+	go hub.Run()
+
 	flag.Parse()
 
 	if *addr == ":" {
@@ -54,6 +64,16 @@ func Run() error {
 			"error": err.Error(),
 		})
 	}})
+	app.Use(func(c *fiber.Ctx) error {
+		defer func() {
+			if err := recover(); err != nil {
+				c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": err,
+				})
+			}
+		}()
+		return c.Next()
+	})
 	app.Use(logger.New())
 	app.Use(cors.New())
 
@@ -70,7 +90,7 @@ func Run() error {
 		AllowOrigins: "http://localhost:5173",
 		AllowHeaders: "Origin, Content-Type, Accept",
 	}))
-    app.Static("/uploads", "./uploads")
+	app.Static("/uploads", "./uploads")
 
 	routes.SetupRoutes(app, db, jwt, notifier,
 		map[string]func(routes fiber.Router, option routes.Option){
@@ -88,6 +108,7 @@ func Run() error {
 		}
 		return fiber.ErrUpgradeRequired
 	})
+	app.Get("/ws/peer", websocket.New(stun.ServeWS))
 
 	// مسیر WebSocket
 	app.Get("/ws/:userID", websocket.New(notifier.HandleWebSocket))

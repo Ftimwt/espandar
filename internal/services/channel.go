@@ -113,5 +113,15 @@ func (c Channel) MarkAsRead(userID uint, messageIDs ...uint) (int64, error) {
 
 // MarkAllAsRead marks all messages in the specified channel as read by the given user.
 func (c Channel) MarkAllAsRead(userID, channelID uint) (int64, error) {
+	// todo fix websocket for update read status
+	//users, err := c.repo.GetUsersInChannelByID(channelID)
+	//if err == nil {
+	//	for _, user := range users {
+	//		if err := c.notifier.Notification(user.ID, "seen", 1); err != nil {
+	//			log.Errorf("error sending notification: %s", err)
+	//		}
+	//	}
+	//}
+
 	return c.repo.MarkAllAsRead(userID, channelID)
 }
