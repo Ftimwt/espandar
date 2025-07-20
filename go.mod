@@ -15,7 +15,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/pion/rtcp v1.2.10
 	github.com/pion/webrtc/v3 v3.1.50
-	github.com/samber/lo v1.51.0
 	github.com/sirupsen/logrus v1.4.2
 	github.com/swaggo/swag v1.16.4
 	golang.org/x/crypto v0.38.0

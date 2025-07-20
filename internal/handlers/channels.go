@@ -132,3 +132,57 @@ func (h *Channel) MarkAsRead(ctx *fiber.Ctx) error {
 	}
 	return response.WithStatus(http.StatusOK).Send(ctx)
 }
+
+func (h *Channel) UpdateMessage(ctx *fiber.Ctx) error {
+	user := getUser(ctx)
+	messageID, err := ctx.ParamsInt("messageID")
+	if err != nil {
+		return err
+	}
+
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := ctx.BodyParser(&body); err != nil {
+		return err
+	}
+
+	if err := h.service.UpdateMessage(user.ID, uint(messageID), body.Text); err != nil {
+		return err
+	}
+
+	return ctx.SendStatus(http.StatusOK)
+}
+
+func (h *Channel) DeleteMessage(ctx *fiber.Ctx) error {
+	user := getUser(ctx)
+	messageID, err := ctx.ParamsInt("messageID")
+	if err != nil {
+		return err
+	}
+
+	if err := h.service.DeleteMessage(user.ID, uint(messageID)); err != nil {
+		return err
+	}
+
+	return ctx.SendStatus(http.StatusOK)
+}
+
+func (h *Channel) ForwardMessage(ctx *fiber.Ctx) error {
+	user := getUser(ctx)
+	channelID, err := ctx.ParamsInt("channelID")
+	if err != nil {
+		return err
+	}
+	messageID, err := ctx.ParamsInt("messageID")
+	if err != nil {
+		return err
+	}
+
+	message, err := h.service.ForwardMessage(user.ID, uint(channelID), uint(messageID))
+	if err != nil {
+		return err
+	}
+
+	return ctx.Status(http.StatusOK).JSON(message)
+}

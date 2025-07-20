@@ -24,6 +24,8 @@ func SetupChannel(routes fiber.Router, option Option) {
 
 	creator := protected.Group("/:channelID").Use(middlewares.IsChannelManager(option.channelService))
 	creator.Post("/send", handler.SendMessage)
-	//creator.Post("/:channelID", handler.Update)
-	//creator.Delete("/:channelID", handler.Delete)
+    creator.Put("/messages/:messageID", handler.UpdateMessage)
+    creator.Delete("/messages/:messageID", handler.DeleteMessage)
+	creator.Post("/messages/:messageID/forward", handler.ForwardMessage)
+
 }

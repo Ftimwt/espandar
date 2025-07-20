@@ -90,13 +90,13 @@ const SignupAuthPage = () => {
                         >
                             <Input prefix={<LockOutlined />} placeholder="Lastname" size="large" />
                         </Form.Item>
-
+                        {/*
                         <div className="flex justify-end text-sm">
                             <Link href="#" className="text-indigo-600 hover:text-indigo-500">
                                 Forgot password?
                             </Link>
                         </div>
-
+                        */}
                         <Form.Item>
                             <Button
                                 type="primary"
@@ -111,7 +111,7 @@ const SignupAuthPage = () => {
 
                     <p className="mt-10 text-center text-sm text-gray-500">
                         already have an account?{' '}
-                        <Link href="#" className="text-indigo-600 hover:text-indigo-500">
+                        <Link href="/auth" className="text-indigo-600 hover:text-indigo-500">
                             Login
                         </Link>
                     </p>

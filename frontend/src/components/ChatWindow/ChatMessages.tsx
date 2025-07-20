@@ -1,72 +1,115 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import MessageItem from './MessageItem.tsx';
 import { useUserStore } from '../../store/userStore.ts';
-import { type ChannelRouteType, useGetMessagesList, useMarkAllAsRead } from '../../api/message.ts';
+import {
+  type ChannelRouteType,
+  useGetMessagesList,
+  useMarkAllAsRead,
+  useDeleteMessage,
+  useForwardMessage,
+} from '../../api/message.ts';
 import { useWebSocket } from '../../context/websocket.tsx';
 import moment from 'moment';
+import ForwardModal from './ForwardModal.tsx';
+import axios from 'axios';
 
 const ChatMessages: React.FC = () => {
   const { uuid, receiverType } = useParams();
+  const { user } = useUserStore();
+  const { subscribe } = useWebSocket();
 
-  const { mutate, data: readResponse } = useMarkAllAsRead(
+  const { mutate: markAllAsRead } = useMarkAllAsRead(
     Number.parseInt(uuid!),
     receiverType as ChannelRouteType,
   );
-
   const { data, refetch } = useGetMessagesList(
     receiverType as ChannelRouteType,
     Number.parseInt(uuid!),
   );
 
-  useEffect(() => {
-    if (!readResponse) return;
-  }, [readResponse]);
+  const deleteMessageMutation = useDeleteMessage(Number.parseInt(uuid!));
+  const forwardMessageMutation = useForwardMessage();
+
+  const [forwardModalOpen, setForwardModalOpen] = useState(false);
+  const [selectedMessageID, setSelectedMessageID] = useState<number | null>(null);
+  const [userChats, setUserChats] = useState<{ id: number; name: string }[]>([]);
 
   useEffect(() => {
-    mutate();
-  }, [mutate, data]);
-
-  const { subscribe, unsubscribe } = useWebSocket();
+    markAllAsRead();
+  }, [markAllAsRead, data]);
 
   useEffect(() => {
-    subscribe('notification', function () {
-      refetch?.();
+    subscribe('notification', () => refetch?.());
+    subscribe(`messages_${receiverType}_${uuid}`, () => refetch?.());
+  }, [subscribe, refetch, receiverType, uuid]);
+
+  useEffect(() => {
+    axios
+      .get('http://localhost:8080/channels', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      })
+      .then((res) => setUserChats(res.data))
+      .catch((err) => console.error(err));
+  }, []);
+
+  const handleDeleteMessage = (messageID: number) => {
+    deleteMessageMutation.mutate(messageID, {
+      onSuccess: () => refetch?.(),
     });
+  };
 
-    subscribe(`messages_${receiverType}_${uuid}`, function () {
-      refetch?.();
-    });
-  }, [subscribe, unsubscribe]);
+  const handleForwardMessage = (messageID: number) => {
+    setSelectedMessageID(messageID);
+    setForwardModalOpen(true);
+  };
 
-  const { user } = useUserStore();
+  const handleSelectChatToForward = (targetChannelID: number) => {
+    if (!selectedMessageID) return;
+    forwardMessageMutation.mutate(
+      { targetChannelID, messageID: selectedMessageID },
+      {
+        onSuccess: () => {
+          setForwardModalOpen(false);
+          refetch?.();
+        },
+      },
+    );
+  };
 
-  let msg = data?.data.messages || [];
-  msg = [...msg].reverse();
-  console.log(data);
+  const msg = [...(data?.data.messages || [])].reverse();
 
   return (
     <div className="flex-1 overflow-auto bg-gray-200 px-4 py-3">
       {msg.map((m, i) =>
         m.type === 'alert' ? (
-          <div className="flex justify-center mb-3">
+          <div className="flex justify-center mb-3" key={i}>
             <div className="bg-yellow-100 rounded px-3 py-2 text-xs text-gray-700">{m.text}</div>
           </div>
         ) : (
           <MessageItem
+            key={i}
             message={m.text}
             files={m.files}
             time={moment(m.CreatedAt).format('HH:mm')}
             sender={m.sender.username}
-            key={i}
             chatType={receiverType as ChannelRouteType}
             isMe={m.sender.id == user?.id}
             status={m.readers?.length && m.readers.length > 0 ? 'read' : 'sent'}
             fileURL={m.file_url}
             fileType={m.file_type}
+            onDelete={() => handleDeleteMessage(m.id)}
+            onForward={() => handleForwardMessage(m.id)}
           />
         ),
       )}
+
+      <ForwardModal
+        open={forwardModalOpen}
+        onClose={() => setForwardModalOpen(false)}
+        onSelectChat={handleSelectChatToForward}
+        chats={userChats}
+      />
     </div>
   );
 };

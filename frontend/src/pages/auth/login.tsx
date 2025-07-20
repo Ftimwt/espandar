@@ -72,13 +72,13 @@ const LoginAuthPage = () => {
             >
               <Input.Password prefix={<LockOutlined/>} placeholder="Password" size="large"/>
             </Form.Item>
-
+            {/*
             <div className="flex justify-end text-sm">
               <Link href="#" className="text-indigo-600 hover:text-indigo-500">
                 Forgot password?
               </Link>
             </div>
-
+            */}
             <Form.Item>
               <Button
                 type="primary"

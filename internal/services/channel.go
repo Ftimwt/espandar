@@ -125,3 +125,28 @@ func (c Channel) MarkAllAsRead(userID, channelID uint) (int64, error) {
 
 	return c.repo.MarkAllAsRead(userID, channelID)
 }
+
+func (c Channel) UpdateMessage(userID, messageID uint, newText string) error {
+	return c.repo.UpdateMessage(userID, messageID, newText)
+}
+
+func (c Channel) DeleteMessage(userID, messageID uint) error {
+	return c.repo.DeleteMessage(userID, messageID)
+}
+
+func (c *Channel) ForwardMessage(userID, targetChannelID, messageID uint) (*models.Message, error) {
+	// بگیر پیام اصلی رو
+	originalMessage, err := c.repo.GetMessageByID(messageID)
+	if err != nil {
+		return nil, err
+	}
+
+	// پیام جدید بساز روی چت جدید
+	newMessage, err := c.repo.SendMessage(userID, targetChannelID, originalMessage.Text, []uint{})
+	if err != nil {
+		return nil, err
+	}
+
+	return newMessage, nil
+}
+

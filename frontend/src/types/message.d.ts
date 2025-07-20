@@ -1,4 +1,5 @@
 interface Message {
+  id: number;  
   text: string;
   sender: UserModel;
   files: FileModel[];

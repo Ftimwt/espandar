@@ -14,6 +14,7 @@ const (
 
 type Message struct {
 	gorm.Model
+	ID       uint        `json:"id" gorm:"primaryKey"`  
 	Text     string      `json:"text"`
 	Files    []File      `json:"files,omitempty" gorm:"many2many:message_files;"`
 	SenderID uint        `json:"-"`

@@ -220,3 +220,41 @@ func (c Channel) MarkAllAsRead(userID uint, channelID uint) (int64, error) {
 	}
 	return c.MarkAsRead(userID, messages...)
 }
+
+// UpdateMessage updates the text of a message by its ID
+func (c Channel) UpdateMessage(userID, messageID uint, newText string) error {
+	return c.db.Model(&models.Message{}).
+		Where("id = ? AND sender_id = ?", messageID, userID).
+		Update("text", newText).Error
+}
+
+// DeleteMessage deletes a message by its ID if the user is the sender
+func (c Channel) DeleteMessage(userID, messageID uint) error {
+	return c.db.Where("id = ? AND sender_id = ?", messageID, userID).Delete(&models.Message{}).Error
+}
+
+// ForwardMessage creates a copy of a message and sends it to target channel
+func (c Channel) ForwardMessage(senderID, targetChannelID, originalMessageID uint) (*models.Message, error) {
+	var original models.Message
+	if err := c.db.Preload("Files").First(&original, originalMessageID).Error; err != nil {
+		return nil, err
+	}
+
+	return c.SendMessage(senderID, targetChannelID, original.Text, extractFileIDs(original.Files))
+}
+
+func extractFileIDs(files []models.File) []uint {
+	var ids []uint
+	for _, f := range files {
+		ids = append(ids, f.ID)
+	}
+	return ids
+}
+
+func (c Channel) GetMessageByID(messageID uint) (*models.Message, error) {
+	var message models.Message
+	if err := c.db.Preload("Files").First(&message, messageID).Error; err != nil {
+		return nil, err
+	}
+	return &message, nil
+}

@@ -1,14 +1,21 @@
 import React, { useState } from 'react';
 import { Button, Input, message, Upload } from 'antd';
 import { AudioOutlined, SendOutlined, UploadOutlined } from '@ant-design/icons';
-import { type ChannelRouteType, useSendMessage, useUploadFile } from '../../api/message.ts';
+import { type ChannelRouteType, useSendMessage, useUploadFile, useUpdateMessage } from '../../api/message.ts';
 import { useParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import EmojiPickerButton from './EmojiPickerButton';
 import axios from 'axios';
 import { useTokenStore } from '../../store/useToken';
 
-const ChatInput: React.FC = () => {
+type Props = {
+  editingMessageID: number | null;
+  editingText: string;
+  setEditingMessageID: (id: number | null) => void;
+  setEditingText: (text: string) => void;
+};
+
+const ChatInput: React.FC<Props> = ({ editingMessageID, editingText, setEditingMessageID, setEditingText }) => {
   const [msg, setMsg] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [recording, setRecording] = useState(false);
@@ -22,6 +29,8 @@ const ChatInput: React.FC = () => {
   const { token } = useTokenStore();
   const send = useSendMessage(Number.parseInt(uuid || '0'), receiverType as ChannelRouteType);
   const { mutate: uploadFileMutate } = useUploadFile();
+
+  const updateMessageMutate = useUpdateMessage(Number.parseInt(uuid || '0'), editingMessageID || 0);
 
   const startRecording = async (e: React.MouseEvent) => {
     setCanceled(false);
@@ -116,6 +125,18 @@ const ChatInput: React.FC = () => {
       return;
     }
 
+    if (editingMessageID) {  // ✅ حالت ویرایش اضافه شده
+      updateMessageMutate.mutate(msg, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ['messages'] }).then(() => {});
+          setEditingMessageID(null);
+          setEditingText('');
+          setMsg('');
+        },
+      });
+      return;
+    }
+
     let fileID = 0;
     if (file) {
       const formData = new FormData();
@@ -170,10 +191,19 @@ const ChatInput: React.FC = () => {
         className="flex-1"
         size="large"
         placeholder="Type a message..."
-        value={msg}
-        onChange={(e) => setMsg(e.target.value)}
+        value={editingMessageID ? editingText : msg}  
+        onChange={(e) => {
+        if (editingMessageID) setEditingText(e.target.value);
+        else setMsg(e.target.value);
+        }}
         onPressEnter={handleSend}
       />
+
+      {editingMessageID && (  
+        <Button onClick={() => { setEditingMessageID(null); setEditingText(''); }} size="small">
+          Cancel Edit
+        </Button>
+      )}
 
       {msg.trim() || file || audioBlob ? (
         <div className="cursor-pointer" onClick={handleSend}>

@@ -86,3 +86,31 @@ export const useUploadFile = () => {
     mutationFn: (data) => uploadFileAPI(token!, data.file, data.name),
   });
 };
+
+export function useUpdateMessage(channelID: number, messageID: number) {
+  const { token } = useTokenStore();
+  return useMutation({
+    mutationKey: ['message_update', channelID, messageID],
+    mutationFn: (text: string) =>
+      authClient(token!).put(`/channels/${channelID}/messages/${messageID}`, { text }),
+  });
+}
+
+export const useDeleteMessage = (channelID: number) => {
+  const { token } = useTokenStore();
+  return useMutation<AxiosResponse<any>, Error, number>({
+    mutationFn: (messageID: number) =>
+      authClient(token!).delete(`/channels/${channelID}/messages/${messageID}`),
+  });
+};
+
+export const useForwardMessage = () => {
+  const { token } = useTokenStore();
+  return useMutation<{ targetChannelID: number; messageID: number }, Error, { targetChannelID: number; messageID: number }>({
+    mutationFn: ({ targetChannelID, messageID }) =>
+      authClient(token!).post(`/channels/${targetChannelID}/messages/${messageID}/forward`),
+  });
+};
+
+
+
