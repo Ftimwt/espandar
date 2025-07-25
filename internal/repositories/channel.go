@@ -27,18 +27,25 @@ func NewChannel(db *gorm.DB) *Channel {
 func (c Channel) CreateByUserID(userID uint, name string, membersID []uint) (*models.Channel, error) {
 	members := make([]models.User, len(membersID)+1)
 
+	// اضافه کردن سازنده به عنوان عضو
 	members[0] = models.User{ID: userID}
 	for i, id := range membersID {
-		members[i+1] = models.User{
-			ID: id,
-		}
+		members[i+1] = models.User{ID: id}
+	}
+
+	// تشخیص نوع چت بر اساس تعداد اعضا
+	channelType := models.ChannelTypeChannel // پیش‌فرض کانال
+	if len(membersID) == 1 {
+		channelType = models.ChannelTypePrivateChat
+	} else if len(membersID) > 1 {
+		channelType = models.ChannelTypeGroupChat
 	}
 
 	channel := models.Channel{
 		Name:            name,
 		CreatorID:       userID,
 		Members:         members,
-		Type:            models.ChannelTypeChannel,
+		Type:            channelType,
 		LastMessageTime: time.Now(),
 	}
 
@@ -225,7 +232,10 @@ func (c Channel) MarkAllAsRead(userID uint, channelID uint) (int64, error) {
 func (c Channel) UpdateMessage(userID, messageID uint, newText string) error {
 	return c.db.Model(&models.Message{}).
 		Where("id = ? AND sender_id = ?", messageID, userID).
-		Update("text", newText).Error
+		Updates(map[string]any{
+			"text":      newText,
+			"is_edited": true,
+		}).Error
 }
 
 // DeleteMessage deletes a message by its ID if the user is the sender

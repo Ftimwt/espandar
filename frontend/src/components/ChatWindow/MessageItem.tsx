@@ -16,6 +16,7 @@ type Props = {
   status?: 'read' | 'delivered' | 'sent';
   fileURL?: string;
   fileType?: string;
+  isEdited?: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
   onForward?: () => void;
@@ -32,6 +33,7 @@ const MessageItem: React.FC<Props> = ({
   files,
   fileURL,
   fileType,
+  isEdited,
   onEdit,
   onDelete,
   onForward,
@@ -52,9 +54,11 @@ const MessageItem: React.FC<Props> = ({
 
   const menu = (
     <Menu>
-      <Menu.Item key="edit" onClick={onEdit}>
-        Edit
-      </Menu.Item>
+      {isMe && !message.startsWith('Forwarded from') && !fileURL && (
+        <Menu.Item key="edit" onClick={onEdit}>
+          Edit
+        </Menu.Item>
+      )}
       <Menu.Item key="delete" onClick={onDelete}>
         Delete
       </Menu.Item>
@@ -66,63 +70,56 @@ const MessageItem: React.FC<Props> = ({
 
   return (
     <div className={clsx('flex mb-2', isMe && 'justify-end')}>
-      <div
-        className={clsx(
-          'rounded px-3 py-2 max-w-md relative',
-          isMe ? 'bg-green-100' : 'bg-gray-100',
-        )}
-      >
-        {/* منوی عملیات فقط برای پیام‌های خود کاربر */}
-        {isMe && (
-          <div className="absolute top-0 right-0">
-            <Dropdown overlay={menu} trigger={['click']}>
-              <MoreOutlined className="cursor-pointer text-gray-500" />
-            </Dropdown>
-          </div>
-        )}
+      <div className={clsx('rounded px-3 py-2 max-w-md relative', isMe ? 'bg-green-100' : 'bg-gray-100')}>
+        {/* منوی عملیات */}
+        <div className="absolute top-0 right-0">
+          <Dropdown overlay={menu} trigger={['click']}>
+            <MoreOutlined className="cursor-pointer text-gray-500" />
+          </Dropdown>
+        </div>
 
         {!isMe && sender && chatType !== 'users' && (
           <p className={`text-sm font-medium ${color}`}>{sender}</p>
         )}
+
+        {/* متن پیام */}
         {message && <p className="text-sm mt-1">{message}</p>}
 
-        {/* نمایش عکس */}
-        {/*{fileType?.startsWith('image') && fileURL && (*/}
-        {/*  <img src={fileURL} alt="uploaded" className="mt-2 max-w-xs rounded" />*/}
-        {/*)}*/}
-
-        {/* نمایش ویدیو */}
-        {/*{fileType?.startsWith('video') && fileURL && (*/}
-        {/*  <video src={fileURL} controls className="mt-2 max-w-xs rounded" />*/}
-        {/*)}*/}
-
-        {/* نمایش لینک برای فایل‌های دیگر */}
-        {/*{fileURL && !fileType?.startsWith('image') && !fileType?.startsWith('video') && (*/}
-        {/*  <a href={fileURL} target="_blank" rel="noreferrer" className="text-blue-500 text-sm mt-2 block">*/}
-        {/*    دانلود فایل*/}
-        {/*  </a>*/}
-        {/*)}*/}
-
+        {/* فایل‌های ارسالی */}
         {files?.length ? (
           files.map((file) => <MessageFile file={file} key={`file-${file.id}`} />)
         ) : (
           <></>
         )}
 
-        {/* نمایش ویس (فایل صوتی) */}
-        {/*{fileType?.startsWith('audio') && fileURL && (*/}
-        {/*  <audio src={fileURL} controls className="mt-2 w-full" />*/}
-        {/*)}*/}
+        {/* عکس */}
+        {fileType?.startsWith('image') && fileURL && (
+          <img src={fileURL} alt="uploaded" className="mt-2 max-w-xs rounded" />
+        )}
 
-        {/* نمایش لینک برای سایر فایل‌ها */}
-        {/*{fileURL && !fileType?.startsWith('image') && !fileType?.startsWith('video') && !fileType?.startsWith('audio') && (*/}
-        {/*  <a href={fileURL} target="_blank" rel="noreferrer" className="text-blue-500 text-sm mt-2 block">*/}
-        {/*    دانلود فایل*/}
-        {/*  </a>*/}
-        {/*)}*/}
+        {/* ویدیو */}
+        {fileType?.startsWith('video') && fileURL && (
+          <video src={fileURL} controls className="mt-2 max-w-xs rounded" />
+        )}
+
+        {/* ویس */}
+        {fileType?.startsWith('audio') && fileURL && (
+          <audio src={fileURL} controls className="mt-2 w-full" />
+        )}
+
+        {/* فایل‌های دیگر */}
+        {fileURL &&
+          !fileType?.startsWith('image') &&
+          !fileType?.startsWith('video') &&
+          !fileType?.startsWith('audio') && (
+            <a href={fileURL} target="_blank" rel="noreferrer" className="text-blue-500 text-sm mt-2 block">
+              Download file
+            </a>
+          )}
 
         <p className="text-xs text-gray-400 text-right mt-1">
           {time}
+          {isEdited && <span className="ml-2 text-gray-400">(edited)</span>}
           {isMe && status && (
             <>
               {' '}

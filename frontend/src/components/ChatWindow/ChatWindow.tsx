@@ -1,14 +1,17 @@
 // components/ChatWindow/ChatWindow.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import ChatHeader from './ChatHeader';
 import ChatInput from './ChatInput';
-import {useParams} from "react-router";
-import {useUserStore} from "../../store/userStore.ts";
-import ChatMessages from "./ChatMessages.tsx";
+import { useParams } from 'react-router';
+import { useUserStore } from '../../store/userStore.ts';
+import ChatMessages from './ChatMessages.tsx';
 
 const ChatWindow: React.FC = () => {
-  const {uuid} = useParams();
-  const {user} = useUserStore();
+  const { uuid } = useParams();
+  const { user } = useUserStore();
+
+  const [editingMessageID, setEditingMessageID] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState('');
 
   if (!uuid || !user) {
     return null;
@@ -16,10 +19,18 @@ const ChatWindow: React.FC = () => {
 
   return (
     <div className="w-2/3 flex flex-col">
-      <ChatHeader/>
-      <ChatMessages />
+      <ChatHeader />
+      <ChatMessages
+        setEditingMessageID={setEditingMessageID}
+        setEditingText={setEditingText}
+      />
       {/*<VideoCall targetID={Number.parseInt(uuid!)} userID={user.id}/>*/}
-      <ChatInput/>
+      <ChatInput
+        editingMessageID={editingMessageID}
+        editingText={editingText}
+        setEditingMessageID={setEditingMessageID}
+        setEditingText={setEditingText}
+      />
     </div>
   );
 };

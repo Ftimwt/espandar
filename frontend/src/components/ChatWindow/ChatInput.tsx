@@ -120,22 +120,23 @@ const ChatInput: React.FC<Props> = ({ editingMessageID, editingText, setEditingM
   }
 
   const handleSend = async () => {
-    if (!msg.trim() && !file && !audioBlob) {
-      console.log('چیزی برای ارسال نیست');
-      return;
-    }
+    if (!(editingMessageID ? editingText.trim() : msg.trim()) && !file && !audioBlob) {
+  console.log('چیزی برای ارسال نیست');
+  return;
+}
 
-    if (editingMessageID) {  // ✅ حالت ویرایش اضافه شده
-      updateMessageMutate.mutate(msg, {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ['messages'] }).then(() => {});
-          setEditingMessageID(null);
-          setEditingText('');
-          setMsg('');
-        },
-      });
-      return;
-    }
+    if (editingMessageID) {
+  updateMessageMutate.mutate(editingText, {
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages'] }).then(() => {});
+      setEditingMessageID(null);
+      setEditingText('');
+      setMsg('');
+    },
+  });
+  return;
+}
+
 
     let fileID = 0;
     if (file) {
@@ -160,7 +161,7 @@ const ChatInput: React.FC<Props> = ({ editingMessageID, editingText, setEditingM
           },
         });
         fileID = Number.parseInt(response.data.id);
-      } catch (err) {
+      } catch {
         message.error('خطا در آپلود فایل').then();
         return;
       }
@@ -205,7 +206,7 @@ const ChatInput: React.FC<Props> = ({ editingMessageID, editingText, setEditingM
         </Button>
       )}
 
-      {msg.trim() || file || audioBlob ? (
+            {(editingMessageID ? editingText.trim() : msg.trim()) || file || audioBlob ? (
         <div className="cursor-pointer" onClick={handleSend}>
           <SendOutlined style={{ fontSize: 24, color: '#1890ff' }} />
         </div>

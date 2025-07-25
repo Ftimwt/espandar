@@ -14,7 +14,12 @@ import moment from 'moment';
 import ForwardModal from './ForwardModal.tsx';
 import axios from 'axios';
 
-const ChatMessages: React.FC = () => {
+type Props = {
+  setEditingMessageID: (id: number | null) => void;
+  setEditingText: (text: string) => void;
+};
+
+const ChatMessages: React.FC<Props> = ({ setEditingMessageID, setEditingText }) => {
   const { uuid, receiverType } = useParams();
   const { user } = useUserStore();
   const { subscribe } = useWebSocket();
@@ -53,11 +58,12 @@ const ChatMessages: React.FC = () => {
       .catch((err) => console.error(err));
   }, []);
 
-  const handleDeleteMessage = (messageID: number) => {
-    deleteMessageMutation.mutate(messageID, {
-      onSuccess: () => refetch?.(),
-    });
-  };
+const handleDeleteMessage = (messageID: number) => {
+  deleteMessageMutation.mutate(messageID, {
+    onSuccess: () => refetch?.(),
+    onError: (err) => console.error('Error deleting:', err),
+  });
+};
 
   const handleForwardMessage = (messageID: number) => {
     setSelectedMessageID(messageID);
@@ -75,6 +81,11 @@ const ChatMessages: React.FC = () => {
         },
       },
     );
+  };
+
+  const handleEditMessage = (messageID: number, text: string) => {
+    setEditingMessageID(messageID);
+    setEditingText(text);
   };
 
   const msg = [...(data?.data.messages || [])].reverse();
@@ -98,8 +109,10 @@ const ChatMessages: React.FC = () => {
             status={m.readers?.length && m.readers.length > 0 ? 'read' : 'sent'}
             fileURL={m.file_url}
             fileType={m.file_type}
+            isEdited={m.is_edited}  
             onDelete={() => handleDeleteMessage(m.id)}
             onForward={() => handleForwardMessage(m.id)}
+            onEdit={() => handleEditMessage(m.id, m.text)}
           />
         ),
       )}

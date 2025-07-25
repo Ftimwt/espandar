@@ -14,7 +14,7 @@ const (
 
 type Message struct {
 	gorm.Model
-	ID       uint        `json:"id" gorm:"primaryKey"`  
+	ID       uint        `json:"id" gorm:"primaryKey"`
 	Text     string      `json:"text"`
 	Files    []File      `json:"files,omitempty" gorm:"many2many:message_files;"`
 	SenderID uint        `json:"-"`
@@ -23,6 +23,7 @@ type Message struct {
 	Readers  []User      `json:"readers,omitempty" gorm:"many2many:message_readers;"`
 	FileURL  string      `json:"file_url,omitempty"`
 	FileType string      `json:"file_type,omitempty"`
+	IsEdited bool        `json:"is_edited" gorm:"default:false"`
 }
 
 type MessageReader struct {

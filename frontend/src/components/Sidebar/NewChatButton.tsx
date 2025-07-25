@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { Button, Divider, List, Modal, Space } from 'antd';
-import { MessageOutlined, NotificationOutlined, TeamOutlined } from '@ant-design/icons';
+import {
+  MessageOutlined,
+  NotificationOutlined,
+  TeamOutlined,
+  VideoCameraOutlined,
+} from '@ant-design/icons';
 import { useGetUsersList } from '../../api/user.ts';
 import { getFullname } from '../../utils/user.ts';
 import UserAvatar from '../User/UserAvatar.tsx';
@@ -11,59 +16,53 @@ import { useCreateChannel } from '../../api/channels.ts';
 import { useCreateGroup } from '../../api/groups.ts';
 
 const NewChatButton: React.FC = () => {
+  const [open, setOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [groupType, setGroupType] = useState<'group' | 'channel' | null>(null);
   const queryClient = useQueryClient();
   const createChannel = useCreateChannel();
   const createGroup = useCreateGroup();
+  const navigate = useNavigate();
 
+  const { data } = useGetUsersList();
+
+  // باز کردن فرم ایجاد گروه/کانال
   const handleCreateClick = (type: 'group' | 'channel') => {
     setGroupType(type);
     setOpen(false);
     setCreateModalOpen(true);
   };
 
-  const [open, setOpen] = useState(false);
-  const { data } = useGetUsersList();
-  const navigate = useNavigate();
-
+  // کلیک روی کاربر برای شروع چت
   const handleSelect = (id: number) => {
-    console.log('شروع چت با:', id);
     navigate(`/chat/users/${id}`);
     setOpen(false);
   };
 
+  // ایجاد گروه یا کانال
   const handleCreateChat = (data: {
     type: 'group' | 'channel';
     name: string;
     description?: string;
     members: number[];
   }) => {
-    console.log('Creating group/channel:', data);
     if (data.type === 'channel') {
       createChannel.mutate(
-        {
-          name: data.name,
-          members: data.members,
-        },
+        { name: data.name, members: data.members },
         {
           onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['chats'] }).then(() => {});
-            queryClient.invalidateQueries({ queryKey: ['messages'] }).then(() => {});
+            queryClient.invalidateQueries({ queryKey: ['chats'] });
+            queryClient.invalidateQueries({ queryKey: ['messages'] });
           },
         },
       );
-    } else if (data.type === 'group') {
+    } else {
       createGroup.mutate(
-        {
-          name: data.name,
-          description: data.description,
-          members: data.members,
-        },
+        { name: data.name, description: data.description, members: data.members },
         {
           onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['chats'] }).then(() => {});
-            queryClient.invalidateQueries({ queryKey: ['messages'] }).then(() => {});
+            queryClient.invalidateQueries({ queryKey: ['chats'] });
+            queryClient.invalidateQueries({ queryKey: ['messages'] });
           },
         },
       );
@@ -72,6 +71,7 @@ const NewChatButton: React.FC = () => {
 
   return (
     <>
+      {/* دکمه شناور برای شروع چت */}
       <Button
         type="primary"
         shape="circle"
@@ -81,19 +81,35 @@ const NewChatButton: React.FC = () => {
         onClick={() => setOpen(true)}
       />
 
-      <Modal title="Create a new chat" open={open} onCancel={() => setOpen(false)} footer={null}>
-        {/* Action Buttons on Top */}
-        <Space className="mb-4">
+      {/* مودال اصلی */}
+      <Modal
+        title="Create a new chat"
+        open={open}
+        onCancel={() => setOpen(false)}
+        footer={null}
+      >
+        {/* دکمه‌های بالا */}
+        <Space wrap className="mb-4">
           <Button icon={<TeamOutlined />} onClick={() => handleCreateClick('group')}>
             Create Group
           </Button>
           <Button icon={<NotificationOutlined />} onClick={() => handleCreateClick('channel')}>
             Create Channel
           </Button>
+          <Button
+            icon={<VideoCameraOutlined />}
+            onClick={() => {
+              navigate('/conference');
+              setOpen(false);
+            }}
+          >
+            Conferences
+          </Button>
         </Space>
 
         <Divider className="my-2" />
 
+        {/* لیست کاربران */}
         <List
           itemLayout="horizontal"
           dataSource={data?.data.users}
@@ -102,12 +118,16 @@ const NewChatButton: React.FC = () => {
               onClick={() => handleSelect(item.id)}
               className="cursor-pointer hover:bg-gray-50"
             >
-              <List.Item.Meta avatar={<UserAvatar user={item} />} title={getFullname(item)} />
+              <List.Item.Meta
+                avatar={<UserAvatar user={item} />}
+                title={getFullname(item)}
+              />
             </List.Item>
           )}
         />
       </Modal>
 
+      {/* مودال ساخت گروه/کانال */}
       <CreateChatModal
         open={createModalOpen}
         onClose={() => {

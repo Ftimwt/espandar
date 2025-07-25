@@ -94,11 +94,12 @@ func Run() error {
 
 	routes.SetupRoutes(app, db, jwt, notifier,
 		map[string]func(routes fiber.Router, option routes.Option){
-			"/auth":     routes.SetupAuth,
-			"/channels": routes.SetupChannel,
-			"/groups":   routes.SetupGroup,
-			"/users":    routes.SetupUser,
-			"/chats":    routes.SetupChat,
+			"/auth":        routes.SetupAuth,
+			"/channels":    routes.SetupChannel,
+			"/groups":      routes.SetupGroup,
+			"/users":       routes.SetupUser,
+			"/chats":       routes.SetupChat,
+			"/conferences": routes.SetupConference,
 		},
 	)
 

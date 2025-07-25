@@ -15,6 +15,8 @@ func SetupChannel(routes fiber.Router, option Option) {
 	handler := handlers.NewChannel(option.channelService)
 
 	protected := routes.Use(middlewares.IsAuthenticated(userService, option.jwt))
+
+	// مسیرهای عمومی برای همه اعضا (چت خصوصی + گروه + کانال)
 	protected.Post("/", handler.Create)
 	protected.Get("/", handler.List)
 	protected.Get("/:channelID", handler.GetByID)
@@ -22,10 +24,11 @@ func SetupChannel(routes fiber.Router, option Option) {
 	protected.Put("/:channelID/messages/read", handler.MarkAllAsRead)
 	protected.Put("/:channelID/messages/:messageID/read", handler.MarkAsRead)
 
-	creator := protected.Group("/:channelID").Use(middlewares.IsChannelManager(option.channelService))
-	creator.Post("/send", handler.SendMessage)
-    creator.Put("/messages/:messageID", handler.UpdateMessage)
-    creator.Delete("/messages/:messageID", handler.DeleteMessage)
-	creator.Post("/messages/:messageID/forward", handler.ForwardMessage)
+	protected.Post("/:channelID/send", handler.SendMessage)
+	protected.Put("/:channelID/messages/:messageID", handler.UpdateMessage)
+	protected.Delete("/:channelID/messages/:messageID", handler.DeleteMessage)
+	protected.Post("/:channelID/messages/:messageID/forward", handler.ForwardMessage)
 
+	// مسیرهای مدیریتی فقط برای سازنده کانال (در صورت نیاز به توسعه)
+	_ = protected.Group("/:channelID/admin").Use(middlewares.IsChannelManager(option.channelService))
 }

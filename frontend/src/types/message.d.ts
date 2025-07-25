@@ -8,7 +8,9 @@ interface Message {
   type: 'alert' | 'message';
   readers?: UserModel[];
   file_url?: string;
-  file_type?: string;
+  file_type?: string; 
+  is_edited?: boolean; 
+
 }
 
 interface MessageResponse {
