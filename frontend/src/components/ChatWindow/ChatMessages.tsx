@@ -4,10 +4,10 @@ import MessageItem from './MessageItem.tsx';
 import { useUserStore } from '../../store/userStore.ts';
 import {
   type ChannelRouteType,
-  useGetMessagesList,
-  useMarkAllAsRead,
   useDeleteMessage,
   useForwardMessage,
+  useGetMessagesList,
+  useMarkAllAsRead,
 } from '../../api/message.ts';
 import { useWebSocket } from '../../context/websocket.tsx';
 import moment from 'moment';
@@ -58,12 +58,12 @@ const ChatMessages: React.FC<Props> = ({ setEditingMessageID, setEditingText }) 
       .catch((err) => console.error(err));
   }, []);
 
-const handleDeleteMessage = (messageID: number) => {
-  deleteMessageMutation.mutate(messageID, {
-    onSuccess: () => refetch?.(),
-    onError: (err) => console.error('Error deleting:', err),
-  });
-};
+  const handleDeleteMessage = (messageID: number) => {
+    deleteMessageMutation.mutate(messageID, {
+      onSuccess: () => refetch?.(),
+      onError: (err) => console.error('Error deleting:', err),
+    });
+  };
 
   const handleForwardMessage = (messageID: number) => {
     setSelectedMessageID(messageID);
@@ -107,9 +107,7 @@ const handleDeleteMessage = (messageID: number) => {
             chatType={receiverType as ChannelRouteType}
             isMe={m.sender.id == user?.id}
             status={m.readers?.length && m.readers.length > 0 ? 'read' : 'sent'}
-            fileURL={m.file_url}
-            fileType={m.file_type}
-            isEdited={m.is_edited}  
+            isEdited={m.is_edited}
             onDelete={() => handleDeleteMessage(m.id)}
             onForward={() => handleForwardMessage(m.id)}
             onEdit={() => handleEditMessage(m.id, m.text)}

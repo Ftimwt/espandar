@@ -1,6 +1,6 @@
 import { getFullname } from './user.ts';
 
-export const getChatName = (chat: ChatModel | ChannelModel) => {
+export const getChatName = (chat: ChatModel | ChannelModel | GroupModel) => {
   if (chat.type === 'private_chat') {
     return getFullname(chat.members?.[0]);
   }

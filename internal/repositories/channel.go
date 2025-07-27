@@ -71,6 +71,7 @@ func (c Channel) GetUserChannels(userID uint) ([]models.Channel, error) {
 		Joins("JOIN channel_users ON channel_users.channel_id = channels.id").
 		Where("channel_users.user_id = ? OR channels.creator_id = ?", userID, userID).
 		Preload("Creator").
+		Preload("Members", "id != ?", userID).
 		Find(&channels).Error
 
 	if err != nil {

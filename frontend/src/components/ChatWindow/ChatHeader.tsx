@@ -63,10 +63,12 @@ const ChatHeader: React.FC = () => {
         )}
         <div className="ml-4">
           <Typography.Text strong>{name}</Typography.Text>
-          {members.length && (
-            <Typography.Text className="block text-xs text-gray-500">
+          {members.length ? (
+            <Typography.Text className="block text-xs text-gray-500 truncate w-[200px]">
               {members.map((mem) => getFullname(mem)).join(', ')}
             </Typography.Text>
+          ) : (
+            <></>
           )}
         </div>
       </div>
