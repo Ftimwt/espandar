@@ -1,11 +1,13 @@
 import React from 'react';
-import { Modal, List, Button } from 'antd';
+import { Button, Flex, List, Modal } from 'antd';
+import { getChatName } from '../../utils/chat.ts';
+import ChatAvatar from '../Chat/ChatAvatar.tsx';
 
 type Props = {
   open: boolean;
   onClose: () => void;
   onSelectChat: (channelID: number) => void;
-  chats: { id: number; name: string }[];
+  chats: ChatModel[];
 };
 
 const ForwardModal: React.FC<Props> = ({ open, onClose, onSelectChat, chats }) => {
@@ -21,7 +23,10 @@ const ForwardModal: React.FC<Props> = ({ open, onClose, onSelectChat, chats }) =
               </Button>,
             ]}
           >
-            {chat.name}
+            <Flex justify="center" gap={5} align="center">
+              <ChatAvatar chat={chat} />
+              {getChatName(chat)}
+            </Flex>
           </List.Item>
         )}
       />
