@@ -119,7 +119,6 @@ const ChatMessages: React.FC<Props> = ({ setEditingMessageID, setEditingText }) 
         open={forwardModalOpen}
         onClose={() => setForwardModalOpen(false)}
         onSelectChat={handleSelectChatToForward}
-        chats={userChats}
       />
     </div>
   );

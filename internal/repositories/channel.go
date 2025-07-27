@@ -58,7 +58,11 @@ func (c Channel) CreateByUserID(userID uint, name string, membersID []uint) (*mo
 
 func (c Channel) List() ([]models.Channel, error) {
 	var channels []models.Channel
-	if err := c.db.Preload("Members").Preload("Creator").Find(&channels).Error; err != nil {
+	if err := c.db.
+		Preload("Members").
+		Preload("LastMessage.Sender").
+		Preload("LastMessage.Files").
+		Preload("Creator").Find(&channels).Error; err != nil {
 		return nil, err
 	}
 	return channels, nil
@@ -120,7 +124,7 @@ func (c Channel) SendMessage(senderID, channelID uint, message string, filesID [
 	err = c.db.
 		Model(&models.Channel{}).
 		Where("id=?", channel.ID).
-		Update("last_message_time", time.Now()).
+		Updates(models.Channel{LastMessageTime: time.Now(), LastMessageID: &msg.ID}).
 		Error
 	if err != nil {
 		return nil, err

@@ -20,4 +20,6 @@ type Channel struct {
 	Messages        []Message   `json:"messages,omitempty" gorm:"many2many:channel_chat_messages;"`
 	Type            ChannelType `json:"type"`
 	LastMessageTime time.Time   `json:"last_message_time"`
+	LastMessageID   *uint       `json:"last_message_id" json:"-"`
+	LastMessage     *Message    `json:"last_message,omitempty" gorm:"foreignKey:LastMessageID"`
 }

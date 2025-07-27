@@ -3,7 +3,7 @@ type ChannelType = 'private_chat' | 'group_chat' | 'channel';
 interface ChatModel {
   id: number;
   avatar: string | undefined;
-  messages: string;
+  last_message?: Message;
   name: string;
   type: ChannelType;
   creator: UserModel;
