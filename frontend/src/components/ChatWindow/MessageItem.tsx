@@ -51,7 +51,7 @@ const MessageItem: React.FC<Props> = ({
   };
 
   const items: MenuProps['items'] = [
-    ...(isMe && !message.startsWith('Forwarded from') && files?.length
+    ...(isMe && !message.startsWith('Forwarded from') && !files?.length
       ? [
           {
             key: 'edit',
