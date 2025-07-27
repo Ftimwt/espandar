@@ -83,8 +83,12 @@ const MessageItem: React.FC<Props> = ({
         )}
 
         {/* متن پیام */}
-        {message && <p className="text-sm mt-1">{message}</p>}
-
+        {message && (
+        <p
+        className="text-sm mt-1 break-words text-blue-600"
+        dangerouslySetInnerHTML={{ __html: message.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" class="underline text-blue-500" target="_blank" rel="noopener noreferrer">$1</a>') }}
+        />
+        )}
         {/* فایل‌های ارسالی */}
         {files?.length ? (
           files.map((file) => <MessageFile file={file} key={`file-${file.id}`} />)

@@ -4,91 +4,124 @@ const ICE_SERVERS: RTCConfiguration = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
 };
 
-const useConferenceWebRTC = () => {
-  const [remoteStreams, setRemoteStreams] = useState<MediaStream[]>([]);
+type SignalMessage =
+  | { type: 'join'; userId: string }
+  | { type: 'offer'; from: string; to: string; sdp: RTCSessionDescriptionInit }
+  | { type: 'answer'; from: string; to: string; sdp: RTCSessionDescriptionInit }
+  | { type: 'ice-candidate'; from: string; to: string; candidate: RTCIceCandidate };
+
+const useConferenceWebRTC = (roomId: string, currentUserId: string) => {
+  const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const pcRef = useRef<RTCPeerConnection | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
+  const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const socketRef = useRef<WebSocket | null>(null);
 
-  const joinConference = async (
-  conferenceID: string,
-  localVideoRef: React.RefObject<HTMLVideoElement | null> 
-) => {
-    wsRef.current = new WebSocket(`ws://localhost:8080/ws/webrtc/${conferenceID}`);
-
-    wsRef.current.onopen = () => {
-  console.log("✅ WebSocket connected");
-  wsRef.current?.send(JSON.stringify({ type: "join", user: "me" }));
-};
-
-    const pc = new RTCPeerConnection(ICE_SERVERS);
-    pcRef.current = pc;
-
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-    setLocalStream(stream);
-
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = stream;
+  const sendMessage = (msg: SignalMessage) => {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify(msg));
     }
+  };
 
-    stream.getTracks().forEach((track) => {
-      pc.addTrack(track, stream);
-    });
+  const createPeerConnection = (peerId: string) => {
+    const pc = new RTCPeerConnection(ICE_SERVERS);
 
-    pc.ontrack = (event) => {
-      if (event.streams && event.streams[0]) {
-        setRemoteStreams((prev) => {
-          const exists = prev.find((s) => s.id === event.streams[0].id);
-          if (!exists) return [...prev, event.streams[0]];
-          return prev;
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        sendMessage({
+          type: 'ice-candidate',
+          from: currentUserId,
+          to: peerId,
+          candidate: event.candidate,
         });
       }
     };
 
-    pc.onicecandidate = (e) => {
-      if (e.candidate && wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'candidate', candidate: e.candidate }));
-      }
+    pc.ontrack = (event) => {
+      setRemoteStreams(prev => {
+        const existing = prev[peerId] || new MediaStream();
+        event.streams[0].getTracks().forEach(track => existing.addTrack(track));
+        return { ...prev, [peerId]: existing };
+      });
     };
 
-    wsRef.current.onmessage = async (event) => {
-      const data = JSON.parse(event.data);
-      if (!pc) return;
+    if (localStream) {
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    }
 
-      if (data.type === 'offer') {
-        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        wsRef.current?.send(JSON.stringify({ type: 'answer', answer }));
-      } else if (data.type === 'answer') {
-        await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-      } else if (data.type === 'candidate') {
-        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-      }
-    };
-  };
-
-  const leaveConference = () => {
-    pcRef.current?.close();
-    wsRef.current?.close();
-    setRemoteStreams([]);
-    localStream?.getTracks().forEach((track) => track.stop());
-  };
-
-  const shareScreen = async () => {
-    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-    stream.getTracks().forEach((track) => {
-      pcRef.current?.addTrack(track, stream);
-    });
+    peerConnections.current.set(peerId, pc);
+    return pc;
   };
 
   useEffect(() => {
-    return () => {
-      leaveConference();
-    };
-  }, []);
+    const connect = async () => {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      setLocalStream(stream);
 
-  return { remoteStreams, joinConference, leaveConference, shareScreen, localStream };
+      const ws = new WebSocket(`${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/webrtc/${roomId}`);
+      socketRef.current = ws;
+
+      ws.onopen = () => {
+        sendMessage({ type: 'join', userId: currentUserId });
+      };
+
+      ws.onmessage = async (e) => {
+        const msg: SignalMessage = JSON.parse(e.data);
+
+        if (!localStream) return;
+
+        if (msg.type === 'join' && msg.userId !== currentUserId) {
+          const pc = createPeerConnection(msg.userId);
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          sendMessage({
+            type: 'offer',
+            from: currentUserId,
+            to: msg.userId,
+            sdp: offer,
+          });
+        }
+
+        if (msg.type === 'offer' && msg.to === currentUserId) {
+          const pc = createPeerConnection(msg.from);
+          await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          sendMessage({
+            type: 'answer',
+            from: currentUserId,
+            to: msg.from,
+            sdp: answer,
+          });
+        }
+
+        if (msg.type === 'answer' && msg.to === currentUserId) {
+          const pc = peerConnections.current.get(msg.from);
+          if (pc) {
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+          }
+        }
+
+        if (msg.type === 'ice-candidate' && msg.to === currentUserId) {
+          const pc = peerConnections.current.get(msg.from);
+          if (pc) {
+            await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+          }
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      socketRef.current?.close();
+      peerConnections.current.forEach((pc) => pc.close());
+      peerConnections.current.clear();
+    };
+  }, [roomId]);
+
+  return { localStream, remoteStreams };
 };
 
 export default useConferenceWebRTC;

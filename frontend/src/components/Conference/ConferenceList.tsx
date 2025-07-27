@@ -1,8 +1,9 @@
 import { Button, List, message } from 'antd';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import axios from 'axios';
 import CreateConferenceModal from './CreateConferenceModal';
+import { useTokenStore } from '../../store/useToken'; // 👈 اضافه برای توکن
+import { authClient } from '../../api/api'; // 👈 اضافه برای جلوگیری از cache و احراز هویت
 
 type Conference = {
   id: number;
@@ -14,17 +15,26 @@ const ConferenceList = () => {
   const navigate = useNavigate();
   const [conferences, setConferences] = useState<Conference[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const { token } = useTokenStore(); // 👈 گرفتن توکن برای درخواست با هویت
 
   useEffect(() => {
     fetchConferences();
   }, []);
 
   const fetchConferences = () => {
-    axios
-      .get('/conference')
-      .then((res) => setConferences(res.data.conferences))
-      .catch(() => message.error('Failed to load conferences'));
-  };
+  if (!token) return; // ⛔ اگر توکن نداریم، بی‌خیال
+
+  authClient(token)
+    .get(`/conferences?ts=${Date.now()}`)
+    .then((res) => {
+      console.log('🎯 Loaded conferences:', res.data);
+      setConferences(res.data.conferences);
+    })
+    .catch((err) => {
+      console.error('❌ Failed to load conferences:', err);
+      message.error('Failed to load conferences');
+    });
+};
 
   return (
     <div className="p-6 w-full">
@@ -53,9 +63,10 @@ const ConferenceList = () => {
 
       <CreateConferenceModal
         open={modalOpen}
-        onClose={() => {
-          setModalOpen(false);
-          fetchConferences(); // Refresh after new creation
+        onClose={() => setModalOpen(false)}
+        onSuccess={() => {
+          fetchConferences(); // رفرش لیست
+          setModalOpen(false); // بستن مودال
         }}
       />
     </div>

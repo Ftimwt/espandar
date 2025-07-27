@@ -52,12 +52,11 @@ func (r Conference) GetByID(id uint) (*models.Conference, error) {
 
 func (r Conference) ListUserConferences(userID uint) ([]models.Conference, error) {
 	var confs []models.Conference
-	if err := r.db.
+	err := r.db.
 		Joins("JOIN conference_users cu ON cu.conference_id = conferences.id").
-		Where("cu.user_id = ? OR conferences.creator_id = ?", userID, userID).
+		Where("cu.user_id = ?", userID).
 		Preload("Participants").
-		Find(&confs).Error; err != nil {
-		return nil, err
-	}
-	return confs, nil
+		Find(&confs).Error
+	return confs, err
 }
+

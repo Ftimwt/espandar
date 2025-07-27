@@ -2,14 +2,42 @@ package webrtc
 
 import (
 	"encoding/json"
+	"github.com/gofiber/websocket/v2"
+	"github.com/pion/webrtc/v3"
 	"log"
 	"os"
 	"sync"
-
-	"github.com/gofiber/websocket/v2"
-	"github.com/pion/webrtc/v3"
 )
 
+func NewRoom(id string) *Room {
+	return &Room{
+		ID:    id,
+		Peers: &Peers{Connections: []PeerConnectionState{}},
+	}
+}
+
+func GetOrCreateRoom(id string) *Room {
+	if room, exists := Rooms[id]; exists {
+		return room
+	}
+	room := NewRoom(id)
+	Rooms[id] = room
+	return room
+}
+
+// ✅ WebSocket handler برای کنفرانس چندنفره
+func HandleConferenceWebSocket(c *websocket.Conn) {
+	roomId := c.Params("roomId")
+	if roomId == "" {
+		log.Println("❌ No roomId provided")
+		return
+	}
+
+	room := GetOrCreateRoom(roomId)
+	RoomConn(c, room.Peers)
+}
+
+// 🎥 همانند RoomConn قبلی برای مدیریت peerها
 func RoomConn(c *websocket.Conn, p *Peers) {
 	var config webrtc.Configuration
 	if os.Getenv("ENVIRONMENT") == "PRODUCTION" {
@@ -36,16 +64,13 @@ func RoomConn(c *websocket.Conn, p *Peers) {
 		Websocket: &ThreadSafeWriter{
 			Conn:  c,
 			Mutex: sync.Mutex{},
-		}}
+		},
+	}
 
-	// Add our new PeerConnection to global list
 	p.ListLock.Lock()
 	p.Connections = append(p.Connections, newPeer)
 	p.ListLock.Unlock()
 
-	log.Println(p.Connections)
-
-	// Trickle ICE. Emit server candidate to client
 	peerConnection.OnICECandidate(func(i *webrtc.ICECandidate) {
 		if i == nil {
 			return
@@ -57,28 +82,20 @@ func RoomConn(c *websocket.Conn, p *Peers) {
 			return
 		}
 
-		if writeErr := newPeer.Websocket.WriteJSON(&websocketMessage{
+		_ = newPeer.Websocket.WriteJSON(&websocketMessage{
 			Event: "candidate",
 			Data:  string(candidateString),
-		}); writeErr != nil {
-			log.Println(writeErr)
-		}
+		})
 	})
 
-	// If PeerConnection is closed remove it from a global list
 	peerConnection.OnConnectionStateChange(func(pp webrtc.PeerConnectionState) {
-		switch pp {
-		case webrtc.PeerConnectionStateFailed:
-			if err := peerConnection.Close(); err != nil {
-				log.Print(err)
-			}
-		case webrtc.PeerConnectionStateClosed:
+		if pp == webrtc.PeerConnectionStateFailed || pp == webrtc.PeerConnectionStateClosed {
+			_ = peerConnection.Close()
 			p.SignalPeerConnections()
 		}
 	})
 
 	peerConnection.OnTrack(func(t *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
-		// Create a track to fan out our incoming video to all peers
 		trackLocal := p.AddTrack(t)
 		if trackLocal == nil {
 			return
@@ -91,7 +108,6 @@ func RoomConn(c *websocket.Conn, p *Peers) {
 			if err != nil {
 				return
 			}
-
 			if _, err = trackLocal.Write(buf[:i]); err != nil {
 				return
 			}
@@ -99,6 +115,7 @@ func RoomConn(c *websocket.Conn, p *Peers) {
 	})
 
 	p.SignalPeerConnections()
+
 	message := &websocketMessage{}
 	for {
 		_, raw, err := c.ReadMessage()
@@ -113,61 +130,35 @@ func RoomConn(c *websocket.Conn, p *Peers) {
 		switch message.Event {
 		case "candidate":
 			candidate := webrtc.ICECandidateInit{}
-			if err := json.Unmarshal([]byte(message.Data), &candidate); err != nil {
-				log.Println(err)
-				return
-			}
+			_ = json.Unmarshal([]byte(message.Data), &candidate)
+			_ = peerConnection.AddICECandidate(candidate)
 
-			if err := peerConnection.AddICECandidate(candidate); err != nil {
-				log.Println(err)
-				return
-			}
 		case "offer":
 			offer := webrtc.SessionDescription{}
-			if err := json.Unmarshal([]byte(message.Data), &offer); err != nil {
+			_ = json.Unmarshal([]byte(message.Data), &offer)
+			_ = peerConnection.SetRemoteDescription(offer)
+
+			offerAnswer, err := peerConnection.CreateAnswer(nil)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			_ = peerConnection.SetLocalDescription(offerAnswer)
+
+			answerString, err := json.Marshal(offerAnswer)
+			if err != nil {
 				log.Println(err)
 				return
 			}
 
-			if err := peerConnection.SetRemoteDescription(offer); err != nil {
-				log.Println(err)
-				return
-			}
-
+			_ = newPeer.Websocket.WriteJSON(&websocketMessage{
+				Event: "answer",
+				Data:  string(answerString),
+			})
 		case "answer":
 			answer := webrtc.SessionDescription{}
-			if err := json.Unmarshal([]byte(message.Data), &answer); err != nil {
-				log.Println(err)
-			}
-
-			if err := peerConnection.SetRemoteDescription(answer); err != nil {
-				log.Println(err)
-			}
-
-	offer, err := peerConnection.CreateOffer(nil)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	if err = peerConnection.SetLocalDescription(offer); err != nil {
-		log.Println(err)
-		return
-	}
-
-	offerString, err := json.Marshal(offer)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	if err = newPeer.Websocket.WriteJSON(&websocketMessage{
-		Event: "offer",
-		Data:  string(offerString),
-	}); err != nil {
-		log.Println(err)
-		return
-	}
-
+			_ = json.Unmarshal([]byte(message.Data), &answer)
+			_ = peerConnection.SetRemoteDescription(answer)
 		}
 	}
 }

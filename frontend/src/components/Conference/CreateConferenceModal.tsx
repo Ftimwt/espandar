@@ -4,8 +4,17 @@ import {getFullname} from '../../utils/user';
 import {useGetUsersList} from "../../api/user";
 import {useCreateConference} from "../../api/conference.ts";
 import {useEffect} from "react";
+import type { CreateConferenceRequest} from "../../types/conference";
 
-const CreateConferenceModal = ({open, onClose}: { open: boolean; onClose: () => void }) => {
+const CreateConferenceModal = ({
+  open,
+  onClose,
+  onSuccess,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSuccess?: () => void;
+}) => {
     const [api, contextHolder] = notification.useNotification();
 
     const [form] = Form.useForm<CreateConferenceRequest>();
@@ -17,19 +26,24 @@ const CreateConferenceModal = ({open, onClose}: { open: boolean; onClose: () => 
         form.submit();
     };
 
-    const handleFinish = (data: CreateConferenceRequest) => {
-        mutate(data);
-    }
+ const handleFinish = (formValues: CreateConferenceRequest) => {
+  mutate(formValues); // ✅ بدون تبدیل! چون تبدیل داخل useCreateConference انجام شده
+};
 
     useEffect(() => {
-        if (data && 'data' in data) {
-            api.success({message: data.data.message});
-        }
-    }, [data]);
+  if (data && 'data' in data) {
+    api.success({ message: data.data.message });
+    form.resetFields();
+    onSuccess?.(); // ✅ اجرای تابعی که از بیرون داده شده
+  }
+}, [data]);
 
     useEffect(() => {
         if (!error) return;
-        api.error('خطایی در ایجاد رخ داده است');
+        api.error({
+  message: 'خطا',
+  description: 'خطایی در ایجاد رخ داده است',
+    });
     }, [error]);
 
     return (

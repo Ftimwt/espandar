@@ -110,10 +110,11 @@ func Run() error {
 		return fiber.ErrUpgradeRequired
 	})
 	app.Get("/ws/peer", websocket.New(stun.ServeWS))
-
-	// مسیر WebSocket
 	app.Get("/ws/:userID", websocket.New(notifier.HandleWebSocket))
 	app.Get("/ws/webrtc/:code", websocket.New(handlers.HandleWebRTC))
+
+	// ✅ WebRTC Multi-Conference Room
+	app.Get("/ws/conference/:roomId", websocket.New(w.HandleConferenceWebSocket))
 
 	app.Get("/", handlers.Welcome)
 	app.Get("/room/create", handlers.RoomCreate)
@@ -132,19 +133,16 @@ func Run() error {
 	app.Get("/stream/:suuid/viewer/websocket", websocket.New(handlers.StreamViewerWebsocket))
 	app.Static("/", "./assets")
 
-	app.Get("/swagger/*", swagger.HandlerDefault) // default
+	app.Get("/swagger/*", swagger.HandlerDefault)
 
-	app.Get("/swagger/*", swagger.New(swagger.Config{ // custom
+	app.Get("/swagger/*", swagger.New(swagger.Config{
 		URL:         "http://example.com/doc.json",
 		DeepLinking: false,
-		// Expand ("list") or Collapse ("none") tag groups by default
 		DocExpansion: "none",
-		// Prefill OAuth ClientId on Authorize popup
 		OAuth: &swagger.OAuthConfig{
 			AppName:  "OAuth Provider",
 			ClientId: "21bb4edc-05a7-4afc-86f1-2e151e4ba6e2",
 		},
-		// Ability to change OAuth2 redirect uri location
 		OAuth2RedirectUrl: "http://localhost:8080/swagger/oauth2-redirect.html",
 	}))
 

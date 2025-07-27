@@ -39,6 +39,7 @@ var (
 )
 
 type Room struct {
+	ID    string       
 	Peers *Peers
 	Hub   *chat.Hub
 }

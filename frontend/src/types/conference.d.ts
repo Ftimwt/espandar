@@ -1,11 +1,19 @@
-interface CreateConferenceRequest {
-    title: string;
-    participants: number[];
-    scheduled_at: string;
+import type { Moment } from "moment";
+
+export interface CreateConferenceRequest {
+  title: string;
+  participants: number[];
+  scheduled_at: Moment;
 }
 
-interface CreateConferenceResponse {
-    link: string;
-    message: string;
-    status: boolean;
+export interface CreateConferenceApiRequest {
+  title: string;
+  participants: number[];
+  scheduled_at?: string;
+}
+
+export interface CreateConferenceResponse {
+  link: string;
+  message: string;
+  status: boolean;
 }
