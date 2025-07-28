@@ -18,6 +18,8 @@ type Props = {
   onEdit?: () => void;
   onDelete?: () => void;
   onForward?: () => void;
+  forwardedFrom?: string;
+  
 };
 
 const MessageItem: React.FC<Props> = ({
@@ -33,6 +35,7 @@ const MessageItem: React.FC<Props> = ({
   onEdit,
   onDelete,
   onForward,
+  forwardedFrom,
 }) => {
   const { modal } = App.useApp();
 
@@ -100,6 +103,12 @@ const MessageItem: React.FC<Props> = ({
 
         {!isMe && sender && chatType !== 'users' && (
           <p className={`text-sm font-medium ${color}`}>{sender}</p>
+        )}
+
+        {forwardedFrom && (
+          <div className="text-xs italic text-gray-500 mb-1">
+            Forwarded from {forwardedFrom}
+          </div>
         )}
 
         {/* متن پیام */}

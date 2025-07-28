@@ -5,6 +5,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"strconv"
 	"sync"
+    "v/pkg/presence"
 
 	"github.com/gofiber/websocket/v2"
 )
@@ -179,4 +180,82 @@ func (notifier *Notifier) Notification(userID uint, notifType string, data any) 
 		"data":    data,
 	}
 	return notifier.Emit(userID, "notification", result)
+}
+
+func (notifier *Notifier) HandleWebSocketWithPresence(c *websocket.Conn, presence *presence.Service){
+	userIDStr := c.Params("userID")
+	userID64, err := strconv.ParseUint(userIDStr, 10, 64)
+	if err != nil {
+		return 
+	}
+	userID := uint(userID64)
+
+	wrapper := &connectionWrapper{
+		conn:   c,
+		sendCh: make(chan []byte, 100),
+	}
+
+	// ثبت اتصال
+	notifier.mu.Lock()
+	if notifier.connections[userID] == nil {
+		notifier.connections[userID] = make(map[*connectionWrapper]struct{})
+	}
+	isFirst := len(notifier.connections[userID]) == 0
+	notifier.connections[userID][wrapper] = struct{}{}
+	notifier.mu.Unlock()
+
+	// وضعیت آنلاین
+	if isFirst {
+		presence.SetOnline(userID)
+		notifier.broadcastUserStatus(userID, "online")
+	}
+
+	// Writer
+	go notifier.listenWrite(userID, wrapper)
+
+	// Reader
+	for {
+		if _, _, err := c.ReadMessage(); err != nil {
+	break
+}
+		if err != nil {
+			break
+		}
+		// optional: parse signaling messages here
+	}
+
+	// قطع اتصال
+	notifier.cleanup(userID, wrapper)
+
+	// اگر دیگه کانکشن فعالی نداریم:
+	notifier.mu.RLock()
+	_, stillConnected := notifier.connections[userID]
+	notifier.mu.RUnlock()
+	if !stillConnected {
+		presence.SetOffline(userID)
+		notifier.broadcastUserStatus(userID, "offline")
+	}
+
+	return
+}
+
+func (notifier *Notifier) broadcastUserStatus(userID uint, status string) {
+	msg := []any{"user_status", map[string]any{
+		"user_id": userID,
+		"status":  status,
+	}}
+	data, _ := json.Marshal(msg)
+
+	notifier.mu.RLock()
+	defer notifier.mu.RUnlock()
+
+	for _, conns := range notifier.connections {
+		for wrapper := range conns {
+			select {
+			case wrapper.sendCh <- data:
+			default:
+				go notifier.cleanup(userID, wrapper)
+			}
+		}
+	}
 }

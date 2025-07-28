@@ -15,6 +15,7 @@ import (
 	"v/pkg/providers"
 
 	w "v/pkg/webrtc"
+    "v/pkg/presence"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -27,6 +28,8 @@ var (
 	cert = flag.String("cert", "", "")
 	key  = flag.String("key", "", "")
 )
+
+var presenceService = presence.New()
 
 var hub *stun.Hub
 
@@ -110,9 +113,12 @@ func Run() error {
 		return fiber.ErrUpgradeRequired
 	})
 	app.Get("/ws/peer", websocket.New(stun.ServeWS))
-	app.Get("/ws/:userID", websocket.New(notifier.HandleWebSocket))
-	app.Get("/ws/webrtc/:code", websocket.New(handlers.HandleWebRTC))
+    app.Get("/ws/:userID", websocket.New(func(c *websocket.Conn) {
+    notifier.HandleWebSocketWithPresence(c, presenceService)
+    }))
 
+	app.Get("/ws/webrtc/:code", websocket.New(handlers.HandleWebRTC))
+    
 	// ✅ WebRTC Multi-Conference Room
 	app.Get("/ws/conference/:roomId", websocket.New(w.HandleConferenceWebSocket))
 
