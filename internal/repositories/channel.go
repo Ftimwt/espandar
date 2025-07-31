@@ -175,7 +175,6 @@ func (c Channel) GetMessages(channelID uint, limit, skip int) ([]models.Message,
 		Order("messages.id DESC").
 		Preload("Sender").
 		Preload("Readers").
-		Preload("ForwardedFrom").
 		Limit(limit).
 		Offset(skip).
 		Preload("Files"). // optional: if you want to include file data
@@ -256,10 +255,10 @@ func (c Channel) ForwardMessage(senderID, targetChannelID, originalMessageID uin
 		return nil, err
 	}
 
-	return c.SendMessage(senderID, targetChannelID, original.Text, ExtractFileIDs(original.Files))
+	return c.SendMessage(senderID, targetChannelID, original.Text, extractFileIDs(original.Files))
 }
 
-func ExtractFileIDs(files []models.File) []uint {
+func extractFileIDs(files []models.File) []uint {
 	var ids []uint
 	for _, f := range files {
 		ids = append(ids, f.ID)

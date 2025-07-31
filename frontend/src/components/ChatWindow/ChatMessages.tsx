@@ -88,12 +88,7 @@ const ChatMessages: React.FC<Props> = ({ setEditingMessageID, setEditingText }) 
     setEditingText(text);
   };
 
-  const msg = [...(data?.data.messages || [])]
-    .map((m) => ({
-      ...m,
-      forwardedFrom: m.forwarded_from, // ✅ فقط این خط اضافه شده
-    }))
-    .reverse();
+  const msg = [...(data?.data.messages || [])].reverse();
 
   return (
     <div className="flex-1 overflow-auto bg-gray-200 px-4 py-3">
@@ -113,7 +108,6 @@ const ChatMessages: React.FC<Props> = ({ setEditingMessageID, setEditingText }) 
             isMe={m.sender.id == user?.id}
             status={m.readers?.length && m.readers.length > 0 ? 'read' : 'sent'}
             isEdited={m.is_edited}
-            forwardedFrom={m.forwardedFrom} // ✅ تغییر یافته از snake_case
             onDelete={() => handleDeleteMessage(m.id)}
             onForward={() => handleForwardMessage(m.id)}
             onEdit={() => handleEditMessage(m.id, m.text)}

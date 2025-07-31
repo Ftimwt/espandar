@@ -1,23 +1,16 @@
 import { useParams } from 'react-router';
-import { useEffect, useState, useRef } from 'react';
-import { Button, message } from 'antd';
-import useConferenceWebRTC from '../hooks/useConferenceWebRTC';
+import { useEffect, useState } from 'react';
+import { message } from 'antd';
 import axios from 'axios';
-import { useUserStore } from '../store/userStore'; // برای userId
+import { useUserStore } from '../store/userStore';
+import ConferenceCall from '../components/Conference/ConferenceCall';
 
 const ConferenceRoom = () => {
   const { conferenceID } = useParams();
   const [conference, setConference] = useState<any>(null);
   const [notStarted, setNotStarted] = useState(false);
-  const localVideoRef = useRef<HTMLVideoElement>(null);
-  const { user } = useUserStore(); // گرفتن userId از store
+  const { user } = useUserStore();
 
-  if (!user) {
-  return <div>Loading user...</div>;
-}
-  const { localStream, remoteStreams } = useConferenceWebRTC(conferenceID!, user.id.toString());
-
-  // گرفتن اطلاعات کنفرانس و بررسی زمان شروع
   useEffect(() => {
     const fetchConference = async () => {
       try {
@@ -31,19 +24,14 @@ const ConferenceRoom = () => {
           setNotStarted(true);
         }
       } catch (err) {
-        message.error("Failed to load conference info.");
+        message.error('Failed to load conference info.');
       }
     };
 
     fetchConference();
   }, [conferenceID]);
 
-  // اتصال استریم محلی
-  useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
-    }
-  }, [localStream]);
+  if (!user) return <div>Loading user...</div>;
 
   if (notStarted) {
     return (
@@ -56,48 +44,8 @@ const ConferenceRoom = () => {
 
   return (
     <div>
-      <h2>Conference Room {conference?.title || conferenceID}</h2>
-
-      {/* نمایش تصویر خودت */}
-      <video
-        ref={localVideoRef}
-        autoPlay
-        muted
-        style={{ width: '300px', border: '2px solid green', margin: 10 }}
-      />
-
-      {/* نمایش دیگران */}
-      <div style={{ display: 'flex', flexWrap: 'wrap' }}>
-        {Object.entries(remoteStreams).map(([peerId, stream]) => {
-          const ref = useRef<HTMLVideoElement>(null);
-
-          useEffect(() => {
-            if (ref.current) {
-              ref.current.srcObject = stream;
-            }
-          }, [stream]);
-
-          return (
-            <video
-              key={peerId}
-              ref={ref}
-              autoPlay
-              style={{ width: '300px', border: '2px solid blue', margin: 10 }}
-            />
-          );
-        })}
-      </div>
-
-      <Button onClick={() => {
-        navigator.mediaDevices.getDisplayMedia({ video: true }).then((screenStream) => {
-          const track = screenStream.getVideoTracks()[0];
-          localStream?.getVideoTracks().forEach(t => t.stop());
-          localStream?.removeTrack(localStream.getVideoTracks()[0]);
-          localStream?.addTrack(track);
-        });
-      }}>
-        Share Screen
-      </Button>
+      <h2>🎥 Conference: {conference?.title || conferenceID}</h2>
+      <ConferenceCall roomId={conferenceID!} />
     </div>
   );
 };

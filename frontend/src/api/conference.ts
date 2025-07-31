@@ -25,6 +25,10 @@ const createConference = async (
   >("/conferences", payload);
 };
 
+const getConference = async () => {
+  return 
+}
+
 export const useCreateConference = (onSuccess?: () => void) => {
   const { token } = useTokenStore();
 

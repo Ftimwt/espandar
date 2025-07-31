@@ -24,8 +24,6 @@ type Message struct {
 	FileURL  string      `json:"file_url,omitempty"`
 	FileType string      `json:"file_type,omitempty"`
 	IsEdited bool        `json:"is_edited" gorm:"default:false"`
-	ForwardedFromID *uint `json:"forwarded_from_id,omitempty"`
-    ForwardedFrom   *User `json:"forwarded_from,omitempty" gorm:"foreignKey:ForwardedFromID"`
 }
 
 type MessageReader struct {

@@ -10,7 +10,7 @@ interface Message {
   file_url?: string;
   file_type?: string; 
   is_edited?: boolean; 
-  forwarded_from?: string; 
+
 }
 
 interface MessageResponse {
