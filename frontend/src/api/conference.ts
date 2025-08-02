@@ -1,12 +1,9 @@
-import { authClient } from "./api.ts";
-import type { AxiosResponse } from "axios";
-import { useTokenStore } from "../store/useToken.ts";
-import { useMutation } from "@tanstack/react-query";
-import type {
-  CreateConferenceRequest,
-  CreateConferenceResponse,
-  CreateConferenceApiRequest
-} from "../types/conference";
+import {authClient} from "./api.ts";
+import type {AxiosResponse} from "axios";
+import {useTokenStore} from "../store/useToken.ts";
+import {useMutation, useQuery} from "@tanstack/react-query";
+import type {CreateConferenceApiRequest, CreateConferenceRequest, CreateConferenceResponse} from "../types/conference";
+import {useToken} from "../utils/token.tsx";
 
 const createConference = async (
   token: string,
@@ -25,12 +22,22 @@ const createConference = async (
   >("/conferences", payload);
 };
 
-const getConference = async () => {
-  return 
+export const getConference = async (token: string, id: number) => {
+  return authClient(token).get<void, AxiosResponse<CreateConferenceApiRequest>, void>(`/conferences/${id}`);
+}
+
+export const useConferenceByID = (id: number) => {
+  const {token} = useTokenStore();
+  return useQuery({
+    queryKey: ['conferences'],
+    queryFn: () => {
+      return getConference(token!, id)
+    }
+  })
 }
 
 export const useCreateConference = (onSuccess?: () => void) => {
-  const { token } = useTokenStore();
+  const {token} = useTokenStore();
 
   return useMutation<
     AxiosResponse<CreateConferenceResponse>,

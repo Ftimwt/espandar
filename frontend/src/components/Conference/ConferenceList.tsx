@@ -56,7 +56,9 @@ const ConferenceList = () => {
               </Button>,
             ]}
           >
-            <List.Item.Meta title={conf.title} description={conf.scheduledAt} />
+            <List.Item.Meta  title={conf.title} description={conf.scheduledAt} >
+              {conf.title}
+            </List.Item.Meta>
           </List.Item>
         )}
       />

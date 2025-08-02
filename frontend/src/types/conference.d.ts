@@ -10,6 +10,11 @@ export interface CreateConferenceApiRequest {
   title: string;
   participants: number[];
   scheduled_at?: string;
+  code: number;
+}
+
+export interface ConferenceModel {
+
 }
 
 export interface CreateConferenceResponse {
@@ -17,3 +22,4 @@ export interface CreateConferenceResponse {
   message: string;
   status: boolean;
 }
+

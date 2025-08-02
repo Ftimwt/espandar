@@ -3,6 +3,7 @@ import PeerVideo from '../VideoCall/PeerVideo';
 import { useUserStore } from '../../store/userStore';
 import { Button, Flex } from 'antd';
 import { PhoneOutlined, AudioMutedOutlined, AudioOutlined, VideoCameraOutlined } from '@ant-design/icons';
+import {userCallStore} from "../../store/callStore.ts";
 
 interface ConferenceCallProps {
   roomId: string;
@@ -10,12 +11,13 @@ interface ConferenceCallProps {
 
 const ConferenceCall: React.FC<ConferenceCallProps> = ({ roomId }) => {
   const { user } = useUserStore();
+  const {} = userCallStore();
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const localStream = useRef<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const [peers, setPeers] = useState<Record<string, RTCPeerConnection>>({});
   const socket = useRef<WebSocket | null>(null);
-  const [micOn, setMicOn] = useState(true);
+  const [icOn, setMicOn] = useState(true);
   const [videoOn, setVideoOn] = useState(true);
 
   useEffect(() => {
@@ -23,7 +25,8 @@ const ConferenceCall: React.FC<ConferenceCallProps> = ({ roomId }) => {
       localStream.current = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       if (localVideoRef.current) localVideoRef.current.srcObject = localStream.current;
 
-      socket.current = new WebSocket(`ws://${window.location.host}/ws/conference/${roomId}`);
+      socket.current = new WebSocket(`ws://localhost:8080/ws/peer?room=${roomId}&user=${user?.id}`);
+
       socket.current.onmessage = async (event) => {
         const msg = JSON.parse(event.data);
         const senderId = msg.userId;

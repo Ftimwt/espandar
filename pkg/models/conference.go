@@ -7,9 +7,9 @@ import (
 
 type Conference struct {
 	gorm.Model
-	Title        string
-	CreatorID    uint
-	ScheduledAt  *time.Time
-	Participants []User `gorm:"many2many:conference_users"`
-	Code         string
+	Title        string     `json:"title"`
+	CreatorID    uint       `json:"-"`
+	ScheduledAt  *time.Time `json:"scheduled_at"`
+	Participants []User     `gorm:"many2many:conference_users"`
+	Code         string     `json:"code"`
 }
