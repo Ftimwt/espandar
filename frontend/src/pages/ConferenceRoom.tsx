@@ -1,40 +1,29 @@
 import {useParams} from 'react-router';
-import {useEffect, useState} from 'react';
-import {message} from 'antd';
-import axios from 'axios';
+import {useEffect, useMemo} from 'react';
 import {useUserStore} from '../store/userStore';
 import VideoCall from "../components/VideoCall/VideoCall.tsx";
 import {userCallStore} from "../store/callStore.ts";
+import {useConferenceByID} from "../api/conference.ts";
 
 const ConferenceRoom = () => {
   const {conferenceID} = useParams();
-  const [conference, setConference] = useState<any>(null);
-  const [notStarted, setNotStarted] = useState(false);
   const {makeRoom} = userCallStore();
+  const {data: conferenceData} = useConferenceByID(Number.parseInt(conferenceID!));
   const {user} = useUserStore();
 
   useEffect(() => {
-    const fetchConference = async () => {
-      try {
-        const res = await axios.get(`http://localhost:8080/conference/${conferenceID}`);
-        const conf = res.data.conference;
-        setConference(conf);
+    if (!conferenceData) return;
+    makeRoom(conferenceData.data.code, []);
+  }, [conferenceData]);
 
-        // const now = new Date();
-        // const scheduled = new Date(conf.scheduledAt);
-        // if (scheduled > now) {
-        //   setNotStarted(true);
-        // }
-        console.log(conf.code);
-        makeRoom(conf.code, []);
+  const notStarted = useMemo(() => {
+    // return conferenceData?.data.scheduled_at;
+    return false;
+  }, [conferenceData]);
 
-      } catch (err) {
-        message.error('Failed to load conference info.');
-      }
-    };
-
-    fetchConference();
-  }, [conferenceID]);
+  const conference = useMemo(() => {
+    return conferenceData?.data;
+  }, [conferenceData]);
 
   if (!user) return <div>Loading user...</div>;
 
@@ -42,7 +31,7 @@ const ConferenceRoom = () => {
     return (
       <div style={{padding: 20}}>
         <h2>⏳ This conference has not started yet.</h2>
-        <p>Please come back at: <b>{conference?.scheduledAt}</b></p>
+        <p>Please come back at: <b>{conference?.scheduled_at}</b></p>
       </div>
     );
   }
