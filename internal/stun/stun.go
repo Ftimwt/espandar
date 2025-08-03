@@ -1,6 +1,7 @@
 package stun
 
 import (
+	"encoding/json"
 	"fmt"
 	websocket2 "github.com/fasthttp/websocket"
 	"github.com/gofiber/websocket/v2"
@@ -220,7 +221,11 @@ func (c *Client) readPump() {
 
 	for {
 		var msg Message
-		err := c.conn.ReadJSON(&msg)
+		//err := c.conn.ReadJSON(&msg)
+		_, text, err := c.conn.ReadMessage()
+		textMsg := string(text)
+		_ = textMsg
+		err = json.Unmarshal(text, &msg)
 		if err != nil {
 			log.Printf("Error reading message from %s: %v", c.userID, err)
 			break
@@ -256,7 +261,7 @@ func (c *Client) readPump() {
 	}
 }
 
-func (c *Client) writePump() {
+func (c Client) writePump() {
 	defer c.conn.Close()
 
 	for {
