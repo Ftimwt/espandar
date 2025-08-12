@@ -60,17 +60,17 @@ const ContactItem: React.FC<Props> = ({ chat }) => {
   return (
     <Link
       to={`/chat/${routeType}/${chatID}`}
-      className={`px-3 py-3 flex items-center cursor-pointer hover:bg-gray-100 text-gray-700! ${
+      className={`px-4 py-4 border-b-gray-200 border-b flex items-center cursor-pointer hover:bg-gray-100 text-gray-700! ${
         isSelected ? 'bg-gray-200!' : 'bg-white!'
       }`}
     >
       <ChatAvatar chat={chat} />
-      <div className="ml-4 flex-1 border-b border-gray-200 pb-1">
+      <div className="ml-4 flex-1 pb-1">
         <div className="flex justify-between text-sm font-semibold">
           <span>{name}</span>
           <span className="text-gray-400 text-xs">{moment(chat.last_message_time).calendar()}</span>
         </div>
-        <div className="text-xs text-gray-500 truncate">{lastMessage}</div>
+        <div className="text-xs text-gray-500 truncate font-bold">{lastMessage}</div>
       </div>
     </Link>
   );

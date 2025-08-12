@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Avatar, Button, Popover, Typography } from 'antd';
+import { Avatar, Button, Popover, Tooltip, Typography } from 'antd';
 import { getFullname } from '../../utils/user.ts';
 import { useUserStore } from '../../store/userStore.ts';
 
@@ -31,17 +31,18 @@ const UserPopover: React.FC = () => {
       </Button>
     </div>
   );
-
   return (
-    <Popover content={content} trigger="click" placement="bottomLeft">
-      <Avatar
-        src={user.avatar?.length ? user.avatar : firstLetter}
-        size="large"
-        className="cursor-pointer"
-      >
-        {firstLetter}
-      </Avatar>
-    </Popover>
+    <Tooltip title={user?.username} placement="top">
+      <Popover content={content} trigger="click" placement="bottomLeft">
+        <Avatar
+          src={user.avatar?.length ? user.avatar : firstLetter}
+          size="large"
+          className="cursor-pointer"
+        >
+          {firstLetter}
+        </Avatar>
+      </Popover>
+    </Tooltip>
   );
 };
 

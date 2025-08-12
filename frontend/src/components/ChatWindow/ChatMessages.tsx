@@ -12,7 +12,6 @@ import {
 import { useWebSocket } from '../../context/websocket.tsx';
 import moment from 'moment';
 import ForwardModal from './ForwardModal.tsx';
-import axios from 'axios';
 
 type Props = {
   setEditingMessageID: (id: number | null) => void;
@@ -38,7 +37,6 @@ const ChatMessages: React.FC<Props> = ({ setEditingMessageID, setEditingText }) 
 
   const [forwardModalOpen, setForwardModalOpen] = useState(false);
   const [selectedMessageID, setSelectedMessageID] = useState<number | null>(null);
-  const [userChats, setUserChats] = useState<{ id: number; name: string }[]>([]);
 
   useEffect(() => {
     markAllAsRead();
@@ -48,15 +46,6 @@ const ChatMessages: React.FC<Props> = ({ setEditingMessageID, setEditingText }) 
     subscribe('notification', () => refetch?.());
     subscribe(`messages_${receiverType}_${uuid}`, () => refetch?.());
   }, [subscribe, refetch, receiverType, uuid]);
-
-  useEffect(() => {
-    axios
-      .get('http://localhost:8080/channels', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      })
-      .then((res) => setUserChats(res.data))
-      .catch((err) => console.error(err));
-  }, []);
 
   const handleDeleteMessage = (messageID: number) => {
     deleteMessageMutation.mutate(messageID, {
@@ -88,7 +77,12 @@ const ChatMessages: React.FC<Props> = ({ setEditingMessageID, setEditingText }) 
     setEditingText(text);
   };
 
-  const msg = [...(data?.data.messages || [])].reverse();
+  const msg = [...(data?.data.messages || [])]
+    .map((m) => ({
+      ...m,
+      forwardedFrom: m.forwarded_from, // ✅ فقط این خط اضافه شده
+    }))
+    .reverse();
 
   return (
     <div className="flex-1 overflow-auto bg-gray-200 px-4 py-3">
@@ -103,11 +97,12 @@ const ChatMessages: React.FC<Props> = ({ setEditingMessageID, setEditingText }) 
             message={m.text}
             files={m.files}
             time={moment(m.CreatedAt).format('HH:mm')}
-            sender={m.sender.username}
+            sender={m.sender}
             chatType={receiverType as ChannelRouteType}
             isMe={m.sender.id == user?.id}
             status={m.readers?.length && m.readers.length > 0 ? 'read' : 'sent'}
             isEdited={m.is_edited}
+            forwardedFrom={m.forwardedFrom}
             onDelete={() => handleDeleteMessage(m.id)}
             onForward={() => handleForwardMessage(m.id)}
             onEdit={() => handleEditMessage(m.id, m.text)}

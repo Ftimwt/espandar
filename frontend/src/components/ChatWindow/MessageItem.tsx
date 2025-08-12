@@ -1,12 +1,14 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import clsx from 'clsx';
 import type { ChannelRouteType } from '../../api/message.ts';
 import MessageFile from './MesssageFile.tsx';
 import { App, Dropdown, type MenuProps } from 'antd';
 import { MoreOutlined } from '@ant-design/icons';
+import { hashColor } from '../../utils/ui.ts';
+import { getFullname } from '../../utils/user.ts';
 
 type Props = {
-  sender?: string;
+  sender?: UserModel;
   message: string;
   time: string;
   isMe?: boolean;
@@ -18,6 +20,8 @@ type Props = {
   onEdit?: () => void;
   onDelete?: () => void;
   onForward?: () => void;
+  forwardedFrom?: string;
+  
 };
 
 const MessageItem: React.FC<Props> = ({
@@ -25,7 +29,6 @@ const MessageItem: React.FC<Props> = ({
   message,
   time,
   isMe = false,
-  color = 'text-gray-700',
   chatType,
   status,
   files,
@@ -33,6 +36,7 @@ const MessageItem: React.FC<Props> = ({
   onEdit,
   onDelete,
   onForward,
+  forwardedFrom,
 }) => {
   const { modal } = App.useApp();
 
@@ -49,6 +53,10 @@ const MessageItem: React.FC<Props> = ({
         return null;
     }
   };
+
+  const color = useMemo(() => {
+    return hashColor(sender?.username || 'unknown');
+  }, [sender]);
 
   const items: MenuProps['items'] = [
     ...(isMe && !message.startsWith('Forwarded from') && !files?.length
@@ -99,13 +107,17 @@ const MessageItem: React.FC<Props> = ({
         </div>
 
         {!isMe && sender && chatType !== 'users' && (
-          <p className={`text-sm font-medium ${color}`}>{sender}</p>
+          <p className={`text-sm font-medium ${color}`}>{getFullname(sender)}</p>
         )}
 
-        {/* متن پیام */}
+        {forwardedFrom && (
+          <div className="text-xs italic text-gray-500 mb-1">
+            Forwarded from {forwardedFrom}
+          </div>
+        )}
+
         {message && <p className="text-sm mt-1">{message}</p>}
 
-        {/* فایل‌های ارسالی */}
         {files?.length ? (
           files.map((file) => <MessageFile file={file} key={`file-${file.id}`} />)
         ) : (
