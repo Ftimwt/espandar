@@ -63,10 +63,11 @@ func (s Conference) SendInvitations(conferenceID uint, participantIDs []uint) er
 	}
 
 	senderID := conference.CreatorID
-	link := fmt.Sprintf("🎥 شما به کنفرانسی دعوت شده‌اید: %s/conference/%d", s.frontendURL, conferenceID)
+	url := fmt.Sprintf("%s/conference/%d", s.frontendURL, conferenceID)
+	text := fmt.Sprintf("You have been invited to the conference: <a href=\"%s\">%s</a> 🎥", url, url)
 
 	for _, participantID := range participantIDs {
-		_, err := s.userService.SendMessage(senderID, participantID, dto.Message{Text: link})
+		_, err := s.userService.SendMessage(senderID, participantID, dto.Message{Text: text})
 		if err != nil {
 			log.Printf("❌ ارسال پیام به کاربر %d با خطا مواجه شد: %v", participantID, err)
 			continue

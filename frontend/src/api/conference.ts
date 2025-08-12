@@ -3,7 +3,6 @@ import type {AxiosResponse} from "axios";
 import {useTokenStore} from "../store/useToken.ts";
 import {useMutation, useQuery} from "@tanstack/react-query";
 import type {CreateConferenceApiRequest, CreateConferenceRequest, CreateConferenceResponse} from "../types/conference";
-import {useToken} from "../utils/token.tsx";
 
 const createConference = async (
   token: string,

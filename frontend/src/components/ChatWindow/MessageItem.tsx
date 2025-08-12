@@ -1,18 +1,16 @@
 import React, { useMemo } from 'react';
 import clsx from 'clsx';
-import type { ChannelRouteType } from '../../api/message.ts';
+import type {ChannelRouteType} from '../../api/message.ts';
 import MessageFile from './MesssageFile.tsx';
 import { App, Dropdown, type MenuProps } from 'antd';
 import { MoreOutlined } from '@ant-design/icons';
 import { hashColor } from '../../utils/ui.ts';
-import { getFullname } from '../../utils/user.ts';
 
 type Props = {
   sender?: UserModel;
   message: string;
   time: string;
   isMe?: boolean;
-  color?: string;
   files?: FileModel[];
   chatType?: ChannelRouteType;
   status?: 'read' | 'delivered' | 'sent';
@@ -61,11 +59,11 @@ const MessageItem: React.FC<Props> = ({
   const items: MenuProps['items'] = [
     ...(isMe && !message.startsWith('Forwarded from') && !files?.length
       ? [
-          {
-            key: 'edit',
-            label: 'Edit',
-          },
-        ]
+        {
+          key: 'edit',
+          label: 'Edit',
+        },
+      ]
       : []),
     {
       key: 'delete',
@@ -77,7 +75,7 @@ const MessageItem: React.FC<Props> = ({
     },
   ];
 
-  const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
+  const handleMenuClick: MenuProps['onClick'] = ({key}) => {
     if (key === 'edit') onEdit?.();
     if (key === 'forward') onForward?.();
     if (key === 'delete')
@@ -102,7 +100,7 @@ const MessageItem: React.FC<Props> = ({
       >
         <div className="absolute top-0 right-0">
           <Dropdown menu={menuProps} trigger={['click']}>
-            <MoreOutlined className="cursor-pointer text-gray-500" />
+            <MoreOutlined className="cursor-pointer text-gray-500"/>
           </Dropdown>
         </div>
 
@@ -119,7 +117,7 @@ const MessageItem: React.FC<Props> = ({
         {message && <p className="text-sm mt-1">{message}</p>}
 
         {files?.length ? (
-          files.map((file) => <MessageFile file={file} key={`file-${file.id}`} />)
+          files.map((file) => <MessageFile file={file} key={`file-${file.id}`}/>)
         ) : (
           <></>
         )}

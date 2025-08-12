@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"log"
 	"v/internal/dto"
+	"v/internal/mapper"
 	"v/internal/services"
 	"v/pkg/http/response"
 )
@@ -34,7 +35,7 @@ func (h *Conference) Create(ctx *fiber.Ctx) error {
 	}
 
 	return response.
-		WithField("conference", conference).
+		WithField("conference", mapper.ToConference(*conference)).
 		WithField("code", code).
 		WithMessage("کنفرانس ایجاد شد").
 		Send(ctx)
@@ -46,7 +47,7 @@ func (h *Conference) ListUserConferences(ctx *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return response.WithField("conferences", confs).Send(ctx)
+	return response.WithField("conferences", mapper.ToConferences(confs)).Send(ctx)
 }
 
 func (h *Conference) Invite(ctx *fiber.Ctx) error {

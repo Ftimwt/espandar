@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router';
+import React, {useEffect, useRef, useState} from 'react';
+import {useParams} from 'react-router';
 import MessageItem from './MessageItem.tsx';
-import { useUserStore } from '../../store/userStore.ts';
+import {useUserStore} from '../../store/userStore.ts';
 import {
   type ChannelRouteType,
   useDeleteMessage,
@@ -9,7 +9,7 @@ import {
   useGetMessagesList,
   useMarkAllAsRead,
 } from '../../api/message.ts';
-import { useWebSocket } from '../../context/websocket.tsx';
+import {useWebSocket} from '../../context/websocket.tsx';
 import moment from 'moment';
 import ForwardModal from './ForwardModal.tsx';
 
@@ -18,19 +18,44 @@ type Props = {
   setEditingText: (text: string) => void;
 };
 
-const ChatMessages: React.FC<Props> = ({ setEditingMessageID, setEditingText }) => {
-  const { uuid, receiverType } = useParams();
-  const { user } = useUserStore();
-  const { subscribe } = useWebSocket();
+const ChatMessages: React.FC<Props> = ({setEditingMessageID, setEditingText}) => {
+  const {uuid, receiverType} = useParams();
+  const {user} = useUserStore();
+  const {subscribe} = useWebSocket();
+  const chatRef = useRef<HTMLDivElement>(null);
+  const [isFetching, setIsFetching] = useState(false);
+  const [msg, setMsg] = useState<Message[]>([]);
 
-  const { mutate: markAllAsRead } = useMarkAllAsRead(
+
+  const {mutate: markAllAsRead} = useMarkAllAsRead(
     Number.parseInt(uuid!),
     receiverType as ChannelRouteType,
   );
-  const { data, refetch } = useGetMessagesList(
+  const {data, refetch} = useGetMessagesList(
     receiverType as ChannelRouteType,
     Number.parseInt(uuid!),
   );
+
+  useEffect(() => {
+    setMsg([...(data?.data.messages?.map((m) => ({...m, forward_from: m.forwardFrom})) || []).reverse()])
+  }, [data]);
+
+
+  useEffect(() => {
+    const el = document.getElementById('scrollable');
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [msg]);
+
+  const handleScroll = () => {
+    const el = chatRef.current;
+    if (!el || isFetching) return;
+
+    if (el.scrollTop === 0) {
+      setIsFetching(true);
+
+      // const _prevHeight = el.scrollHeight;
+    }
+  };
 
   const deleteMessageMutation = useDeleteMessage(Number.parseInt(uuid!));
   const forwardMessageMutation = useForwardMessage();
@@ -62,7 +87,7 @@ const ChatMessages: React.FC<Props> = ({ setEditingMessageID, setEditingText }) 
   const handleSelectChatToForward = (targetChannelID: number) => {
     if (!selectedMessageID) return;
     forwardMessageMutation.mutate(
-      { targetChannelID, messageID: selectedMessageID },
+      {targetChannelID, messageID: selectedMessageID},
       {
         onSuccess: () => {
           setForwardModalOpen(false);
@@ -77,15 +102,13 @@ const ChatMessages: React.FC<Props> = ({ setEditingMessageID, setEditingText }) 
     setEditingText(text);
   };
 
-  const msg = [...(data?.data.messages || [])]
-    .map((m) => ({
-      ...m,
-      forwardedFrom: m.forwarded_from, // ✅ فقط این خط اضافه شده
-    }))
-    .reverse();
-
   return (
-    <div className="flex-1 overflow-auto bg-gray-200 px-4 py-3">
+    <div
+      className="flex-1 overflow-auto bg-gray-200 px-4 py-3"
+      id="scrollable"
+      ref={chatRef}
+      onScroll={handleScroll}
+    >
       {msg.map((m, i) =>
         m.type === 'alert' ? (
           <div className="flex justify-center mb-3" key={i}>

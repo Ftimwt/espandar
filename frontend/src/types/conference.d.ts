@@ -10,7 +10,7 @@ export interface CreateConferenceApiRequest {
   title: string;
   participants: number[];
   scheduled_at?: string;
-  code: number;
+  code: string;
 }
 
 export interface ConferenceModel {
