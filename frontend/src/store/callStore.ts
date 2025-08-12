@@ -1,81 +1,78 @@
-import {create} from 'zustand';
-import {useUserStore} from './userStore';
+import { create } from 'zustand';
+import { useUserStore } from './userStore';
 
 type CallState = {
-  targetID: number[];
+  targetID: number;
   room: string;
   incoming: boolean;
   makeCall: (targetID: number) => void;
   startCall: (targetID: number, room: string) => void;
   receiveCall: (targetID: number, room: string) => void;
-  makeRoom: (room: string, roomMembers: number[]) => void;
   acceptCall: () => void;
   rejectCall: () => void;
   cancelCall: () => void;
 };
 
 export const userCallStore = create<CallState>((set, get) => ({
-  targetID: [],
+  targetID: 0,
   room: '',
   incoming: false,
 
-  makeRoom: (room: string, roomMembers: number[]) => {
-    const {user} = useUserStore.getState();
+  makeCall: (targetID) => {
+    const { user } = useUserStore.getState();
     if (!user) return;
 
-    set({targetID: roomMembers, room, incoming: false});
+    const room = `room-${Date.now()}_${targetID}`;
+    set({ targetID, room, incoming: false });
 
-    for (const roomMember of roomMembers) {
-      window.ws?.send(JSON.stringify({
-        type: "call_request",
-        to: roomMember,
+    window.ws?.send(
+      JSON.stringify({
+        type: 'call_request',
+        to: targetID,
         from: user.id,
         room: room,
-      }));
-    }
-  },
-
-  makeCall: (targetID) => {
-    const {user} = useUserStore.getState();
-    if (!user) return;
-    const room = `room-${Date.now()}_${targetID}`;
-    get().makeRoom(room, [targetID]);
+      }),
+    );
   },
 
   startCall: (targetID, room) => {
-    const {user} = useUserStore.getState();
+    const { user } = useUserStore.getState();
     if (!user) return;
 
-    set({targetID: [targetID], room, incoming: false});
+    set({ targetID, room, incoming: false });
   },
 
   receiveCall: (targetID, room) => {
-    set({targetID: [targetID], room, incoming: true});
+    set({ targetID, room, incoming: true });
   },
 
   acceptCall: () => {
-    const {targetID, room} = get();
-    set({incoming: false});
-    window.ws?.send(JSON.stringify({
-      type: 'call_response',
-      from: targetID,
-      room,
-      status: 'accepted',
-    }));
+    const { targetID, room } = get();
+    set({ incoming: false });
+    window.ws?.send(
+      JSON.stringify({
+        type: 'call_response',
+        from: targetID,
+        room,
+        status: 'accepted',
+      }),
+    );
   },
 
   rejectCall: () => {
-    const {targetID, room} = get();
-    window.ws?.send(JSON.stringify({
-      type: 'call_response',
-      from: targetID,
-      room,
-      status: 'rejected',
-    }));
-    set({targetID: [], room: '', incoming: false});
+    const { targetID, room } = get();
+    window.ws?.send(
+      JSON.stringify({
+        type: 'call_response',
+        from: targetID,
+        room,
+        status: 'rejected',
+      }),
+    );
+    set({ targetID: 0, room: '', incoming: false });
   },
 
   cancelCall: () => {
-    set({targetID: [], room: '', incoming: false});
+    set({ targetID: 0, room: '', incoming: false });
   },
 }));
