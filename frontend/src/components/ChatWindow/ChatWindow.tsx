@@ -1,14 +1,22 @@
-// components/ChatWindow/ChatWindow.tsx
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import ChatHeader from './ChatHeader';
 import ChatInput from './ChatInput';
 import { useParams } from 'react-router';
 import { useUserStore } from '../../store/userStore.ts';
 import ChatMessages from './ChatMessages.tsx';
+import { useGetChatByID } from '../../api/chats.ts';
+import type { ChannelRouteType } from '../../api/message.ts';
 
 const ChatWindow: React.FC = () => {
-  const { uuid } = useParams();
+  const { uuid, receiverType } = useParams();
   const { user } = useUserStore();
+  const { data } = useGetChatByID(receiverType as ChannelRouteType, Number.parseInt(uuid!));
+
+  const hasAccess = useMemo(() => {
+    if (!data?.data) return false;
+    if (!('channel' in data.data)) return true;
+    return data.data.channel.creator.id == user?.id;
+  }, [data]);
 
   const [editingMessageID, setEditingMessageID] = useState<number | null>(null);
   const [editingText, setEditingText] = useState('');
@@ -25,12 +33,13 @@ const ChatWindow: React.FC = () => {
         setEditingText={setEditingText}
       />
       {/*<VideoCall targetID={Number.parseInt(uuid!)} userID={user.id}/>*/}
-      <ChatInput
+      {hasAccess && <ChatInput
         editingMessageID={editingMessageID}
         editingText={editingText}
         setEditingMessageID={setEditingMessageID}
         setEditingText={setEditingText}
       />
+      }
     </div>
   );
 };

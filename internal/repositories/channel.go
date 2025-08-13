@@ -1,9 +1,10 @@
 package repositories
 
 import (
-	"gorm.io/gorm"
 	"time"
 	"v/pkg/models"
+
+	"gorm.io/gorm"
 )
 
 type ChannelI interface {
@@ -38,7 +39,7 @@ func (c Channel) CreateByUserID(userID uint, name string, membersID []uint) (*mo
 	if len(membersID) == 1 {
 		channelType = models.ChannelTypePrivateChat
 	} else if len(membersID) > 1 {
-		channelType = models.ChannelTypeGroupChat
+		// channelType = models.ChannelTypeGroupChat
 	}
 
 	channel := models.Channel{
@@ -196,7 +197,7 @@ func (c Channel) GetUsersInChannelByID(channelID uint) ([]models.User, error) {
 
 func (c Channel) Get(id uint) (*models.Channel, error) {
 	var model models.Channel
-	return &model, c.db.Preload("Members").First(&model, id).Error
+	return &model, c.db.Preload("Members").Preload("Creator").First(&model, id).Error
 }
 
 func (c Channel) MarkAsRead(userID uint, messages ...uint) (int64, error) {

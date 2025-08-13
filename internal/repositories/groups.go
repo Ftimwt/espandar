@@ -1,9 +1,10 @@
 package repositories
 
 import (
-	"gorm.io/gorm"
 	"time"
 	"v/pkg/models"
+
+	"gorm.io/gorm"
 )
 
 type Group struct {

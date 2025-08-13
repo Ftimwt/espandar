@@ -3,15 +3,17 @@ package services
 import (
 	"errors"
 	"fmt"
-	"github.com/gofiber/fiber/v2/log"
 	"v/internal/dto"
 	"v/internal/repositories"
 	"v/pkg/models"
 	"v/pkg/providers"
+
+	"github.com/gofiber/fiber/v2/log"
 )
 
 var (
-	ErrChannelNotFound = errors.New("channel not found")
+	ErrChannelNotFound     = errors.New("channel not found")
+	ErrChannelAccessDenied = errors.New("do not access to the channel")
 )
 
 type Channel struct {
@@ -62,6 +64,9 @@ func (c Channel) SendMessage(userID, channelID uint, messageDTO *dto.Message) (*
 		return nil, ErrChannelNotFound
 	}
 
+	if channel.Type == models.ChannelTypeChannel && channel.CreatorID != userID {
+		return nil, ErrChannelAccessDenied
+	}
 	users, err := c.repo.GetUsersInChannelByID(channelID)
 	if err != nil {
 		return nil, err
@@ -149,4 +154,3 @@ func (c *Channel) ForwardMessage(userID, targetChannelID, messageID uint) (*mode
 
 	return newMessage, nil
 }
-
