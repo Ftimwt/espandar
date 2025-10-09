@@ -45,4 +45,5 @@ interface FileModel {
   name: string;
   path: string;
   type: 'image' | 'audio' | 'video' | 'text' | 'file';
+  file_url?: string;
 }

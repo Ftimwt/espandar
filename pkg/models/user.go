@@ -6,4 +6,5 @@ type User struct {
 	Password  string `json:"-"`
 	Firstname string `json:"firstname"`
 	Lastname  string `json:"lastname"`
+	Avatar    string `json:"avatar" gorm:"default:''"`
 }

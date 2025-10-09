@@ -15,4 +15,5 @@ func SetupUser(routes fiber.Router, option Option) {
 	protected.Put("/:targetID/messages/read", handler.MarkAllAsRead)
 	protected.Get("/:id", handler.GetUserByID)
 	protected.Get("/", handler.GetUsersList)
+	protected.Put("/me", handler.UpdateProfile)
 }

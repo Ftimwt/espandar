@@ -6,10 +6,15 @@ import (
 )
 
 func ToConference(conference models.Conference) dto.ConferenceItemResponse {
+	var scheduled string
+	if conference.ScheduledAt != nil {
+		scheduled = conference.ScheduledAt.Format("2006-01-02 15:04:05")
+	}
+
 	return dto.ConferenceItemResponse{
 		ID:           conference.ID,
 		Title:        conference.Title,
-		ScheduledAt:  conference.ScheduledAt.Format("2006-01-02 15:04:05"),
+		ScheduledAt:  scheduled,
 		Participants: ToUsersDTO(conference.Participants),
 	}
 }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+    "errors"
 	"github.com/gofiber/fiber/v2"
 	"log"
 	"v/internal/dto"
@@ -79,6 +80,13 @@ func (h *Conference) GetByID(ctx *fiber.Ctx) error {
 
 	conference, err := h.service.GetByID(uint(conferenceID))
 	if err != nil {
+		if errors.Is(err, services.ErrConferenceNotStarted) {
+			return response.
+				WithStatus(fiber.StatusForbidden).
+				WithField("status", false).
+				WithMessage("کنفرانس هنوز شروع نشده است").
+				Send(ctx)
+		}
 		return err
 	}
 

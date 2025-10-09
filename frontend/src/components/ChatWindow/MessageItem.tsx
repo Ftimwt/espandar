@@ -6,6 +6,7 @@ import { App, Dropdown, type MenuProps } from 'antd';
 import { MoreOutlined } from '@ant-design/icons';
 import { hashColor } from '../../utils/ui.ts';
 import { getFullname } from '../../utils/user.ts';
+import { formatMessageWithLinks } from '../../utils/message.ts';
 
 type Props = {
   sender?: UserModel;
@@ -85,6 +86,8 @@ const MessageItem: React.FC<Props> = ({
       });
   };
 
+  const renderedMessage = useMemo(() => formatMessageWithLinks(message), [message]);
+
   const menuProps = {
     items,
     onClick: handleMenuClick,
@@ -112,7 +115,12 @@ const MessageItem: React.FC<Props> = ({
           <div className="text-xs italic text-gray-500 mb-1">Forwarded from {forwardedFrom}</div>
         )}
 
-        {message && <p className="text-sm mt-1">{message}</p>}
+          {message && (
+          <p
+            className="text-sm mt-1 break-words"
+            dangerouslySetInnerHTML={{ __html: renderedMessage }}
+          />
+        )}
 
         {files?.length ? (
           files.map((file) => <MessageFile file={file} key={`file-${file.id}`} />)

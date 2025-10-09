@@ -1,9 +1,10 @@
 package repositories
 
 import (
-	"gorm.io/gorm"
 	"time"
 	"v/pkg/models"
+
+	"gorm.io/gorm"
 )
 
 type User struct {
@@ -146,4 +147,14 @@ func (u User) GetUsersList(option UsersListOption) ([]models.User, error) {
 	}
 
 	return users, tx.Find(&users).Error
+}
+
+func (u User) Update(userID uint, fields map[string]any) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	return u.db.Model(&models.User{}).
+		Where("id = ?", userID).
+		Updates(fields).
+		Error
 }

@@ -19,5 +19,6 @@ func ToUserDTO(user models.User) dto.User {
 		Username:  user.Username,
 		Firstname: user.Firstname,
 		Lastname:  user.Lastname,
+		Avatar:    user.Avatar,
 	}
 }

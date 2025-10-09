@@ -25,3 +25,9 @@ interface UsersListResponse {
 interface UserResponse {
   user: UserModel;
 }
+
+interface UpdateProfileRequest {
+  firstname?: string;
+  lastname?: string;
+  avatar?: string;
+}

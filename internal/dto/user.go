@@ -7,4 +7,11 @@ type User struct {
 	Role      string `json:"role"`
 	Firstname string `json:"firstname"`
 	Lastname  string `json:"lastname"`
+    Avatar    string `json:"avatar"`
 }
+
+type UpdateProfileRequest struct {
+	Firstname *string `json:"firstname"`
+	Lastname  *string `json:"lastname"`
+	Avatar    *string `json:"avatar"`
+} 

@@ -4,6 +4,7 @@ import {Link, useParams} from 'react-router';
 import moment from 'moment';
 import ChatAvatar from '../Chat/ChatAvatar.tsx';
 import {useUserStore} from '../../store/userStore.ts';
+import {escapeHtml, formatMessageWithLinks, wrapSenderPrefix} from '../../utils/message.ts';
 
 type Props = {
   chat: ChatModel;
@@ -35,7 +36,7 @@ const ContactItem: React.FC<Props> = ({chat}) => {
   }, [chatID, uuid, routeType, receiverType]);
 
   const lastMessage = useMemo(() => {
-    if (!chat.last_message) return 'No message';
+    if (!chat.last_message) return escapeHtml('No message');
 
     let msg: string = chat.last_message.text;
     if (msg.length == 0 && chat.last_message.files?.length > 0) {
@@ -51,11 +52,13 @@ const ContactItem: React.FC<Props> = ({chat}) => {
       }
     }
 
-    if (chat.type == 'private_chat') return msg;
+    const messageHtml = formatMessageWithLinks(msg);
+
+    if (chat.type == 'private_chat') return messageHtml;
     const fullName =
       user?.id == chat.last_message.sender.id ? 'You' : getFullname(chat.last_message.sender);
-    return `<b>${fullName}</b>: ${msg}`;
-  }, [chat]);
+    return wrapSenderPrefix(fullName, messageHtml);
+  }, [chat, user?.id]);
 
   return (
     <Link

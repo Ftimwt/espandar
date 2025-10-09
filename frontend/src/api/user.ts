@@ -1,6 +1,6 @@
 import { authClient } from './api.ts';
 import { useTokenStore } from '../store/useToken.ts';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import type { AxiosResponse } from 'axios';
 
 export const getUserInfo = (token: string) => {
@@ -33,6 +33,13 @@ export const getUserListAPI = (token: string, req: UsersListRequest) => {
   >('/users', { params: req });
 };
 
+export const updateUserProfileAPI = (token: string, body: UpdateProfileRequest) => {
+  return authClient(token).put<UserInfoResponse, AxiosResponse<UserInfoResponse>, UpdateProfileRequest>(
+    '/users/me',
+    body,
+  );
+};
+
 export const useGetUserInfo = () => {
   const { token } = useTokenStore();
 
@@ -49,6 +56,14 @@ export const useGetUsersList = (req?: UsersListRequest) => {
   return useQuery({
     queryKey: ['users', req],
     queryFn: () => getUserListAPI(token!, req || {}),
+  });
+};
+
+export const useUpdateUserProfile = () => {
+  const { token } = useTokenStore();
+
+  return useMutation({
+    mutationFn: (body: UpdateProfileRequest) => updateUserProfileAPI(token!, body),
   });
 };
 

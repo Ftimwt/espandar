@@ -1,11 +1,12 @@
 package handlers
 
 import (
-	"github.com/gofiber/fiber/v2"
 	"net/http"
 	"v/internal/dto"
 	"v/internal/services"
 	"v/pkg/http/response"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 type User struct {
@@ -104,4 +105,24 @@ func (u User) MarkAllAsRead(c *fiber.Ctx) error {
 	return response.
 		WithStatus(http.StatusOK).
 		Send(c)
+}
+func (u User) UpdateProfile(c *fiber.Ctx) error {
+	user := getUser(c)
+	if user == nil {
+		return fiber.ErrUnauthorized
+	}
+
+	var req dto.UpdateProfileRequest
+	if err := c.BodyParser(&req); err != nil {
+		return err
+	}
+
+	updated, err := u.service.UpdateProfile(user.ID, req)
+	if err != nil {
+		return err
+	}
+
+	c.Locals("user", updated)
+
+	return response.WithField("user", updated).SendWithStatus(c, http.StatusOK)
 }

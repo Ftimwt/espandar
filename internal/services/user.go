@@ -190,3 +190,26 @@ func (u User) MarkAllAsRead(userID, targetID uint) (int64, error) {
 	}
 	return count, err
 }
+
+func (u User) UpdateProfile(userID uint, req dto.UpdateProfileRequest) (*models.User, error) {
+	fields := make(map[string]any)
+	if req.Firstname != nil {
+		fields["firstname"] = *req.Firstname
+	}
+	if req.Lastname != nil {
+		fields["lastname"] = *req.Lastname
+	}
+	if req.Avatar != nil {
+		fields["avatar"] = *req.Avatar
+	}
+
+	if len(fields) == 0 {
+		return u.repo.GetUserByID(userID)
+	}
+
+	if err := u.repo.Update(userID, fields); err != nil {
+		return nil, err
+	}
+
+	return u.repo.GetUserByID(userID)
+}

@@ -5,12 +5,15 @@ import (
 	"log"
 	"time"
 	"v/pkg/utils"
+	"errors"
 
 	"v/internal/dto"
 	"v/internal/repositories"
 	"v/pkg/models"
 	"v/pkg/providers"
 )
+
+var ErrConferenceNotStarted = errors.New("conference has not started yet")
 
 type Conference struct {
 	repo        *repositories.Conference
@@ -53,7 +56,16 @@ func (s Conference) GetUserConferences(userID uint) ([]models.Conference, error)
 }
 
 func (s Conference) GetByID(id uint) (*models.Conference, error) {
-	return s.repo.GetByID(id)
+	conference, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if conference.ScheduledAt != nil && conference.ScheduledAt.After(time.Now()) {
+		return nil, ErrConferenceNotStarted
+	}
+
+	return conference, nil
 }
 
 func (s Conference) SendInvitations(conferenceID uint, participantIDs []uint) error {
@@ -64,7 +76,7 @@ func (s Conference) SendInvitations(conferenceID uint, participantIDs []uint) er
 
 	senderID := conference.CreatorID
 	url := fmt.Sprintf("%s/conference/%d", s.frontendURL, conferenceID)
-	text := fmt.Sprintf("You have been invited to the conference: <a href=\"%s\">%s</a> 🎥", url, url)
+	text := fmt.Sprintf("You have been invited to the conference: %s 🎥", url)
 
 	for _, participantID := range participantIDs {
 		_, err := s.userService.SendMessage(senderID, participantID, dto.Message{Text: text})

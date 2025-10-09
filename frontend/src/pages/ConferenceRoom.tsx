@@ -1,12 +1,19 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
-import {useUserStore} from "../store/userStore.ts";
+import { useUserStore } from "../store/userStore.ts";
+import { Button, Tooltip, Flex } from 'antd';
+import {
+  AudioMutedOutlined,
+  AudioOutlined,
+  VideoCameraOutlined,
+  DesktopOutlined,
+  PhoneOutlined,
+} from '@ant-design/icons';
 
-const RoomWebsocketAddr = 'ws://localhost:8080/ws'; // ← جایگزین کن
 
 const VideoRoom: React.FC = () => {
   const localVideoRef = useRef<HTMLVideoElement>(null);
-  const {user: userNullable} = useUserStore();
+  const { user: userNullable } = useUserStore();
   const user = userNullable!;
   const peersContainerRef = useRef<HTMLDivElement>(null);
   const hasConnectedRef = useRef(false);
@@ -18,7 +25,7 @@ const VideoRoom: React.FC = () => {
   const [videoOn, setVideoOn] = useState(true);
 
   const servers = useMemo(() => ({
-    iceServers: [{urls: 'stun:' + window.location.hostname + ':3478'}],
+    iceServers: [{ urls: 'stun:' + window.location.hostname + ':3478' }],
   }), []);
 
   const connect = async (mediaStream: MediaStream) => {
@@ -35,7 +42,7 @@ const VideoRoom: React.FC = () => {
       const videoContainer = document.createElement('div');
       videoContainer.className = 'peer';
 
-      const el = document.createElement<"video">(tagName);
+      const el = document.createElement(tagName) as HTMLVideoElement;
       el.srcObject = event.streams[0];
       el.controls = true;
       el.autoplay = true;
@@ -100,15 +107,14 @@ const VideoRoom: React.FC = () => {
         }));
       }
     };
-
   };
 
   useEffect(() => {
     if (hasConnectedRef.current) return;
     hasConnectedRef.current = true;
     navigator.mediaDevices.getUserMedia({
-      video: {width: 1280, height: 720},
-      audio: {sampleSize: 16, channelCount: 2, echoCancellation: true},
+      video: { width: 1280, height: 720 },
+      audio: { sampleSize: 16, channelCount: 2, echoCancellation: true },
     }).then((mediaStream) => {
       setStream(mediaStream);
       if (localVideoRef.current) {
@@ -125,7 +131,6 @@ const VideoRoom: React.FC = () => {
     });
   }, []);
 
-
   const toggleMic = () => {
     if (!stream) return;
     const enabled = !micOn;
@@ -140,27 +145,98 @@ const VideoRoom: React.FC = () => {
     setVideoOn(enabled);
   };
 
-  return (
-    <div className="p-4">
-      <h2 className="text-xl font-bold">💬 Video Room</h2>
-      <video ref={localVideoRef} autoPlay muted playsInline className="rounded border w-1/2 mb-4"/>
-      <div ref={peersContainerRef} id="videos" className="grid grid-cols-2 gap-4"/>
+  const handleLeaveConference = () => {
+    wsRef.current?.close();
+    pcRef.current?.close();
+    window.location.href = '/';
+  };
 
-      <div className="flex gap-4">
-        <button
-          onClick={toggleMic}
-          className={`px-4 py-2 rounded text-white ${micOn ? 'bg-green-600' : 'bg-red-600'}`}
-        >
-          {micOn ? 'قطع میکروفون' : 'وصل میکروفون'}
-        </button>
-        <button
-          onClick={toggleVideo}
-          className={`px-4 py-2 rounded text-white ${videoOn ? 'bg-green-600' : 'bg-red-600'}`}
-        >
-          {videoOn ? 'خاموش کردن دوربین' : 'روشن کردن دوربین'}
-        </button>
-      </div>
+  const handleScreenShare = async () => {
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const screenTrack = screenStream.getVideoTracks()[0];
+
+      const sender = pcRef.current?.getSenders().find(s => s.track?.kind === 'video');
+      sender?.replaceTrack(screenTrack);
+
+      screenTrack.onended = () => {
+        const videoTrack = stream?.getVideoTracks()[0];
+        if (videoTrack) {
+          sender?.replaceTrack(videoTrack);
+        }
+      };
+    } catch (err: any) {
+      console.error('Screen share error:', err);
+      Swal.fire('خطا در اشتراک‌گذاری صفحه', err.message, 'error');
+    }
+  };
+
+  return (
+  <div className="p-4">
+    <h2 className="text-xl font-bold">💬 Video Room</h2>
+
+    <video
+      ref={localVideoRef}
+      autoPlay
+      muted
+      playsInline
+      className="rounded border w-1/2 mb-4"
+    />
+
+    <div
+      ref={peersContainerRef}
+      id="videos"
+      className="grid grid-cols-2 gap-4"
+    />
+
+    <div className="mt-6">
+      <Flex gap={10} justify="center" align="center">
+        <Tooltip title={micOn ? 'Mute' : 'Unmute'}>
+          <Button
+            aria-label={micOn ? 'Mute microphone' : 'Unmute microphone'}
+            shape="circle"
+            size="large"
+            danger={!micOn}
+            icon={micOn ? <AudioOutlined /> : <AudioMutedOutlined />}
+            onClick={toggleMic}
+          />
+        </Tooltip>
+
+        <Tooltip title={videoOn ? 'Turn off camera' : 'Turn on camera'}>
+          <Button
+            aria-label={videoOn ? 'Turn off camera' : 'Turn on camera'}
+            shape="circle"
+            size="large"
+            danger={!videoOn}
+            icon={<VideoCameraOutlined />}
+            onClick={toggleVideo}
+          />
+        </Tooltip>
+
+        <Tooltip title="Share screen">
+          <Button
+            aria-label="Share screen"
+            shape="circle"
+            size="large"
+            icon={<DesktopOutlined />}
+            onClick={handleScreenShare}
+          />
+        </Tooltip>
+
+        <Tooltip title="Leave conference">
+          <Button
+            aria-label="Leave conference"
+            type="primary"
+            danger
+            shape="circle"
+            size="large"
+            icon={<PhoneOutlined style={{ transform: 'rotate(135deg)' }} />}
+            onClick={handleLeaveConference}
+          />
+        </Tooltip>
+      </Flex>
     </div>
+  </div>
   );
 };
 
